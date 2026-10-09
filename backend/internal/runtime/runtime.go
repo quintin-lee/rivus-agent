@@ -3,12 +3,14 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/observability"
 	"rivus-agent-backend/internal/store"
+	itool "rivus-agent-backend/internal/tool"
 )
 
 type Deps struct {
@@ -80,6 +82,24 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 		r.append(ctx, run.ID, domain.EvtPlanCreated, "plan with "+itoa(len(dsteps))+" steps")
 	}
 
+	var needApproval atomic.Bool
+	r.deps.Runner.SetNeedApprovalHandler(run.ID, func(runID, toolCallID, toolName string, args json.RawMessage) {
+		needApproval.Store(true)
+		bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := r.deps.Approvals.FindPendingByToolCall(bg, runID, toolCallID); err == nil {
+			return
+		}
+		_ = r.deps.Approvals.Create(bg, &domain.Approval{
+			RunID: runID, ToolCallID: toolCallID, ToolName: toolName,
+			ArgsHash: itool.ArgsHash(args), RequestedBy: ownerID,
+			Reason:    "high-risk tool call requires approval",
+			ExpiresAt: time.Now().Add(30 * time.Minute).UnixMilli(),
+		})
+		r.append(bg, runID, domain.EvtApprovalRequested, toolName+" requires approval")
+	})
+	defer r.deps.Runner.SetNeedApprovalHandler(run.ID, nil)
+
 	ch, err := r.deps.Runner.Run(ctx, RunRequest{
 		RunID: run.ID, OwnerID: ownerID, Goal: run.Goal,
 		Mode: mode, Budget: budget, ApprovedTools: approved,
@@ -104,7 +124,7 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 			finalText = ev.Text
 		}
 	}
-	if waitApproval {
+	if waitApproval || needApproval.Load() {
 		_ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunWaitingApproval, "", "")
 		observability.IncrRunFinished(false)
 		return

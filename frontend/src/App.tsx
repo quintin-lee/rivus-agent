@@ -6,10 +6,13 @@ import { RunDetail } from '@/components/RunDetail'
 import { EventStream } from '@/components/EventStream'
 import { useSessionStore } from '@/store/session-store'
 import { useRunStore } from '@/store/run-store'
+import { useEventStream } from '@/lib/use-event-stream'
 
 export default function App() {
   const loadSessions = useSessionStore((s) => s.loadSessions)
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
+
+  useEventStream()
 
   useEffect(() => { void loadSessions() }, [loadSessions])
 

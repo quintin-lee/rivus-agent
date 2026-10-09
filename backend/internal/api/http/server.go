@@ -3,6 +3,7 @@ package httpapi
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"net/http"
 	"strconv"
@@ -99,7 +100,10 @@ type createSessionReq struct {
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	var in createSessionReq
-	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in)
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+		writeErr(w, 400, "bad_request", "invalid body", false)
+		return
+	}
 	id, err := s.sessions.Create(r.Context(), ownerOf(r), in.Title)
 	if err != nil {
 		writeErr(w, 500, "internal", "create session failed", true)
@@ -191,7 +195,11 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "not_found", "run not found", false)
 		return
 	}
-	steps, _ := s.tasks.ListSteps(r.Context(), ownerOf(r), id)
+	steps, err := s.tasks.ListSteps(r.Context(), ownerOf(r), id)
+	if err != nil {
+		writeErr(w, 500, "internal", "list steps failed", true)
+		return
+	}
 	writeJSON(w, 200, map[string]any{"run": run, "steps": steps})
 }
 
@@ -201,15 +209,16 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "not_found", "run not found", false)
 		return
 	}
+	after := parseAfter(r)
+	evs, err := s.events.ListAfter(r.Context(), id, after, 500)
+	if err != nil {
+		writeErr(w, 500, "internal", "list events failed", true)
+		return
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	flusher, _ := w.(http.Flusher)
-	after := parseAfter(r)
-	evs, err := s.events.ListAfter(r.Context(), id, after, 500)
-	if err != nil {
-		return
-	}
 	for _, e := range evs {
 		_, _ = w.Write([]byte("id: " + itoa64(e.Seq) + "\nevent: " + string(e.Type) + "\ndata: " + e.PayloadJSON + "\n\n"))
 	}
@@ -221,7 +230,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.runs.Cancel(r.Context(), ownerOf(r), id); err != nil {
-		writeErr(w, 409, "conflict", err.Error(), false)
+		msg := "cancel failed"
+		if errors.Is(err, domain.ErrConflict) {
+			msg = "run is not in a cancellable state"
+		}
+		writeErr(w, 409, "conflict", msg, false)
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "cancelled"})
@@ -230,7 +243,11 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.runs.Resume(r.Context(), ownerOf(r), id); err != nil {
-		writeErr(w, 409, "conflict", err.Error(), false)
+		msg := "resume failed"
+		if errors.Is(err, domain.ErrConflict) {
+			msg = "run is not in a resumable state"
+		}
+		writeErr(w, 409, "conflict", msg, false)
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "running"})
@@ -245,11 +262,20 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	aid := r.PathValue("approval_id")
 	var in decideReq
-	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in)
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+		writeErr(w, 400, "bad_request", "invalid body", false)
+		return
+	}
 	if err := s.runs.DecideApproval(r.Context(), service.DecideApprovalInput{
 		OwnerID: ownerOf(r), RunID: id, ApprovalID: aid, Approve: in.Approve, Reason: in.Reason,
 	}); err != nil {
-		writeErr(w, 409, "conflict", err.Error(), false)
+		msg := "approval decision failed"
+		if errors.Is(err, domain.ErrConflict) {
+			msg = "approval already decided or expired"
+		} else if errors.Is(err, domain.ErrForbidden) {
+			msg = "forbidden"
+		}
+		writeErr(w, 409, "conflict", msg, false)
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "decided"})

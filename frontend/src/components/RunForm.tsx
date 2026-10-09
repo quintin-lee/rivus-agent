@@ -63,7 +63,8 @@ export function RunForm() {
         constraints: constraints.length ? constraints : undefined,
         success_criteria: successCriteria.length ? successCriteria : undefined,
       }
-      const res = await api.createRun(req)
+      const idempotencyKey = crypto.randomUUID()
+      const res = await api.createRun(req, idempotencyKey)
       await activateRun(res.run_id)
       setGoal('')
       setConstraints([])

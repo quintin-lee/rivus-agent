@@ -1,0 +1,13 @@
+{
+  "goal": "分析给定项目并生成重构建议",
+  "constraints": ["不得修改仓库文件"],
+  "success_criteria": ["输出风险列表", "每条建议有文件或代码证据"],
+  "mode": "react",
+  "budget": {
+    "max_duration_seconds": 120,
+    "max_model_calls": 10,
+    "max_tool_calls": 10,
+    "max_iterations": 6,
+    "max_output_bytes": 50000
+  }
+}

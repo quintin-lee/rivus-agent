@@ -127,7 +127,8 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID str
 		limit = 50
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, session_id, owner_id, status, mode, goal, budget_json,
+		`SELECT id, session_id, owner_id, status, mode, goal,
+		        constraints_json, success_criteria_json, budget_json,
 		        checkpoint_id, attempt, idempotency_key, started_at, finished_at,
 		        error_code, error_summary, result_json, created_at, updated_at
 	         FROM runs WHERE session_id = ? AND owner_id = ? ORDER BY created_at DESC LIMIT ?`,
@@ -140,12 +141,12 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID str
 	for rows.Next() {
 		var run domain.Run
 		var status, mode, goal string
-		var bj sql.NullString
+		var cj, scj, bj sql.NullString
 		var cpid, idem, ecode, esum, resj sql.NullString
 		var sa, fa sql.NullInt64
 		if err := rows.Scan(
 			&run.ID, &run.SessionID, &run.OwnerID, &status, &mode, &goal,
-			&bj, &cpid, &run.Attempt, &idem, &sa, &fa, &ecode, &esum, &resj,
+			&cj, &scj, &bj, &cpid, &run.Attempt, &idem, &sa, &fa, &ecode, &esum, &resj,
 			&run.CreatedAt, &run.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -153,6 +154,8 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID str
 		run.Status = domain.RunStatus(status)
 		run.Mode = mode
 		run.Goal = goal
+		_ = json.Unmarshal([]byte(strOr(cj, "[]")), &run.Constraints)
+		_ = json.Unmarshal([]byte(strOr(scj, "[]")), &run.SuccessCriteria)
 		_ = json.Unmarshal([]byte(strOr(bj, "{}")), &run.Budget)
 		run.CheckpointID = strOr(cpid, "")
 		run.IdempotencyKey = strOr(idem, "")

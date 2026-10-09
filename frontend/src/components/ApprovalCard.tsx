@@ -79,9 +79,11 @@ export function ApprovalCard({ event }: { event: AgentEvent }) {
     try {
       await api.decideApproval(runId, approvalId, true)
       setDecided('approved')
+      await fetchRunAndSteps(runId)
+    } catch {
+      // keep local decided state; user can retry
     } finally {
       setBusy(false)
-      await fetchRunAndSteps(runId)
     }
   }
 
@@ -92,9 +94,11 @@ export function ApprovalCard({ event }: { event: AgentEvent }) {
       await api.decideApproval(runId, approvalId, false, reason.trim() || undefined)
       setDecided('rejected')
       setRejectOpen(false)
+      await fetchRunAndSteps(runId)
+    } catch {
+      // keep local decided state; user can retry
     } finally {
       setBusy(false)
-      await fetchRunAndSteps(runId)
     }
   }
 

@@ -72,7 +72,7 @@ func (s *RunService) CreateRun(ctx context.Context, in CreateRunInput) (*domain.
 		return nil, false, err
 	}
 	_, _ = s.events.Append(ctx, run.ID, domain.EvtRunCreated, `{"goal":"created"}`, "normal")
-	s.rt.Execute(ctx, in.OwnerID, run, map[string]bool{})
+	s.rt.Execute(context.WithoutCancel(ctx), in.OwnerID, run, map[string]bool{})
 	return run, false, nil
 }
 
@@ -99,8 +99,23 @@ func (s *RunService) Resume(ctx context.Context, ownerID, runID string) error {
 	if err := s.tasks.UpdateStatus(ctx, ownerID, runID, domain.RunRunning, "", ""); err != nil {
 		return err
 	}
-	s.rt.Execute(ctx, ownerID, run, map[string]bool{})
+	s.rt.Execute(context.WithoutCancel(ctx), ownerID, run, s.collectApprovals(ctx, runID))
 	return nil
+}
+
+func (s *RunService) collectApprovals(ctx context.Context, runID string) map[string]bool {
+	out := map[string]bool{}
+	records, err := s.approvals.ListByRun(ctx, runID)
+	if err != nil {
+		return out
+	}
+	now := time.Now().UnixMilli()
+	for _, a := range records {
+		if a.Status == domain.ApprovalApproved && now <= a.ExpiresAt {
+			out[a.ToolName+":"+a.ArgsHash] = true
+		}
+	}
+	return out
 }
 
 type DecideApprovalInput struct {

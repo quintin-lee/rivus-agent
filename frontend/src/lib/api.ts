@@ -114,7 +114,6 @@ class ApiClient {
   async getEvents(runId: string, afterSeq: number): Promise<AgentEvent[]> {
     const url = `/api/v1/runs/${encodeURIComponent(runId)}/events?after=${afterSeq}`
     const headers: Record<string, string> = {
-      'Content-Type': 'text/event-stream',
       'X-Owner-ID': OWNER_ID,
     }
     const res = await fetch(`${API_BASE}${url}`, {

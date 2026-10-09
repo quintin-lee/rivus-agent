@@ -58,6 +58,32 @@ func (r *ApprovalRepo) Decide(ctx context.Context, id string, approved bool, by,
 	return nil
 }
 
+// ListByRun 返回某 Run 的全部审批记录（恢复时收集已批清单用）。
+func (r *ApprovalRepo) ListByRun(ctx context.Context, runID string) ([]domain.Approval, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, run_id, tool_call_id, tool_name, args_hash, requested_by, approved_by, status, reason, expires_at, created_at, decided_at
+		FROM approvals WHERE run_id = ? ORDER BY created_at`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.Approval
+	for rows.Next() {
+		var a domain.Approval
+		var status string
+		var approvedBy, reason sql.NullString
+		var decidedAt sql.NullInt64
+		if err := rows.Scan(&a.ID, &a.RunID, &a.ToolCallID, &a.ToolName, &a.ArgsHash, &a.RequestedBy,
+			&approvedBy, &status, &reason, &a.ExpiresAt, &a.CreatedAt, &decidedAt); err != nil {
+			return nil, err
+		}
+		a.Status = domain.ApprovalStatus(status)
+		a.ApprovedBy, a.Reason = strOr(approvedBy, ""), strOr(reason, "")
+		a.DecidedAt = intOr(decidedAt)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // FindPendingByToolCall 查找同一 tool_call 的待审批记录（幂等：重复中断不重复建单）。
 func (r *ApprovalRepo) FindPendingByToolCall(ctx context.Context, runID, toolCallID string) (*domain.Approval, error) {
 	var id string

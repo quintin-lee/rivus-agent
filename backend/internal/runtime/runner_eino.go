@@ -56,6 +56,9 @@ type EinoRunner struct {
 	cancels        *cancelRegistry
 	onEvent        func(ev RuntimeEvent)
 	onNeedApproval func(runID, toolCallID, toolName string, args json.RawMessage)
+
+	mu                sync.RWMutex
+	needApprovalByRun map[string]func(runID, toolCallID, toolName string, args json.RawMessage)
 }
 
 func NewEinoRunner(
@@ -65,12 +68,13 @@ func NewEinoRunner(
 	checkpoints adk.CheckPointStore,
 ) *EinoRunner {
 	return &EinoRunner{
-		modelFactory: modelFactory,
-		registry:     registry,
-		executor:     executor,
-		checkpoints:  checkpoints,
-		instruction:  "你是 Rivus Agent。用中文回答。必须基于工具返回的真实证据行动，禁止编造成功。需要多工具协作时分步调用并观察结果。",
-		cancels:      newCancelRegistry(),
+		modelFactory:      modelFactory,
+		registry:          registry,
+		executor:          executor,
+		checkpoints:       checkpoints,
+		instruction:       "你是 Rivus Agent。用中文回答。必须基于工具返回的真实证据行动，禁止编造成功。需要多工具协作时分步调用并观察结果。",
+		cancels:           newCancelRegistry(),
+		needApprovalByRun: map[string]func(runID, toolCallID, toolName string, args json.RawMessage){},
 	}
 }
 
@@ -78,6 +82,25 @@ func (r *EinoRunner) OnEvent(fn func(ev RuntimeEvent)) { r.onEvent = fn }
 
 func (r *EinoRunner) OnNeedApproval(fn func(runID, toolCallID, toolName string, args json.RawMessage)) {
 	r.onNeedApproval = fn
+}
+
+func (r *EinoRunner) SetNeedApprovalHandler(runID string, fn func(runID, toolCallID, toolName string, args json.RawMessage)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if fn == nil {
+		delete(r.needApprovalByRun, runID)
+		return
+	}
+	r.needApprovalByRun[runID] = fn
+}
+
+func (r *EinoRunner) needApprovalHandler(runID string) func(runID, toolCallID, toolName string, args json.RawMessage) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if fn, ok := r.needApprovalByRun[runID]; ok {
+		return fn
+	}
+	return r.onNeedApproval
 }
 
 func (r *EinoRunner) Cancel(runID string) error { return r.cancels.cancel(runID) }
@@ -108,8 +131,8 @@ func (g *gatewayTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 }
 
 func (g *gatewayTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
-	callID := toolCallIDFromOpts(opts)
 	var raw json.RawMessage = json.RawMessage(argumentsInJSON)
+	callID := g.def.Name + ":" + shortHash(itool.ArgsHash(raw))
 	if g.approved != nil && g.approved[g.def.Name+":"+itool.ArgsHash(raw)] {
 		out, err := g.executor.Execute(ctx, itool.ExecRequest{
 			RunID: g.runID, ToolName: g.def.Name, Args: raw, Approved: true, ToolCallID: callID,
@@ -131,8 +154,11 @@ func (g *gatewayTool) InvokableRun(ctx context.Context, argumentsInJSON string, 
 	return out.Output, nil
 }
 
-func toolCallIDFromOpts(opts []tool.Option) string {
-	return fmt.Sprintf("tc_%d", len(opts))
+func shortHash(h string) string {
+	if len(h) > 12 {
+		return h[:12]
+	}
+	return h
 }
 
 func (r *EinoRunner) buildAgent(ctx context.Context, runID string, budget domain.Budget, approved map[string]bool) (*adk.ChatModelAgent, error) {
@@ -145,7 +171,7 @@ func (r *EinoRunner) buildAgent(ctx context.Context, runID string, budget domain
 		d := d
 		tools = append(tools, &gatewayTool{
 			def: d, runID: runID, approved: approved,
-			executor: r.executor, onNeedApproval: r.onNeedApproval,
+			executor: r.executor, onNeedApproval: r.needApprovalHandler(runID),
 		})
 	}
 	withTools, err := base.WithTools(collectInfos(tools))
