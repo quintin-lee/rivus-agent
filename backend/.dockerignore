@@ -1,0 +1,13 @@
+bin/
+data/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+.git
+.gitignore
+Dockerfile
+.dockerignore
+README.md
+Makefile
+workspace/
