@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"expvar"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"rivus-agent-backend/internal/config"
@@ -35,7 +36,9 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/sessions", s.handleCreateSession)
+	s.mux.HandleFunc("GET /api/v1/sessions", s.handleListSessions)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}", s.handleGetSession)
+	s.mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	s.mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	s.mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
 	s.mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleEvents)
@@ -116,6 +119,40 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"session_id": id, "title": title, "created_at": ca, "updated_at": ua})
 }
 
+func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	sessions, err := s.tasks.ListSessions(r.Context(), ownerOf(r))
+	if err != nil {
+		writeErr(w, 500, "internal", "list sessions failed", true)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"sessions": sessions})
+}
+
+func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
+	owner := ownerOf(r)
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		writeErr(w, 400, "bad_request", "session_id query param required", false)
+		return
+	}
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	runs, err := s.tasks.ListRunsBySession(r.Context(), owner, sessionID, limit)
+	if err != nil {
+		if err == domain.ErrForbidden || err == domain.ErrBadRequest {
+			writeErr(w, 404, "not_found", "session not found", false)
+			return
+		}
+		writeErr(w, 500, "internal", "list runs failed", true)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"runs": runs})
+}
+
 type createRunReq struct {
 	SessionID       string        `json:"session_id"`
 	Goal            string        `json:"goal"`
@@ -168,9 +205,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	flusher, _ := w.(http.Flusher)
-	var after int64
-	_, _ = s.events, after
-	evs, err := s.events.ListAfter(r.Context(), id, 0, 500)
+	after := parseAfter(r)
+	evs, err := s.events.ListAfter(r.Context(), id, after, 500)
 	if err != nil {
 		return
 	}
@@ -217,6 +253,31 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "decided"})
+}
+
+func parseAfter(r *http.Request) int64 {
+	if v := r.URL.Query().Get("after"); v != "" {
+		var n int64
+		for _, c := range v {
+			if c < '0' || c > '9' {
+				n = 0
+				break
+			}
+			n = n*10 + int64(c-'0')
+		}
+		return n
+	}
+	if v := r.Header.Get("Last-Event-ID"); v != "" {
+		var n int64
+		for _, c := range v {
+			if c < '0' || c > '9' {
+				return 0
+			}
+			n = n*10 + int64(c-'0')
+		}
+		return n
+	}
+	return 0
 }
 
 func itoa64(n int64) string {

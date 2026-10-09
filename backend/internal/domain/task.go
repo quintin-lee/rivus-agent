@@ -92,6 +92,14 @@ func (b Budget) ClampByServer(max Budget) Budget {
 	}
 }
 
+// SessionInfo is the session metadata returned by the list endpoint.
+type SessionInfo struct {
+	ID        string `json:"session_id"`
+	Title     string `json:"title"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
 // Run 是业务 Run 实体（与 Eino 内部消息解耦）。
 type Run struct {
 	ID              string    `json:"id"`

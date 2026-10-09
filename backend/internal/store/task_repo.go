@@ -39,6 +39,27 @@ func (r *TaskRepo) GetSession(ctx context.Context, ownerID, sessionID string) (s
 	return owner, title, ca, ua, nil
 }
 
+func (r *TaskRepo) ListSessions(ctx context.Context, ownerID string) ([]domain.SessionInfo, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, title, created_at, updated_at FROM sessions WHERE owner_id = ? ORDER BY updated_at DESC`,
+		ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.SessionInfo
+	for rows.Next() {
+		var s domain.SessionInfo
+		var title sql.NullString
+		if err := rows.Scan(&s.ID, &title, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		s.Title = strOr(title, "")
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // CreateRun 插入 Run；相同 (owner_id, idempotency_key) 返回已存在 Run（幂等）。
 func (r *TaskRepo) CreateRun(ctx context.Context, run *domain.Run) error {
 	cj, _ := json.Marshal(run.Constraints)
@@ -96,6 +117,53 @@ func (r *TaskRepo) GetRun(ctx context.Context, ownerID, runID string) (*domain.R
 	run.ErrorCode, run.ErrorSummary, run.ResultJSON = strOr(ecode, ""), strOr(esum, ""), strOr(resj, "")
 	run.StartedAt, run.FinishedAt = intOr(sa), intOr(fa)
 	return &run, nil
+}
+
+func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID string, limit int) ([]domain.Run, error) {
+	if _, _, _, _, err := r.GetSession(ctx, ownerID, sessionID); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, session_id, owner_id, status, mode, goal, budget_json,
+		        checkpoint_id, attempt, idempotency_key, started_at, finished_at,
+		        error_code, error_summary, result_json, created_at, updated_at
+	         FROM runs WHERE session_id = ? AND owner_id = ? ORDER BY created_at DESC LIMIT ?`,
+		sessionID, ownerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.Run
+	for rows.Next() {
+		var run domain.Run
+		var status, mode, goal string
+		var bj sql.NullString
+		var cpid, idem, ecode, esum, resj sql.NullString
+		var sa, fa sql.NullInt64
+		if err := rows.Scan(
+			&run.ID, &run.SessionID, &run.OwnerID, &status, &mode, &goal,
+			&bj, &cpid, &run.Attempt, &idem, &sa, &fa, &ecode, &esum, &resj,
+			&run.CreatedAt, &run.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		run.Status = domain.RunStatus(status)
+		run.Mode = mode
+		run.Goal = goal
+		_ = json.Unmarshal([]byte(strOr(bj, "{}")), &run.Budget)
+		run.CheckpointID = strOr(cpid, "")
+		run.IdempotencyKey = strOr(idem, "")
+		run.ErrorCode = strOr(ecode, "")
+		run.ErrorSummary = strOr(esum, "")
+		run.ResultJSON = strOr(resj, "")
+		run.StartedAt = intOr(sa)
+		run.FinishedAt = intOr(fa)
+		out = append(out, run)
+	}
+	return out, rows.Err()
 }
 
 // UpdateStatus 做状态机校验后更新状态。
