@@ -1,0 +1,14 @@
+addr: ":8080"
+db_path: "./data/agent.db"
+skills_dir: "./skills"
+worker_concurrency: 1
+model_provider: "openai_compat"
+model_name: "gpt-4o-mini"
+model_base_url: "https://api.openai.com/v1"
+model_timeout_seconds: 120
+max_duration_seconds: 600
+max_model_calls: 30
+max_tool_calls: 50
+max_iterations: 12
+max_output_bytes: 200000
+log_level: "info"
