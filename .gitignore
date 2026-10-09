@@ -1,0 +1,38 @@
+# Go
+bin/
+*.exe
+*.test
+*.out
+
+# SQLite 运行时数据（本地库/预写日志，备份走卷备份）
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+backend/data/
+backend/bin/
+backend/workspace/
+
+# 本地配置与密钥（只提交 .example）
+configs/config.yaml
+backend/configs/config.yaml
+.env
+.env.*
+!.env.example
+
+# 前端构建产物（如后续接入 npm/vite）
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# 压测与本地临时文件
+/tmp/
+*.log
