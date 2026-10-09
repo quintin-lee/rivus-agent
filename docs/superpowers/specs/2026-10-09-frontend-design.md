@@ -1,6 +1,6 @@
 # Rivus Agent Frontend 设计文档
 
-- 文档版本：v1.0
+- 文档版本：v1.1
 - 日期：2026-10-09
 - 目标：为 Rivus Agent 后端提供功能完整、操作路径短的 Web UI
 - 布局形式：单页 Dashboard + 侧边栏（方案 A）
@@ -30,6 +30,7 @@
 - 多语言 i18n
 - 移动端适配（桌面端为主）
 - E2E 测试（Playwright）
+- 会话列表和历史 Run 列表（依赖后端 `GET /api/v1/sessions` 和 `GET /api/v1/runs?session_id=X`，见 §12，后端补充前显示占位）
 
 ---
 
@@ -123,20 +124,20 @@ frontend/
 2. 成功 → `runStore.activateRun(runId)` + 开始 SSE 订阅（`useEventStream(runId)`)
 3. 若返回 `duplicated: true` → toast 提示幂等命中，直接切换到已有 Run
 
-### 5.3 SSE 事件流
+### 5.3 事件流
 
-- `useEventStream(runId)` hook：
-  - 订阅时携带 `Last-Event-ID`（从 `runStore.events` 取最大 seq）
-  - 收到 `AgentEvent` → `runStore.appendEvent(e)`
-  - 连接状态变化 → `uiStore.setConnectionStatus(status)`
-- 断连自动指数退避重连（1s/2s/4s，上限 30s），重连时携带最后 seq
+- `useEventStream(runId)` hook（当前为轮询，见 §8）：
+  - 每 2s 调用 `api.getEvents(runId, afterSeq)`
+  - 新事件 → `runStore.appendEvent(e)`
+  - 网络错误 → 指数退避重试，更新 `uiStore.sseStatus`
+  - Run 进入终态后自动停止
 - `runStore.events` 超出 500 条时截断（保留最新 500 条）
 
 ### 5.4 Run 状态同步
 
-- SSE 连接正常时以事件流为主（`run.status` 通过 `run.finished/failed/cancelled` 事件更新）
-- SSE 断连时每 3s 轮询 `GET /runs/{id}` 兜底，确保状态不卡住
-- SSE 重连成功后停止轮询
+- 轮询正常时：事件流提供 `run.finished/failed/cancelled` 等终态事件，驱动状态更新
+- 轮询 `error` 状态（网络断开/5xx）：每 3s 额外调用 `api.getRun(id)` 作为兜底，确保状态不卡住
+- 轮询恢复正常后停止兜底轮询
 
 ### 5.5 审批操作
 
@@ -177,21 +178,39 @@ interface AgentEvent {
   run_id: string
   event_type: EventType
   payload_json: string   // 保留原文，组件内按需 JSON.parse
-  sensitivity: string
+  sensitivity: "normal" | "low" | "medium" | "high"
   created_at: number     // Unix 毫秒
 }
+
+// sensitivity === "high" 时，EventStream 默认将 payload_json 渲染为 "masked"，
+// 用户可手动展开查看。
 
 interface Run {
   id: string
   session_id: string
+  owner_id: string
   status: RunStatus
   mode: string
   goal: string
+  constraints?: string[]
+  success_criteria?: string[]
+  budget: {
+    max_duration_seconds: number
+    max_model_calls: number
+    max_tool_calls: number
+    max_iterations: number
+    max_output_bytes: number
+  }
+  checkpoint_id?: string
+  attempt: number
+  idempotency_key?: string
   error_code?: string
   error_summary?: string
   result_json?: string
   created_at: number
   updated_at: number
+  started_at?: number
+  finished_at?: number
 }
 
 interface Step {
@@ -200,8 +219,13 @@ interface Step {
   step_index: number
   description: string
   status: StepStatus
+  dependencies?: number[]
   result_summary?: string
+  started_at?: number
+  finished_at?: number
 }
+
+type ApprovalStatus = "pending" | "approved" | "rejected" | "expired"
 
 interface Approval {
   id: string
@@ -209,9 +233,13 @@ interface Approval {
   tool_call_id: string
   tool_name: string
   args_hash: string
-  status: string
   requested_by: string
+  approved_by?: string
+  status: ApprovalStatus
+  reason?: string
   expires_at: number
+  created_at: number
+  decided_at?: number
 }
 
 interface Session {
@@ -258,9 +286,14 @@ class ApiClient {
 
   async createSession(title: string): Promise<{ session_id: string }>
   async getSession(id: string): Promise<Session>
+  // 注：GET /api/v1/sessions（list）和 GET /api/v1/runs?session_id=X 端点
+  // 当前后端尚未实现，SessionPanel 历史 Run 列表在后端补充前暂显为空。
   async createRun(req: CreateRunReq, idempotencyKey?: string):
     Promise<{ run_id: string; status: RunStatus; duplicated: boolean }>
   async getRun(id: string): Promise<{ run: Run; steps: Step[] }>
+  async getEvents(runId: string, afterSeq: number): Promise<AgentEvent[]>
+  // 调用 GET /api/v1/runs/{runId}/events?after=afterSeq，返回历史事件列表
+  // 前端轮询主路径使用此方法（见 §8）
   async cancelRun(id: string): Promise<void>
   async resumeRun(id: string): Promise<void>
   async decideApproval(
@@ -270,12 +303,56 @@ class ApiClient {
 }
 ```
 
-- 所有请求失败（非 2xx）抛出 `ApiError`
-- `createRun` 自动注入 `Idempotency-Key` header（由调用方传入）
+**错误处理策略**：
+
+| HTTP 状态 | 客户端行为 |
+|---|---|
+| 400 | toast 显示 `message`，停止当前操作 |
+| 404（轮询 Run 时） | 停止轮询，标记 Run 为"未找到"，ActionBar 显示重试按钮 |
+| 404（其他） | toast 显示 `message` |
+| 409 | toast 显示 `message`（如 cancel/resume 状态冲突） |
+| 5xx / 网络错误 | 更新连接状态 indicator；轮询场景下在下一周期自动重试，不 toast |
+| 401 | toast 提示 token 无效，刷新页面 |
+
 
 ---
 
-## 8. SSE 客户端
+## 8. 事件流客户端（轮询为主，SSE 为后续）
+
+**当前实现（主路径）—— 轮询**：
+
+后端 `handleEvents` 目前是一次性返回历史后结束（非持久 SSE 流），因此前端主路径为：
+
+```typescript
+// poller.ts
+
+function startEventPoller(opts: {
+  api: ApiClient
+  runId: string
+  intervalMs?: number   // 默认 2000ms
+  getAfterSeq: () => number          // 回调，返回当前最大 seq
+  onEvent: (e: AgentEvent) => void
+  onStatus: (s: "polling" | "error" | "stopped") => void
+}): () => void                          // 返回 stop 函数
+```
+
+- 每 `intervalMs`（默认 2s）调用 `api.getEvents(runId, afterSeq)`
+- 新事件到达后更新 `afterSeq`（取本批最大 seq）
+- Run 进入终态（`succeeded` / `failed` / `cancelled` / `timed_out`）后自动停止轮询
+- 网络错误时更新状态为 `error`，下一周期自动重试（指数退避 1s/2s/4s/8s，上限 30s）
+
+**React hook**：
+
+```typescript
+function useEventStream(runId: string | null): void
+// runId 非空时启动 poller；runId 变为 null 或组件 unmount 时停止
+// 新事件 → runStore.appendEvent(e)
+// 状态变化 → uiStore.setSseStatus(s)
+```
+
+**后续（后端改造后）—— 真实 SSE**：
+
+后端将 `handleEvents` 改为持久长连接后，前端切换为：
 
 ```typescript
 // sse.ts
@@ -283,28 +360,19 @@ class ApiClient {
 type SseStatus = "connected" | "reconnecting" | "closed"
 
 function sseSubscribe(opts: {
-  url: string          // 如 /api/v1/runs/{id}/events
+  url: string          // /api/v1/runs/{id}/events
   token?: string
   owner: string
-  lastEventId?: number // 初始 seq，用于补发
+  lastEventId?: number
   onEvent: (e: AgentEvent) => void
   onStatus: (s: SseStatus) => void
-}): () => void         // 返回 unsubscribe
+}): () => void
 ```
 
-实现细节：
-- 基于 `fetch` + `ReadableStream`，手动解析 SSE 帧（`id:` / `event:` / `data:` / 空行）
-- 断连后指数退避重连（1s/2s/4s/8s/16s/30s，上限 30s）
-- 重连请求携带 `Last-Event-ID` header（取本地最大 seq）
-- 组件 unmount 时调用 unsubscribe，终止 fetch 和重连定时器
+- 基于 `fetch + ReadableStream` 手动解析 SSE 帧（`id:` / `event:` / `data:` / 空行）
+- 断连后指数退避重连（1s/2s/4s/8s/16s/30s），携带 `Last-Event-ID`
+- `useEventStream` 内部检测后端 SSE 是否持久（收到数据后连接保持 > 5s 即为持久），自动切换轮询/SSE 模式，对上层透明
 
-React hook 封装：
-
-```typescript
-// 在 store 层调用，避免 hook 嵌套问题
-function useEventStream(runId: string | null): void
-// 内部：runId 变化时重新订阅；unmount 时取消
-```
 
 ---
 
@@ -412,9 +480,11 @@ function useEventStream(runId: string | null): void
   - 过滤 chips：`all` / `run` / `model` / `tool` / `step` / `approval`
   - 搜索框（客户端过滤 `payload_json` 字符串，不区分大小写）
 - 事件行：`HH:MM:SS` + `EventTypeBadge`（按类型着色）+ 摘要文本
+  - `run.resumed`：显示 "Run resumed (attempt N)"，N 从 `payload_json.attempt` 读取
   - `tool.started/completed`：显示工具名
   - `model.requested`：显示当前调用计数
   - `approval.requested`：展开 `ApprovalCard`
+  - `sensitivity === "high"` 的事件：payload_json 默认渲染为 "masked"，点击展开查看原文
 - 自动滚动：新事件到达时滚到底部；用户手动上滚后暂停自动滚动，新事件到达时显示"↓ 新事件"浮标
 
 ### ApprovalCard
@@ -446,18 +516,22 @@ function useEventStream(runId: string | null): void
 
 ```ts
 // vite.config.ts
+const backendUrl = process.env.VITE_BACKEND_URL ?? 'http://localhost:8080'
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
-      '/api':    'http://localhost:8080',
-      '/healthz':'http://localhost:8080',
-      '/readyz': 'http://localhost:8080',
+      '/api':    backendUrl,
+      '/healthz': backendUrl,
+      '/readyz':  backendUrl,
     }
   }
 })
 ```
+
+`VITE_BACKEND_URL` 环境变量可在多开发者或 CI 场景下覆盖后端端口。
 
 ### 本地开发流程
 
@@ -481,18 +555,24 @@ cd frontend && pnpm build
 
 ---
 
-## 12. 后端补充需求
+## 12. 后端待补充需求
 
-当前后端 `handleEvents` 是"一次性返回历史后结束"，不是真正持久的 SSE 流。
+以下端点在实现前端完整功能前需要后端补充：
 
-**短期（前端可独立工作）**：前端退化为"轮询 `GET /events?after=lastSeq` 每 2s"，UI 体验可接受。
+| 端点 | 说明 | 优先级 |
+|---|---|---|
+| `GET /api/v1/sessions` | 列出当前 owner 的所有 session（按 `updated_at` 倒序） | 高（SessionPanel 需要） |
+| `GET /api/v1/runs?session_id=X` | 列出指定 session 下的 Run（按 `created_at` 倒序，limit 50） | 高（历史 Run 列表需要） |
+| 持久 SSE 流 | `handleEvents` 改为长连接，新事件实时推送 | 中（当前轮询可替代） |
 
-**后续（后端改造）**：服务端维持长连接，新事件实时推送；前端 SSE 客户端无需改动，只切换 URL 和轮询兜底逻辑。
+**后端 SSE 改造范围**：
+- `EventRepo` 增加 watch 机制（内部 goroutine 轮询新 seq，通过 channel 推送）
+- `handleEvents` 改为阻塞写入；客户端连接关闭时退出
+- 前端 `useEventStream` 无需改动，轮询/SSE 切换对上层透明（见 §8）
 
-改造范围：
-- `EventRepo` 增加 watch/poll 机制（内部 goroutine 轮询新 seq，通过 channel 推送）
-- `handleEvents` 改为阻塞写入，连接关闭时退出
-- 前端代码不变，`sseSubscribe` 的 `onStatus` 会自然反映长连接状态
+在前端实现期间，后端端点未补充前：
+- SessionPanel 的"会话列表"区仅显示已知的 activeSession（手动新建后保留）
+- 历史 Run 列表区显示"暂无数据"占位
 
 ---
 
