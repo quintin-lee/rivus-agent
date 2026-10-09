@@ -14,7 +14,7 @@ FROM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /src
 ENV PNPMDIR=/root/.local/share/pnpm
 RUN corepack enable pnpm
-COPY package.json pnpm-lock.yaml ./
+COPY package.json ./
 RUN pnpm install
 COPY . .
 RUN pnpm build

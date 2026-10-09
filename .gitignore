@@ -20,6 +20,9 @@ backend/configs/config.yaml
 .env.*
 !.env.example
 
+# Docker 数据卷（非命名卷场景）
+data/
+
 # 前端构建产物（如后续接入 npm/vite）
 frontend/node_modules/
 frontend/dist/
