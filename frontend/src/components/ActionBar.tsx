@@ -41,7 +41,7 @@ export function ActionBar() {
   const statusText: Record<string, { icon: React.ReactNode; text: string }> = {
     succeeded: { icon: <CircleCheck className="h-4 w-4 text-emerald-400" />, text: 'Run succeeded' },
     failed: { icon: <CircleX className="h-4 w-4 text-red-400" />, text: 'Run failed' },
-    cancelled: { icon: <CircleX className="h-4 w-4 text-zinc-400" />, text: 'Run cancelled' },
+    cancelled: { icon: <CircleX className="h-4 w-4 text-muted-foreground" />, text: 'Run cancelled' },
     timed_out: { icon: <Clock className="h-4 w-4 text-orange-400" />, text: 'Run timed out' },
   }
 
@@ -126,7 +126,7 @@ export function ActionBar() {
       )}
 
       {terminal && (
-        <div className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300">
+        <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground/90">
           {statusText[activeRun.status]?.icon ?? <Hourglass className="h-4 w-4" />}
           <span>{statusText[activeRun.status]?.text ?? activeRun.status}</span>
         </div>

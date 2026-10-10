@@ -39,7 +39,7 @@ function parseApproval(event: AgentEvent): ParsedApproval {
 const decisionBadge: Record<string, string> = {
   approved: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
   rejected: 'bg-red-500/15 text-red-400 border-red-500/30',
-  expired: 'bg-zinc-700 text-zinc-400 border-zinc-600',
+  expired: 'bg-muted text-muted-foreground border-border',
 }
 
 export function ApprovalCard({ event }: { event: AgentEvent }) {
@@ -107,7 +107,7 @@ export function ApprovalCard({ event }: { event: AgentEvent }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm">
           <ShieldCheck className="h-4 w-4 text-amber-400" />
-          <span className="font-medium text-zinc-100">
+          <span className="font-medium text-foreground">
             Approval required{parsed.toolName ? ` · ${parsed.toolName}` : ''}
           </span>
         </div>

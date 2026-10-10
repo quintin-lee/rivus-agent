@@ -2,33 +2,33 @@ import type { RunStatus, StepStatus, EventType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 export const runStatusClasses: Record<RunStatus, string> = {
-  queued: 'bg-zinc-800 text-zinc-300 border-zinc-700',
+  queued: 'bg-muted text-foreground/90 border-border',
   running: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
   waiting_approval: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
   paused: 'bg-violet-500/15 text-violet-400 border-violet-500/30',
   succeeded: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
   failed: 'bg-red-500/15 text-red-400 border-red-500/30',
-  cancelled: 'bg-zinc-700 text-zinc-300 border-zinc-600',
+  cancelled: 'bg-muted text-foreground/90 border-border',
   timed_out: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
 }
 
 export const runStatusDot: Record<RunStatus, string> = {
-  queued: 'bg-zinc-400',
+  queued: 'bg-muted-foreground',
   running: 'bg-blue-400',
   waiting_approval: 'bg-amber-400',
   paused: 'bg-violet-400',
   succeeded: 'bg-emerald-400',
   failed: 'bg-red-400',
-  cancelled: 'bg-zinc-500',
+  cancelled: 'bg-muted-foreground/70',
   timed_out: 'bg-orange-400',
 }
 
 export const stepStatusClasses: Record<StepStatus, string> = {
-  pending: 'bg-zinc-800 text-zinc-400 border-zinc-700',
+  pending: 'bg-muted text-muted-foreground border-border',
   running: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
   succeeded: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
   failed: 'bg-red-500/15 text-red-400 border-red-500/30',
-  skipped: 'bg-zinc-700 text-zinc-400 border-zinc-600',
+  skipped: 'bg-muted text-muted-foreground border-border',
   awaiting_approval: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
 }
 
@@ -76,12 +76,12 @@ export function eventCategory(type: EventType): EventCategory {
 }
 
 export const eventCategoryClasses: Record<EventCategory, string> = {
-  run: 'bg-zinc-800 text-zinc-300 border-zinc-700',
+  run: 'bg-muted text-foreground/90 border-border',
   model: 'bg-sky-500/15 text-sky-400 border-sky-500/30',
   tool: 'bg-teal-500/15 text-teal-400 border-teal-500/30',
   step: 'bg-violet-500/15 text-violet-400 border-violet-500/30',
   approval: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  other: 'bg-zinc-800 text-zinc-400 border-zinc-700',
+  other: 'bg-muted text-muted-foreground border-border',
 }
 
 export function statusBadgeClass(status: RunStatus | StepStatus, step = false) {

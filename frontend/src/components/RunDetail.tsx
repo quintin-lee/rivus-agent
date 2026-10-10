@@ -31,7 +31,7 @@ export function RunDetail() {
         <button
           onClick={() => void copyId()}
           className={cn(
-            'flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200',
+            'flex items-center gap-1.5 rounded border border-border bg-card px-2 py-1 font-mono text-xs text-muted-foreground hover:border-border hover:text-foreground',
           )}
           title="Copy run id"
         >
@@ -45,11 +45,11 @@ export function RunDetail() {
         <span className={cn('border rounded-full px-2 py-0.5 text-xs font-medium', runStatusClasses[activeRun.status])}>
           {activeRun.status}
         </span>
-        <span className="text-xs text-zinc-500">mode: {activeRun.mode}</span>
+        <span className="text-xs text-muted-foreground/70">mode: {activeRun.mode}</span>
       </div>
 
       {activeRun.goal && (
-        <p className="text-sm text-zinc-300">{activeRun.goal}</p>
+        <p className="text-sm text-foreground/90">{activeRun.goal}</p>
       )}
 
       {activeRun.error_code && (
@@ -62,25 +62,25 @@ export function RunDetail() {
       )}
 
       {activeSteps.length > 0 && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/40">
-          <div className="border-b border-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400">
+        <div className="rounded-lg border border-border bg-card">
+          <div className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
             Steps ({activeSteps.length})
           </div>
           <ol className="flex flex-col">
             {activeSteps.map((step) => (
               <li key={step.id} className="flex items-start gap-3 px-3 py-2">
-                <span className="mt-0.5 w-6 shrink-0 text-right font-mono text-xs text-zinc-500">
+                <span className="mt-0.5 w-6 shrink-0 text-right font-mono text-xs text-muted-foreground/70">
                   {step.step_index}
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm text-zinc-200">{step.description}</span>
+                    <span className="truncate text-sm text-foreground">{step.description}</span>
                     <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium', stepStatusClasses[step.status])}>
                       {step.status}
                     </span>
                   </div>
                   {step.result_summary && (
-                    <span className="truncate text-xs text-zinc-500">{step.result_summary}</span>
+                    <span className="truncate text-xs text-muted-foreground/70">{step.result_summary}</span>
                   )}
                 </div>
               </li>
@@ -90,18 +90,18 @@ export function RunDetail() {
       )}
 
       {activeRun.result_json && (
-        <details className="rounded-lg border border-zinc-800 bg-zinc-900/40">
-          <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200">
+        <details className="rounded-lg border border-border bg-card">
+          <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground">
             Result
           </summary>
-          <pre className="overflow-x-auto border-t border-zinc-800 p-3 font-mono text-xs text-zinc-300">
+          <pre className="overflow-x-auto border-t border-border p-3 font-mono text-xs text-foreground/90">
             {formatJson(activeRun.result_json)}
           </pre>
         </details>
       )}
 
       <Separator />
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground/70">
         <span>Budget:</span>
         <span>{budget.max_model_calls} model calls</span>
         <span>{budget.max_tool_calls} tool calls</span>

@@ -47,17 +47,17 @@ export function SessionPanel() {
   }
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/50">
+    <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card">
       <div className="flex flex-col gap-2 p-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <FolderOpen className="h-3.5 w-3.5" />
             Sessions
           </div>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-zinc-400 hover:text-zinc-200"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
             onClick={() => void loadSessions()}
             title="Refresh sessions"
           >
@@ -87,7 +87,7 @@ export function SessionPanel() {
 
         <div className="flex flex-col gap-0.5">
           {sessions.length === 0 && (
-            <div className="px-2 py-1 text-xs text-zinc-500">No sessions</div>
+            <div className="px-2 py-1 text-xs text-muted-foreground/70">No sessions</div>
           )}
           {sessions.map((s) => {
             const active = s.session_id === activeSessionId
@@ -98,8 +98,8 @@ export function SessionPanel() {
                 className={cn(
                   'truncate rounded px-2 py-1.5 text-left text-xs',
                   active
-                    ? 'bg-zinc-800 text-zinc-100'
-                    : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200',
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
                 )}
               >
                 {s.title || s.session_id}
@@ -112,13 +112,13 @@ export function SessionPanel() {
       <Separator />
 
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <List className="h-3.5 w-3.5" />
           Run History
         </div>
         <div className="flex flex-col gap-1">
           {runHistory.length === 0 && (
-            <div className="px-2 py-1 text-xs text-zinc-500">No runs</div>
+            <div className="px-2 py-1 text-xs text-muted-foreground/70">No runs</div>
           )}
           {runHistory.map((run) => {
             const active = run.id === activeRunId
@@ -129,11 +129,11 @@ export function SessionPanel() {
                 className={cn(
                   'flex flex-col gap-1 rounded border p-2 text-left',
                   active
-                    ? 'border-zinc-700 bg-zinc-800/70'
-                    : 'border-transparent hover:border-zinc-800 hover:bg-zinc-800/40',
+                    ? 'border-border bg-muted/70'
+                    : 'border-transparent hover:border-border hover:bg-muted/40',
                 )}
               >
-                <span className="truncate text-xs text-zinc-200">
+                <span className="truncate text-xs text-foreground">
                   {truncate(run.goal || run.id, 40)}
                 </span>
                 <span

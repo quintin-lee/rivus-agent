@@ -142,10 +142,10 @@ export function EventStream() {
   return (
     <section
       id="event-stream"
-      className="flex min-h-0 flex-col rounded-lg border border-zinc-800 bg-zinc-950"
+      className="flex min-h-0 flex-col rounded-lg border border-border bg-background"
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-3 py-2">
-        <ListFilter className="h-4 w-4 text-zinc-500" />
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+        <ListFilter className="h-4 w-4 text-muted-foreground/70" />
         <div className="flex items-center gap-1">
           {FILTER_CHIPS.map((chip) => {
             const active = eventFilter === chip.value
@@ -156,8 +156,8 @@ export function EventStream() {
                 className={cn(
                   'rounded-full px-2 py-0.5 text-xs font-medium',
                   active
-                    ? 'bg-zinc-200 text-zinc-900'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200',
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-card text-muted-foreground hover:text-foreground',
                 )}
               >
                 {chip.label}
@@ -167,7 +167,7 @@ export function EventStream() {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -177,7 +177,7 @@ export function EventStream() {
           </div>
           <button
             onClick={toggleEventStream}
-            className="rounded px-2 py-0.5 text-xs text-zinc-400 hover:text-zinc-200"
+            className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
           >
             close
           </button>
@@ -191,21 +191,21 @@ export function EventStream() {
           className="h-full max-h-[400px] overflow-y-auto p-3 font-mono text-xs"
         >
           {filtered.length === 0 && (
-            <div className="text-zinc-600">No events</div>
+            <div className="text-muted-foreground/50">No events</div>
           )}
           {filtered.map((e) => {
             const masked = e.sensitivity === 'high'
             const cat = eventCategory(e.event_type)
             return (
               <div key={`${e.seq}-${e.event_type}`} className="py-0.5">
-                <div className="flex items-center gap-2 text-zinc-400">
-                  <span className="text-zinc-600">{formatTimestamp(e.created_at)}</span>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span className="text-muted-foreground/50">{formatTimestamp(e.created_at)}</span>
                   <Badge variant="outline" className={cn('shrink-0 text-[10px]', eventCategoryClasses[cat])}>
                     {e.event_type}
                   </Badge>
-                  <span className="truncate text-zinc-300">
+                  <span className="truncate text-foreground/90">
                     {masked ? (
-                      <span className="italic text-zinc-500">[masked]</span>
+                      <span className="italic text-muted-foreground/70">[masked]</span>
                     ) : (
                       summaryFor(e)
                     )}
@@ -222,7 +222,7 @@ export function EventStream() {
         {scrolledUp && (
           <button
             onClick={jumpToBottom}
-            className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs text-zinc-200 shadow hover:bg-zinc-700"
+            className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-1 text-xs text-foreground shadow hover:bg-muted/80"
           >
             <ArrowDown className="h-3 w-3" />
             New

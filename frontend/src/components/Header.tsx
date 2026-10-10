@@ -5,7 +5,7 @@ function StatusDot({ color, label, title }: { color: string; label: string; titl
   return (
     <div
       title={title}
-      className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400"
+      className="flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground"
     >
       <span className={cn('h-2 w-2 rounded-full', color)} />
       <span>{label}</span>
@@ -22,11 +22,11 @@ export function Header() {
       ? 'bg-emerald-400'
       : sseStatus === 'error'
         ? 'bg-amber-400'
-        : 'bg-zinc-600'
+        : 'bg-muted'
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-950 px-4">
-      <h1 className="text-sm font-semibold tracking-tight text-zinc-100">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4">
+      <h1 className="text-sm font-semibold tracking-tight text-foreground">
         Rivus Agent
       </h1>
       <div className="flex items-center gap-2">

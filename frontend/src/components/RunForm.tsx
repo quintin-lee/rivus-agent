@@ -89,7 +89,7 @@ export function RunForm() {
           )}
           New Run
         </button>
-        <Rocket className="h-4 w-4 text-zinc-500" />
+        <Rocket className="h-4 w-4 text-muted-foreground/70" />
       </CardHeader>
 
       <CardContent className="flex flex-col gap-3 pt-0">
@@ -104,7 +104,7 @@ export function RunForm() {
         {showAdvanced && (
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500">Mode</span>
+              <span className="text-xs text-muted-foreground/70">Mode</span>
               <div className="flex gap-1">
                 {(['react', 'plan_execute'] as Mode[]).map((m) => (
                   <Button
@@ -113,7 +113,7 @@ export function RunForm() {
                     size="sm"
                     variant={mode === m ? 'default' : 'outline'}
                     onClick={() => setMode(m)}
-                    className={cn(mode === m ? 'bg-zinc-200 text-zinc-900 hover:bg-zinc-300' : '')}
+                    className={cn(mode === m ? 'bg-primary text-primary-foreground hover:bg-primary/90' : '')}
                   >
                     {m}
                   </Button>
@@ -122,15 +122,15 @@ export function RunForm() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-zinc-500">Constraints</span>
+              <span className="text-xs text-muted-foreground/70">Constraints</span>
               {constraints.map((c, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="flex-1 truncate text-sm text-zinc-300">{c}</span>
+                  <span className="flex-1 truncate text-sm text-foreground/90">{c}</span>
                   <Button
                     type="button"
                     size="icon"
                     variant="ghost"
-                    className="h-6 w-6 text-zinc-500"
+                    className="h-6 w-6 text-muted-foreground/70"
                     onClick={() =>
                       setConstraints((prev) => prev.filter((_, idx) => idx !== i))
                     }
@@ -162,15 +162,15 @@ export function RunForm() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-zinc-500">Success criteria</span>
+              <span className="text-xs text-muted-foreground/70">Success criteria</span>
               {successCriteria.map((c, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="flex-1 truncate text-sm text-zinc-300">{c}</span>
+                  <span className="flex-1 truncate text-sm text-foreground/90">{c}</span>
                   <Button
                     type="button"
                     size="icon"
                     variant="ghost"
-                    className="h-6 w-6 text-zinc-500"
+                    className="h-6 w-6 text-muted-foreground/70"
                     onClick={() =>
                       setSuccessCriteria((prev) => prev.filter((_, idx) => idx !== i))
                     }
@@ -205,7 +205,7 @@ export function RunForm() {
 
         <Separator />
         <div className="flex items-center justify-between">
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-muted-foreground/70">
             {activeSessionId ? 'Creates a run in the active session' : 'No active session'}
           </span>
           <Button
