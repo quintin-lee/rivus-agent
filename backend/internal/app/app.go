@@ -69,7 +69,8 @@ func (a *App) Start(ctx context.Context) error {
 
 	runs := service.NewRunService(cfg, tasks, events, approvals, rt, runner)
 	sessions := service.NewSessionService(tasks)
-	srv := httpapi.New(cfg, db, tasks, events, runs, sessions)
+	settings := store.NewSettingsRepo(db)
+	srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions)
 
 	httpSrv := &http.Server{
 		Addr: cfg.Addr, Handler: srv.Handler(),

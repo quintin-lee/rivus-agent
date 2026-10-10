@@ -153,7 +153,8 @@ func New(t TB, extraTools ...tool.Definition) *Harness {
 	cfg.MaxDurationS = 120
 	runs := service.NewRunService(cfg, tasks, events, approvals, rt, runner)
 	sessions := service.NewSessionService(tasks)
-	srv := httpapi.New(cfg, db, tasks, events, runs, sessions)
+	settings := store.NewSettingsRepo(db)
+	srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -20,13 +21,14 @@ type Server struct {
 	db       *sql.DB
 	tasks    *store.TaskRepo
 	events   *store.EventRepo
+	settings *store.SettingsRepo
 	runs     *service.RunService
 	sessions *service.SessionService
 	mux      *http.ServeMux
 }
 
-func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.EventRepo, runs *service.RunService, sessions *service.SessionService) *Server {
-	s := &Server{cfg: cfg, db: db, tasks: tasks, events: events, runs: runs, sessions: sessions, mux: http.NewServeMux()}
+func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.EventRepo, settings *store.SettingsRepo, runs *service.RunService, sessions *service.SessionService) *Server {
+	s := &Server{cfg: cfg, db: db, tasks: tasks, events: events, settings: settings, runs: runs, sessions: sessions, mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
@@ -46,6 +48,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/runs/{id}/cancel", s.handleCancel)
 	s.mux.HandleFunc("POST /api/v1/runs/{id}/resume", s.handleResume)
 	s.mux.HandleFunc("POST /api/v1/runs/{id}/approvals/{approval_id}", s.handleApproval)
+	s.mux.HandleFunc("GET /api/v1/settings/model", s.handleGetModelSettings)
+	s.mux.HandleFunc("PUT /api/v1/settings/model", s.handleUpdateModelSettings)
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("GET /readyz", s.handleReady)
 	s.mux.Handle("/metrics", expvar.Handler())
@@ -279,6 +283,79 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "decided"})
+}
+
+func (s *Server) modelSettings(ctx context.Context) (provider, baseURL, name string, keySet bool) {
+	provider, baseURL, name = s.cfg.ModelProvider, s.cfg.ModelBaseURL, s.cfg.ModelName
+	keySet = s.cfg.ModelAPIKey != ""
+	if v, ok, _ := s.settings.Get(ctx, "model.provider"); ok && v != "" {
+		provider = v
+	}
+	if v, ok, _ := s.settings.Get(ctx, "model.base_url"); ok && v != "" {
+		baseURL = v
+	}
+	if v, ok, _ := s.settings.Get(ctx, "model.name"); ok && v != "" {
+		name = v
+	}
+	if _, ok, _ := s.settings.Get(ctx, "model.api_key"); ok {
+		keySet = true
+	}
+	return provider, baseURL, name, keySet
+}
+
+func (s *Server) handleGetModelSettings(w http.ResponseWriter, r *http.Request) {
+	provider, baseURL, name, keySet := s.modelSettings(r.Context())
+	writeJSON(w, 200, map[string]any{
+		"provider": provider, "base_url": baseURL, "model": name, "api_key_set": keySet,
+	})
+}
+
+type updateModelSettingsReq struct {
+	Provider string `json:"provider"`
+	BaseURL  string `json:"base_url"`
+	Model    string `json:"model"`
+	APIKey   string `json:"api_key"`
+}
+
+func (s *Server) handleUpdateModelSettings(w http.ResponseWriter, r *http.Request) {
+	var in updateModelSettingsReq
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+		writeErr(w, 400, "bad_request", "invalid body", false)
+		return
+	}
+	ctx := r.Context()
+	if in.Provider != "" {
+		if in.Provider != "openai_compat" {
+			writeErr(w, 400, "bad_request", "unsupported provider", false)
+			return
+		}
+		if err := s.settings.Set(ctx, "model.provider", in.Provider); err != nil {
+			writeErr(w, 500, "internal", "save failed", true)
+			return
+		}
+	}
+	if in.BaseURL != "" {
+		if err := s.settings.Set(ctx, "model.base_url", in.BaseURL); err != nil {
+			writeErr(w, 500, "internal", "save failed", true)
+			return
+		}
+	}
+	if in.Model != "" {
+		if err := s.settings.Set(ctx, "model.name", in.Model); err != nil {
+			writeErr(w, 500, "internal", "save failed", true)
+			return
+		}
+	}
+	if in.APIKey != "" {
+		if err := s.settings.Set(ctx, "model.api_key", in.APIKey); err != nil {
+			writeErr(w, 500, "internal", "save failed", true)
+			return
+		}
+	}
+	provider, baseURL, name, keySet := s.modelSettings(ctx)
+	writeJSON(w, 200, map[string]any{
+		"provider": provider, "base_url": baseURL, "model": name, "api_key_set": keySet,
+	})
 }
 
 func parseAfter(r *http.Request) int64 {
