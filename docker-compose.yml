@@ -1,6 +1,9 @@
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        REGISTRY: ${DOCKER_REGISTRY:-}
     container_name: rivus-agent-backend
     environment:
       MODEL_BASE_URL: ${MODEL_BASE_URL:?MODEL_BASE_URL is required}
@@ -25,7 +28,10 @@ services:
       retries: 3
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        REGISTRY: ${DOCKER_REGISTRY:-}
     container_name: rivus-agent-frontend
     depends_on:
       backend:
