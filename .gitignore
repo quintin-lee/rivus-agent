@@ -44,4 +44,4 @@ Thumbs.db
 *.log
 
 # git worktrees（隔离工作区，不提交）
-/.worktrees/
+/.worktrees
