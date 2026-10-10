@@ -1,12 +1,21 @@
 import { useState } from 'react'
-import { RefreshCw, Plus, List, FolderOpen } from 'lucide-react'
+import { RefreshCw, Plus, List, FolderOpen, Trash2 } from 'lucide-react'
 import { useSessionStore } from '@/store/session-store'
 import { useRunStore } from '@/store/run-store'
-import { runStatusClasses, truncate } from '@/lib/status'
-import type { RunStatus } from '@/lib/types'
+import { api } from '@/lib/api'
+import { runStatusClasses, truncate, isActiveRunStatus } from '@/lib/status'
+import type { Run, RunStatus } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
 const runDot: Record<RunStatus, string> = {
@@ -26,6 +35,7 @@ export function SessionPanel() {
   const createSession = useSessionStore((s) => s.createSession)
   const switchSession = useSessionStore((s) => s.switchSession)
   const loadSessions = useSessionStore((s) => s.loadSessions)
+  const deleteSession = useSessionStore((s) => s.deleteSession)
 
   const runHistory = useRunStore((s) => s.runHistory)
   const activateRun = useRunStore((s) => s.activateRun)
@@ -33,6 +43,37 @@ export function SessionPanel() {
 
   const [newTitle, setNewTitle] = useState('')
   const [creating, setCreating] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [deleteRuns, setDeleteRuns] = useState<Run[]>([])
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  async function openDelete(id: string) {
+    setDeleteTarget(id)
+    setDeleteError('')
+    setDeleteRuns([])
+    try {
+      setDeleteRuns(await api.listRuns(id))
+    } catch {
+      setDeleteError('无法读取该会话的任务列表')
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget || deleting) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteSession(deleteTarget)
+      setDeleteTarget(null)
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const deleteHasActive = deleteRuns.some((r) => isActiveRunStatus(r.status))
 
   async function handleCreate() {
     const title = newTitle.trim()
@@ -92,18 +133,32 @@ export function SessionPanel() {
           {sessions.map((s) => {
             const active = s.session_id === activeSessionId
             return (
-              <button
+              <div
                 key={s.session_id}
-                onClick={() => switchSession(s.session_id)}
                 className={cn(
-                  'truncate rounded px-2 py-1.5 text-left text-xs',
-                  active
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                  'group flex items-center gap-1 rounded',
+                  active ? 'bg-muted' : 'hover:bg-muted/50',
                 )}
               >
-                {s.title || s.session_id}
-              </button>
+                <button
+                  onClick={() => switchSession(s.session_id)}
+                  className={cn(
+                    'min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-xs',
+                    active
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {s.title || s.session_id}
+                </button>
+                <button
+                  onClick={() => void openDelete(s.session_id)}
+                  title="删除会话"
+                  className="mr-1 hidden h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-red-400 group-hover:flex"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
             )
           })}
         </div>
@@ -149,6 +204,35 @@ export function SessionPanel() {
           })}
         </div>
       </div>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除会话？</DialogTitle>
+            <DialogDescription>
+              该会话及名下 {deleteRuns.length} 个 Run（含事件与审批记录）将被一并删除，不可恢复。
+            </DialogDescription>
+          </DialogHeader>
+          {deleteHasActive && (
+            <div className="text-xs text-amber-400">
+              存在运行中的任务，请先取消后再删除。
+            </div>
+          )}
+          {deleteError && <div className="text-xs text-red-400">{deleteError}</div>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmDelete()}
+              disabled={deleting || deleteHasActive}
+            >
+              {deleting ? '删除中…' : '删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   )
 }

@@ -71,6 +71,10 @@ class ApiClient {
     return this.request<Session>('GET', `/api/v1/sessions/${encodeURIComponent(id)}`)
   }
 
+  async deleteSession(id: string): Promise<void> {
+    await this.request('DELETE', `/api/v1/sessions/${encodeURIComponent(id)}`)
+  }
+
   async listSessions(): Promise<Session[]> {
     try {
       const data = await this.request<{ sessions: Session[] }>('GET', '/api/v1/sessions')
