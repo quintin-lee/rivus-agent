@@ -23,7 +23,11 @@ export default function App() {
   }, [activeSessionId])
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground">
+    <div className="relative flex h-screen flex-col bg-background text-foreground">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.12),transparent)]"
+      />
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <SessionPanel />

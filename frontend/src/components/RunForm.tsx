@@ -89,7 +89,7 @@ export function RunForm() {
           )}
           New Run
         </button>
-        <Rocket className="h-4 w-4 text-muted-foreground/70" />
+        <Rocket className="h-4 w-4 text-primary" />
       </CardHeader>
 
       <CardContent className="flex flex-col gap-3 pt-0">

@@ -26,7 +26,7 @@ export function Header() {
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4">
-      <h1 className="text-sm font-semibold tracking-tight text-foreground">
+      <h1 className="bg-gradient-to-r from-blue-200 via-blue-400 to-cyan-300 bg-clip-text text-sm font-semibold tracking-tight text-transparent">
         Rivus Agent
       </h1>
       <div className="flex items-center gap-2">
