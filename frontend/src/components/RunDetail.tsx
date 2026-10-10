@@ -109,7 +109,7 @@ export function RunDetail() {
   )
 }
 
-function ResultViewBlock({ resultJson }: { resultJson: string }) {
+export function ResultViewBlock({ resultJson }: { resultJson: string }) {
   const view = useMemo(() => {
     try {
       return detectResultView(resultJson)
