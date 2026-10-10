@@ -7,10 +7,12 @@
 #     -e RIVUS_BACKEND=http://host.docker.internal:8080 \
 #     rivus-agent-frontend:latest
 
+# 可通过 DOCKER_REGISTRY 指定镜像源（如 registry.1ms.run/）加速国内拉取
+ARG REGISTRY=
 ARG NODE_VERSION=22
 
 # ---- 阶段 1：构建静态资源 ----
-FROM node:${NODE_VERSION}-alpine AS builder
+FROM ${REGISTRY}node:${NODE_VERSION}-alpine AS builder
 WORKDIR /src
 ENV PNPMDIR=/root/.local/share/pnpm
 RUN corepack enable pnpm
@@ -20,7 +22,7 @@ COPY . .
 RUN pnpm build
 
 # ---- 阶段 2：nginx 托管 + API 反向代理 ----
-FROM nginx:1.27-alpine
+FROM ${REGISTRY}nginx:1.27-alpine
 RUN apk add --no-cache gettext
 COPY nginx.conf.template /etc/nginx/conf.d/default.conf.template
 COPY start.sh /usr/local/bin/start.sh

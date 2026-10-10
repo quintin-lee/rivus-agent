@@ -3,9 +3,11 @@
 # 运行：docker run -d -p 8080:8080 \
 #         -e MODEL_BASE_URL=... -e MODEL_API_KEY=... -e MODEL_NAME=... \
 #         -v rivus-data:/data rivus-agent:latest
+# 可通过 DOCKER_REGISTRY 指定镜像源（如 registry.1ms.run/）加速国内拉取
+ARG REGISTRY=
 ARG GO_VERSION=1.27
 
-FROM golang:${GO_VERSION}-bookworm AS builder
+FROM ${REGISTRY}golang:${GO_VERSION}-bookworm AS builder
 WORKDIR /src
 ENV CGO_ENABLED=0 GOFLAGS=-mod=mod GOPROXY=https://goproxy.cn,direct
 COPY go.mod go.sum ./
@@ -13,7 +15,7 @@ RUN go mod download
 COPY . .
 RUN go build -trimpath -ldflags="-s -w" -o /out/agentd ./cmd/agentd
 
-FROM alpine:3.21
+FROM ${REGISTRY}alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata wget \
   && adduser -D -H -u 10001 appuser \
   && mkdir -p /data /app/skills /app/configs && chown -R appuser /data /app
