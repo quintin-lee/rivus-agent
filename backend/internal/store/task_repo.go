@@ -39,6 +39,59 @@ func (r *TaskRepo) GetSession(ctx context.Context, ownerID, sessionID string) (s
 	return owner, title, ca, ua, nil
 }
 
+func (r *TaskRepo) DeleteSession(ctx context.Context, ownerID, sessionID string) error {
+	if _, _, _, _, err := r.GetSession(ctx, ownerID, sessionID); err != nil {
+		return err
+	}
+	var active int
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM runs WHERE session_id = ?
+		AND status IN ('queued','running','waiting_approval','paused')`, sessionID).Scan(&active); err != nil {
+		return err
+	}
+	if active > 0 {
+		return domain.ErrConflict
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id FROM runs WHERE session_id = ?`, sessionID)
+	if err != nil {
+		return err
+	}
+	var runIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		runIDs = append(runIDs, id)
+	}
+	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []string{
+		`DELETE FROM agent_events WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)`,
+		`DELETE FROM approvals WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)`,
+		`DELETE FROM run_steps WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)`,
+		`DELETE FROM runs WHERE session_id = ?`,
+		`DELETE FROM sessions WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, sessionID); err != nil {
+			return err
+		}
+	}
+	for _, rid := range runIDs {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_checkpoints WHERE checkpoint_id LIKE 'ckpt_' || ? || '%'`, rid); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (r *TaskRepo) ListSessions(ctx context.Context, ownerID string) ([]domain.SessionInfo, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, title, created_at, updated_at FROM sessions WHERE owner_id = ? ORDER BY updated_at DESC`,
