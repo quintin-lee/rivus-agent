@@ -57,8 +57,14 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	executor := tool.NewExecutor(registry)
 	cfg := a.cfg
+	settings := store.NewSettingsRepo(db)
 	runner := runtime.NewEinoRunner(func() (einomodel.ToolCallingChatModel, error) {
-		return model.FromConfig(cfg)
+		return model.FromConfigWithLookup(cfg, func(key string) (string, bool) {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			v, ok, _ := settings.Get(ctx, key)
+			return v, ok
+		})
 	}, registry, executor, checkpoints)
 	rt := runtime.New(runtime.Deps{Tasks: tasks, Events: events, Approvals: approvals, Runner: runner}, cfg.WorkerConcurrency)
 
@@ -69,7 +75,6 @@ func (a *App) Start(ctx context.Context) error {
 
 	runs := service.NewRunService(cfg, tasks, events, approvals, rt, runner)
 	sessions := service.NewSessionService(tasks)
-	settings := store.NewSettingsRepo(db)
 	srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions)
 
 	httpSrv := &http.Server{
