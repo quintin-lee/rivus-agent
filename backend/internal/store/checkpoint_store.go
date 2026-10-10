@@ -29,8 +29,7 @@ func (s *CheckpointStore) Get(ctx context.Context, checkpointID string) ([]byte,
 	return payload, true, nil
 }
 
-// Delete 清理终态 Run 的 checkpoint（可选实现，供 Eino CheckPointDeleter 语义使用）。
-func (s *CheckpointStore) Delete(ctx context.Context, checkpointID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM agent_checkpoints WHERE checkpoint_id = ?`, checkpointID)
+func (s *CheckpointStore) DeleteByRunPrefix(ctx context.Context, runID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM agent_checkpoints WHERE checkpoint_id LIKE ?`, "ckpt_"+runID+"%")
 	return err
 }

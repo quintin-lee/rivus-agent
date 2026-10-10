@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -103,6 +104,7 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 	ch, err := r.deps.Runner.Run(ctx, RunRequest{
 		RunID: run.ID, OwnerID: ownerID, Goal: run.Goal,
 		Mode: mode, Budget: budget, ApprovedTools: approved,
+		CheckpointID: fmt.Sprintf("ckpt_%s_%d", run.ID, time.Now().UnixNano()),
 	})
 	if err != nil {
 		_ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunFailed, "runner_error", err.Error())
@@ -131,16 +133,19 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 	}
 	report := Verify(run.SuccessCriteria, finalText, toolEvidence)
 	rb, _ := json.Marshal(report)
+	cleanup := func() { r.deps.Runner.DeleteCheckpointsByRun(context.Background(), run.ID) }
 	if report.Passed {
 		_ = r.deps.Tasks.SetResult(ctx, run.ID, string(rb))
 		r.append(ctx, run.ID, domain.EvtVerifyPassed, "verification passed")
 		_ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunSucceeded, "", "")
 		observability.IncrRunFinished(true)
+		cleanup()
 	} else {
 		_ = r.deps.Tasks.SetResult(ctx, run.ID, string(rb))
 		r.append(ctx, run.ID, domain.EvtVerifyFailed, "verification failed")
 		_ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunFailed, "verification_failed", "success criteria not met")
 		observability.IncrRunFinished(false)
+		cleanup()
 	}
 }
 

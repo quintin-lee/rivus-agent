@@ -31,9 +31,8 @@ type RunRequest struct {
 	Mode          string
 	Budget        domain.Budget
 	ApprovedTools map[string]bool
+	CheckpointID  string
 }
-
-func (req RunRequest) CheckpointID() string { return "ckpt_" + req.RunID }
 
 type ResumeRequest struct {
 	RunID         string
@@ -104,6 +103,14 @@ func (r *EinoRunner) needApprovalHandler(runID string) func(runID, toolCallID, t
 }
 
 func (r *EinoRunner) Cancel(runID string) error { return r.cancels.cancel(runID) }
+
+func (r *EinoRunner) DeleteCheckpointsByRun(ctx context.Context, runID string) {
+	if s, ok := r.checkpoints.(interface {
+		DeleteByRunPrefix(context.Context, string) error
+	}); ok {
+		_ = s.DeleteByRunPrefix(ctx, runID)
+	}
+}
 
 func (r *EinoRunner) Run(ctx context.Context, req RunRequest) (<-chan RuntimeEvent, error) {
 	return r.executeNew(ctx, req)
@@ -219,7 +226,7 @@ func (r *EinoRunner) executeNew(ctx context.Context, req RunRequest) (<-chan Run
 		defer cancel()
 		r.emit(out, req.RunID, domain.EvtRunStarted, "run started", "", "")
 		iter := runner.Run(ctx, []*schema.Message{schema.UserMessage(req.Goal)})
-		r.drain(ctx, req.RunID, req.CheckpointID(), iter, out)
+		r.drain(ctx, req.RunID, req.CheckpointID, iter, out)
 	}()
 	return out, nil
 }
