@@ -59,7 +59,6 @@ export const useRunStore = create<RunState>((set, get) => ({
   clearEvents: () => set({ events: [] }),
 
   loadRunHistory: async (sessionId) => {
-    set({ runHistory: [] })
     const runs = await api.listRuns(sessionId)
     set({ runHistory: runs })
   },
