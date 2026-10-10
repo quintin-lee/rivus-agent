@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ActionBar } from './ActionBar'
 import { useRunStore } from '@/store/run-store'
@@ -53,6 +53,19 @@ describe('ActionBar', () => {
     useRunStore.setState({ activeRun: makeRun('paused') })
     render(<ActionBar />)
     expect(screen.getByRole('button', { name: /Resume/i })).toBeInTheDocument()
+  })
+
+  it('shows retry on failed and calls resumeRun', async () => {
+    useRunStore.setState({ activeRun: makeRun('failed') })
+    render(<ActionBar />)
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    await waitFor(() => expect(resumeRun).toHaveBeenCalledWith('r1'))
+  })
+
+  it('shows no retry on succeeded', () => {
+    useRunStore.setState({ activeRun: makeRun('succeeded') })
+    render(<ActionBar />)
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull()
   })
 
   it('shows terminal summary for succeeded', () => {

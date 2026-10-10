@@ -9,7 +9,7 @@ import {
   Clock,
 } from 'lucide-react'
 import { useRunStore } from '@/store/run-store'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { isActiveRunStatus } from '@/lib/status'
 import { Button } from '@/components/ui/button'
 import {
@@ -32,6 +32,7 @@ export function ActionBar() {
 
   const [cancelOpen, setCancelOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
   if (!activeRun) return null
 
@@ -58,9 +59,12 @@ export function ActionBar() {
 
   async function handleResume() {
     setBusy(true)
+    setError('')
     try {
       await api.resumeRun(runId)
       await fetchRunAndSteps(runId)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '当前状态不可重试')
     } finally {
       setBusy(false)
     }
@@ -92,6 +96,21 @@ export function ActionBar() {
           Resume
         </Button>
       )}
+
+      {activeRun.status === 'failed' && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void handleResume()}
+          disabled={busy}
+          className="border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+        >
+          <Play className="h-3.5 w-3.5" />
+          重试
+        </Button>
+      )}
+
+      {error && <span className="text-xs text-red-400">{error}</span>}
 
       {isActiveRunStatus(activeRun.status) && (
         <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
