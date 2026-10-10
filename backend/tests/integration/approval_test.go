@@ -46,7 +46,7 @@ func waitApproval(t *testing.T, h *testutil.Harness, id string) domain.Approval 
 func TestApprovalApproveResume(t *testing.T) {
 	h := testutil.New(t, publishToolDef())
 	finalText := "输出风险列表：已发布（证据：publish_draft 结果），每条建议有文件或代码证据。"
-	h.Model.EnqueueFunc(func(_ int, input []*schema.Message) (*schema.Message, error) {
+	h.Model.SetFallback(func(_ int, input []*schema.Message) (*schema.Message, error) {
 		for _, m := range input {
 			if m.Role == schema.Tool {
 				return &schema.Message{Role: schema.Assistant, Content: finalText}, nil

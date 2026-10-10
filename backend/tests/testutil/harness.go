@@ -26,10 +26,11 @@ import (
 )
 
 type scriptState struct {
-	mu    sync.Mutex
-	queue []func(call int, input []*schema.Message) (*schema.Message, error)
-	calls int
-	tools []*schema.ToolInfo
+	mu       sync.Mutex
+	queue    []func(call int, input []*schema.Message) (*schema.Message, error)
+	fallback func(call int, input []*schema.Message) (*schema.Message, error)
+	calls    int
+	tools    []*schema.ToolInfo
 }
 
 type ScriptedModel struct{ st *scriptState }
@@ -71,16 +72,25 @@ func (m *ScriptedModel) WithTools(tools []*schema.ToolInfo) (einomodel.ToolCalli
 	return &ScriptedModel{st: m.st}, nil
 }
 
+func (m *ScriptedModel) SetFallback(fn func(call int, input []*schema.Message) (*schema.Message, error)) {
+	m.st.mu.Lock()
+	defer m.st.mu.Unlock()
+	m.st.fallback = fn
+}
+
 func (m *ScriptedModel) Generate(_ context.Context, input []*schema.Message, _ ...einomodel.Option) (*schema.Message, error) {
 	m.st.mu.Lock()
 	defer m.st.mu.Unlock()
 	m.st.calls++
-	if len(m.st.queue) == 0 {
-		return &schema.Message{Role: schema.Assistant, Content: "done"}, nil
+	if len(m.st.queue) > 0 {
+		fn := m.st.queue[0]
+		m.st.queue = m.st.queue[1:]
+		return fn(m.st.calls, input)
 	}
-	fn := m.st.queue[0]
-	m.st.queue = m.st.queue[1:]
-	return fn(m.st.calls, input)
+	if m.st.fallback != nil {
+		return m.st.fallback(m.st.calls, input)
+	}
+	return &schema.Message{Role: schema.Assistant, Content: "done"}, nil
 }
 
 func (m *ScriptedModel) Stream(ctx context.Context, input []*schema.Message, opts ...einomodel.Option) (*schema.StreamReader[*schema.Message], error) {
@@ -94,8 +104,15 @@ func (m *ScriptedModel) Stream(ctx context.Context, input []*schema.Message, opt
 	return sr, nil
 }
 
+type TB interface {
+	Helper()
+	Cleanup(func())
+	Fatal(args ...any)
+	Fatalf(format string, args ...any)
+}
+
 type Harness struct {
-	T         *testing.T
+	T         TB
 	DB        *sql.DB
 	Tasks     *store.TaskRepo
 	Events    *store.EventRepo
@@ -105,7 +122,7 @@ type Harness struct {
 	Client    *http.Client
 }
 
-func New(t *testing.T, extraTools ...tool.Definition) *Harness {
+func New(t TB, extraTools ...tool.Definition) *Harness {
 	t.Helper()
 	db, err := store.Open(":memory:")
 	if err != nil {
