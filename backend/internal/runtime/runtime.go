@@ -114,6 +114,7 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 	toolEvidence := 0
 	finalText := ""
 	waitApproval := false
+	modelFailed := false
 	for ev := range ch {
 		switch ev.Type {
 		case domain.EvtToolCompleted:
@@ -122,6 +123,8 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 			waitApproval = true
 		case domain.EvtModelCompleted:
 			finalText = ev.Text
+		case domain.EvtModelFailed:
+			modelFailed = true
 		case domain.EvtRunFailed:
 			finalText = ev.Text
 		}
@@ -131,7 +134,18 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 		observability.IncrRunFinished(false)
 		return
 	}
+	if modelFailed && toolEvidence == 0 {
+		_ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunFailed, "model_failed", "model request failed and no tool evidence was produced")
+		r.append(ctx, run.ID, domain.EvtVerifyFailed, "model failed")
+		observability.IncrRunFinished(false)
+		r.deps.Runner.DeleteCheckpointsByRun(context.Background(), run.ID)
+		return
+	}
 	report := Verify(run.SuccessCriteria, finalText, toolEvidence)
+	if report.Passed && len(run.SuccessCriteria) == 0 && toolEvidence == 0 && finalText == "" {
+		report.Passed = false
+		report.Missing = []string{"empty result: no model output and no tool evidence"}
+	}
 	rb, _ := json.Marshal(report)
 	cleanup := func() { r.deps.Runner.DeleteCheckpointsByRun(context.Background(), run.ID) }
 	if report.Passed {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/cloudwego/eino/adk"
@@ -282,9 +283,16 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string, iter
 		}
 		if ev.Output != nil && ev.Output.MessageOutput != nil {
 			mo := ev.Output.MessageOutput
-			if mo.Message != nil && mo.Message.Content != "" {
-				lastText = mo.Message.Content
-				r.emit(out, runID, domain.EvtModelCompleted, mo.Message.Content, "", "")
+			text := ""
+			if mo.Message != nil {
+				text = mo.Message.Content
+			}
+			if text == "" && mo.MessageStream != nil {
+				text = drainStream(mo.MessageStream)
+			}
+			if text != "" {
+				lastText = text
+				r.emit(out, runID, domain.EvtModelCompleted, text, "", "")
 			}
 			if mo.ToolName != "" {
 				r.emit(out, runID, domain.EvtToolCompleted, mo.ToolName, mo.ToolName, "")
@@ -298,6 +306,24 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string, iter
 	_ = checkpointID
 	_ = lastText
 	r.emit(out, runID, domain.EvtRunFinished, lastText, "", "")
+}
+
+func drainStream(sr *schema.StreamReader[*schema.Message]) string {
+	defer sr.Close()
+	var sb strings.Builder
+	for {
+		chunk, err := sr.Recv()
+		if err != nil {
+			break
+		}
+		if chunk != nil {
+			sb.WriteString(chunk.Content)
+			if len(sb.String()) > 200000 {
+				break
+			}
+		}
+	}
+	return sb.String()
 }
 
 func (r *EinoRunner) emit(out chan<- RuntimeEvent, runID string, typ domain.EventType, text, tool, payload string) {
