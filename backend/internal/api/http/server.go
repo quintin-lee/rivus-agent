@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/domain"
@@ -16,8 +17,14 @@ import (
 	"rivus-agent-backend/internal/store"
 )
 
-type Server struct {
-	cfg      config.Config
+// SSE follow 循环参数；单测可覆盖为小值。
+var (
+	followPollInterval   = 1 * time.Second
+	followHeartbeatEvery = 15 * time.Second
+	followMaxDuration    = 5 * time.Minute
+)
+
+type Server struct {	cfg      config.Config
 	db       *sql.DB
 	tasks    *store.TaskRepo
 	events   *store.EventRepo
@@ -224,25 +231,84 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if _, err := s.tasks.GetRun(r.Context(), ownerOf(r), id); err != nil {
+	run, err := s.tasks.GetRun(r.Context(), ownerOf(r), id)
+	if err != nil {
 		writeErr(w, 404, "not_found", "run not found", false)
 		return
 	}
 	after := parseAfter(r)
-	evs, err := s.events.ListAfter(r.Context(), id, after, 500)
-	if err != nil {
-		writeErr(w, 500, "internal", "list events failed", true)
-		return
-	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	flusher, _ := w.(http.Flusher)
-	for _, e := range evs {
-		_, _ = w.Write([]byte("id: " + itoa64(e.Seq) + "\nevent: " + string(e.Type) + "\ndata: " + e.PayloadJSON + "\n\n"))
+	w.Header().Set("X-Accel-Buffering", "no")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		evs, err := s.events.ListAfter(r.Context(), id, after, 500)
+		if err != nil {
+			writeErr(w, 500, "internal", "list events failed", true)
+			return
+		}
+		for _, e := range evs {
+			_, _ = w.Write([]byte("id: " + itoa64(e.Seq) + "\nevent: " + string(e.Type) + "\ndata: " + e.PayloadJSON + "\n\n"))
+		}
+		return
 	}
-	if flusher != nil {
+	lastSeq := after
+	writeEvents := func(evs []domain.AgentEvent) bool {
+		for _, e := range evs {
+			if _, err := w.Write([]byte("id: " + itoa64(e.Seq) + "\nevent: " + string(e.Type) + "\ndata: " + e.PayloadJSON + "\n\n")); err != nil {
+				return false
+			}
+			if e.Seq > lastSeq {
+				lastSeq = e.Seq
+			}
+		}
 		flusher.Flush()
+		return true
+	}
+	if evs, err := s.events.ListAfter(r.Context(), id, lastSeq, 500); err != nil {
+		writeErr(w, 500, "internal", "list events failed", true)
+		return
+	} else if !writeEvents(evs) {
+		return
+	}
+	if run.Status.Terminal() {
+		return
+	}
+	ctx := r.Context()
+	deadline := time.Now().Add(followMaxDuration)
+	poll := time.NewTicker(followPollInterval)
+	defer poll.Stop()
+	beat := time.NewTicker(followHeartbeatEvery)
+	defer beat.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-beat.C:
+			if _, err := w.Write([]byte(": ping\n\n")); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-poll.C:
+			if time.Now().After(deadline) {
+				return
+			}
+			evs, err := s.events.ListAfter(ctx, id, lastSeq, 500)
+			if err != nil {
+				return
+			}
+			if !writeEvents(evs) {
+				return
+			}
+			cur, err := s.tasks.GetRun(ctx, ownerOf(r), id)
+			if err != nil {
+				return
+			}
+			if cur.Status.Terminal() {
+				return
+			}
+		}
 	}
 }
 
