@@ -43,7 +43,9 @@ export const useRunStore = create<RunState>((set, get) => ({
   },
 
   appendEvent: (e) => {
-    const events = [...get().events, e]
+    const cur = get().events
+    if (cur.some((x) => x.seq === e.seq && x.event_type === e.event_type)) return
+    const events = [...cur, e]
     if (events.length > MAX_EVENTS) {
       events.splice(0, events.length - MAX_EVENTS)
     }

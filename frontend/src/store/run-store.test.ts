@@ -43,6 +43,12 @@ describe('run-store', () => {
     expect(evs[evs.length - 1].seq).toBe(MAX_EVENTS + 9)
   })
 
+  it('appendEvent dedupes by (seq, event_type)', () => {
+    useRunStore.getState().appendEvent(mkEvent(1))
+    useRunStore.getState().appendEvent(mkEvent(1))
+    expect(useRunStore.getState().events.length).toBe(1)
+  })
+
   it('clearEvents empties events', () => {
     useRunStore.getState().appendEvent(mkEvent(1))
     useRunStore.getState().clearEvents()
