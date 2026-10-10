@@ -73,7 +73,7 @@ class ApiClient {
   async listSessions(): Promise<Session[]> {
     try {
       const data = await this.request<{ sessions: Session[] }>('GET', '/api/v1/sessions')
-      return data.sessions
+      return data.sessions ?? []
     } catch (err) {
       if (err instanceof ApiError && err.code === 'not_found') return []
       throw err
@@ -86,7 +86,7 @@ class ApiClient {
         'GET',
         `/api/v1/runs?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`,
       )
-      return data.runs
+      return data.runs ?? []
     } catch (err) {
       if (err instanceof ApiError && err.code === 'not_found') return []
       throw err
@@ -105,10 +105,11 @@ class ApiClient {
   }
 
   async getRun(id: string): Promise<{ run: Run; steps: Step[] }> {
-    return this.request<{ run: Run; steps: Step[] }>(
+    const data = await this.request<{ run: Run; steps: Step[] }>(
       'GET',
       `/api/v1/runs/${encodeURIComponent(id)}`,
     )
+    return { run: data.run, steps: data.steps ?? [] }
   }
 
   async getEvents(runId: string, afterSeq: number): Promise<AgentEvent[]> {

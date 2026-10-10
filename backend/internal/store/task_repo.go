@@ -47,7 +47,7 @@ func (r *TaskRepo) ListSessions(ctx context.Context, ownerID string) ([]domain.S
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []domain.SessionInfo
+	out := []domain.SessionInfo{}
 	for rows.Next() {
 		var s domain.SessionInfo
 		var title sql.NullString
@@ -137,7 +137,7 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID str
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []domain.Run
+	out := []domain.Run{}
 	for rows.Next() {
 		var run domain.Run
 		var status, mode, goal string
@@ -247,7 +247,7 @@ func (r *TaskRepo) ListSteps(ctx context.Context, ownerID, runID string) ([]doma
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []domain.Step
+	out := []domain.Step{}
 	for rows.Next() {
 		var s domain.Step
 		var status string
@@ -274,7 +274,7 @@ func (r *TaskRepo) ListOrphanRuns(ctx context.Context, limit int) ([]domain.Run,
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []domain.Run
+	out := []domain.Run{}
 	for rows.Next() {
 		var run domain.Run
 		var status, bj string

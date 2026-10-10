@@ -36,7 +36,7 @@ func (r *EventRepo) ListAfter(ctx context.Context, runID string, after int64, li
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []domain.AgentEvent
+	out := []domain.AgentEvent{}
 	for rows.Next() {
 		var e domain.AgentEvent
 		var typ string

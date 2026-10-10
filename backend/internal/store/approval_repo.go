@@ -66,7 +66,7 @@ func (r *ApprovalRepo) ListByRun(ctx context.Context, runID string) ([]domain.Ap
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []domain.Approval
+	out := []domain.Approval{}
 	for rows.Next() {
 		var a domain.Approval
 		var status string
