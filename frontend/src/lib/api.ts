@@ -2,6 +2,7 @@ import { API_BASE, OWNER_ID } from '@/App.config'
 import type {
   AgentEvent,
   CreateRunReq,
+  ModelSettings,
   Run,
   Session,
   Step,
@@ -104,8 +105,7 @@ class ApiClient {
     return this.request('POST', '/api/v1/runs', req, headers)
   }
 
-  async getRun(id: string): Promise<{ run: Run; steps: Step[] }> {
-    const data = await this.request<{ run: Run; steps: Step[] }>(
+  async getRun(id: string): Promise<{ run: Run; steps: Step[] }> {    const data = await this.request<{ run: Run; steps: Step[] }>(
       'GET',
       `/api/v1/runs/${encodeURIComponent(id)}`,
     )
@@ -159,6 +159,19 @@ class ApiClient {
       `/api/v1/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}`,
       { approve, reason },
     )
+  }
+
+  async getModelSettings(): Promise<ModelSettings> {
+    return this.request<ModelSettings>('GET', '/api/v1/settings/model')
+  }
+
+  async updateModelSettings(patch: {
+    provider?: string
+    base_url?: string
+    model?: string
+    api_key?: string
+  }): Promise<void> {
+    await this.request('PUT', '/api/v1/settings/model', patch)
   }
 }
 

@@ -133,3 +133,11 @@ export interface SessionListResponse {
 export interface RunListResponse {
   runs: Run[]
 }
+
+export interface ModelSettings {
+  provider: string
+  base_url: string
+  model: string
+  api_key_set: boolean
+  updated_at?: number
+}

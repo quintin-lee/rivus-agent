@@ -1,5 +1,6 @@
 import { useUiStore } from '@/store/ui-store'
 import { cn } from '@/lib/utils'
+import { SettingsDialog } from '@/components/SettingsDialog'
 
 function StatusDot({ color, label, title }: { color: string; label: string; title: string }) {
   return (
@@ -40,6 +41,7 @@ export function Header() {
           label="Stream"
           title={`Stream: ${sseStatus}`}
         />
+        <SettingsDialog />
       </div>
     </header>
   )
