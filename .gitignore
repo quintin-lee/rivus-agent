@@ -42,3 +42,6 @@ Thumbs.db
 # 压测与本地临时文件
 /tmp/
 *.log
+
+# git worktrees（隔离工作区，不提交）
+/.worktrees/
