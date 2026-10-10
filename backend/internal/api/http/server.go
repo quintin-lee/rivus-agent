@@ -41,6 +41,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/sessions", s.handleCreateSession)
 	s.mux.HandleFunc("GET /api/v1/sessions", s.handleListSessions)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}", s.handleGetSession)
+	s.mux.HandleFunc("DELETE /api/v1/sessions/{id}", s.handleDeleteSession)
 	s.mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	s.mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	s.mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
@@ -125,6 +126,20 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = owner
 	writeJSON(w, 200, map[string]any{"session_id": id, "title": title, "created_at": ca, "updated_at": ua})
+}
+
+func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	err := s.tasks.DeleteSession(r.Context(), ownerOf(r), id)
+	if err != nil {
+		if err == domain.ErrConflict {
+			writeErr(w, 409, "conflict", "session has active runs; cancel them first", false)
+			return
+		}
+		writeErr(w, 404, "not_found", "session not found", false)
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "deleted"})
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
