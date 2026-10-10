@@ -67,11 +67,25 @@ curl -X POST localhost:8080/api/v1/runs \
 ## 常用命令
 
 ```bash
-make build   # 编译到 bin/agentd（含 -trimpath，生产可加 -tags prod 走 -ldflags="-s -w"）
-make test    # 全量单元测试
-make vet     # go vet
-make run     # 本地启动（需先 export 模型三件套）
-make clean   # 清理构建产物
+make build             # 编译到 bin/agentd（含 -trimpath，生产可加 -tags prod 走 -ldflags="-s -w"）
+make test              # 全量测试（单元 + 集成 + 回归）
+make test-integration  # 仅 API/审批链路集成测试
+make test-eval         # 仅回归评估场景
+make bench             # 基准 + 并发冒烟
+make vet               # go vet
+make run               # 本地启动（需先 export 模型三件套）
+make clean             # 清理构建产物
+```
+
+## 测试布局
+
+```text
+tests/
+  testutil/     # 可编排假模型 + Harness（内存 SQLite + httptest，零外部依赖）
+  integration/  # API 全链路：会话/幂等/SSE/取消/审批批准与拒绝
+  evals/        # 回归场景：有证据成功、无证据失败、Plan 步骤、预算必终止
+  bench/        # 基准（事件写入/工具执行/建 Run）+ 20 并发冒烟
+  fixtures/     # 样例请求 payload
 ```
 
 ## 说明
