@@ -242,6 +242,23 @@ func (r *TaskRepo) UpdateStatus(ctx context.Context, ownerID, runID string, to d
 	return err
 }
 
+func (r *TaskRepo) RetryFailed(ctx context.Context, ownerID, runID string) error {
+	if _, err := r.GetRun(ctx, ownerID, runID); err != nil {
+		return err
+	}
+	res, err := r.db.ExecContext(ctx, `UPDATE runs SET status = ?, attempt = attempt + 1,
+		error_code = '', error_summary = '', updated_at = ? WHERE id = ? AND status = 'failed'`,
+		string(domain.RunRunning), nowMs(), runID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrConflict
+	}
+	return nil
+}
+
 // SetCheckpointID 关联 Eino checkpoint。
 func (r *TaskRepo) SetCheckpointID(ctx context.Context, runID, cpid string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE runs SET checkpoint_id = ?, updated_at = ? WHERE id = ?`, cpid, nowMs(), runID)

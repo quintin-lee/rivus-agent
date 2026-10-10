@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -93,11 +94,19 @@ func (s *RunService) Resume(ctx context.Context, ownerID, runID string) error {
 	if err != nil {
 		return err
 	}
-	if run.Status != domain.RunPaused && run.Status != domain.RunWaitingApproval && run.Status != domain.RunFailed {
+	switch run.Status {
+	case domain.RunPaused, domain.RunWaitingApproval:
+		if err := s.tasks.UpdateStatus(ctx, ownerID, runID, domain.RunRunning, "", ""); err != nil {
+			return err
+		}
+	case domain.RunFailed:
+		if err := s.tasks.RetryFailed(ctx, ownerID, runID); err != nil {
+			return err
+		}
+		run.Attempt++
+		_, _ = s.events.Append(ctx, runID, domain.EvtRunResumed, fmt.Sprintf(`{"attempt":%d}`, run.Attempt), "normal")
+	default:
 		return domain.ErrConflict
-	}
-	if err := s.tasks.UpdateStatus(ctx, ownerID, runID, domain.RunRunning, "", ""); err != nil {
-		return err
 	}
 	s.rt.Execute(context.WithoutCancel(ctx), ownerID, run, s.collectApprovals(ctx, runID))
 	return nil
