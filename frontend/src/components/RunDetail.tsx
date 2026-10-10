@@ -104,6 +104,7 @@ export function RunDetail() {
         <span>{budget.max_tool_calls} tool calls</span>
         <span>{budget.max_iterations} iterations</span>
         <span>{budget.max_duration_seconds}s</span>
+        <span>{budget.max_output_bytes} output bytes</span>
       </div>
     </section>
   )
