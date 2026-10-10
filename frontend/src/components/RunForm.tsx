@@ -4,6 +4,7 @@ import { useSessionStore } from '@/store/session-store'
 import { useRunStore } from '@/store/run-store'
 import { api } from '@/lib/api'
 import type { CreateRunReq } from '@/lib/types'
+import { assembleBudget, BUDGET_FIELDS, type BudgetKey } from '@/lib/budget'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,6 +27,7 @@ export function RunForm() {
   const [newCriterion, setNewCriterion] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [budgetInput, setBudgetInput] = useState<Partial<Record<BudgetKey, string>>>({})
 
   // If a run is already active, collapse to just the header.
   if (activeRun) {
@@ -62,6 +64,7 @@ export function RunForm() {
         mode,
         constraints: constraints.length ? constraints : undefined,
         success_criteria: successCriteria.length ? successCriteria : undefined,
+        budget: assembleBudget(budgetInput),
       }
       const idempotencyKey = crypto.randomUUID()
       const res = await api.createRun(req, idempotencyKey)
@@ -69,6 +72,7 @@ export function RunForm() {
       setGoal('')
       setConstraints([])
       setSuccessCriteria([])
+      setBudgetInput({})
     } finally {
       setSubmitting(false)
     }
@@ -198,7 +202,32 @@ export function RunForm() {
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </Button>
+                </div>
               </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted-foreground/70">Budget（留空走服务端默认）</span>
+              {BUDGET_FIELDS.map((f) => {
+                const v = budgetInput[f.key] ?? ''
+                const invalid = v.trim() !== '' && assembleBudget({ [f.key]: v }) === undefined
+                return (
+                  <label key={f.key} className="flex items-center gap-2">
+                    <span className="w-28 shrink-0 text-xs text-foreground/80">{f.label}</span>
+                    <Input
+                      value={v}
+                      inputMode="numeric"
+                      placeholder="默认"
+                      className="h-8 text-xs"
+                      onChange={(e) =>
+                        setBudgetInput((prev) => ({ ...prev, [f.key]: e.target.value }))
+                      }
+                    />
+                    {invalid && (
+                      <span className="shrink-0 text-[11px] text-amber-500">需正整数，已忽略</span>
+                    )}
+                  </label>
+                )
+              })}
             </div>
           </div>
         )}
