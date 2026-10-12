@@ -1,70 +1,74 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ApprovalCard } from './ApprovalCard'
-import { useRunStore } from '@/store/run-store'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { ApprovalCard } from '@/components/ApprovalCard'
 import type { AgentEvent } from '@/lib/types'
 
-const { decideApproval } = vi.hoisted(() => ({
-  decideApproval: vi.fn().mockResolvedValue(undefined),
-}))
-
-vi.mock('@/lib/api', () => ({ api: { decideApproval } }))
-vi.mock('@/lib/status', () => ({ formatTimestamp: () => '12:00:00' }))
-
-function approvalEvent(): AgentEvent {
+function ev(approvalId: string, toolName = 'shell'): AgentEvent {
   return {
     seq: 1,
     run_id: 'r1',
     event_type: 'approval.requested',
-    payload_json: JSON.stringify({
-      approval_id: 'a1',
-      tool_name: 'publish',
-      expires_at: Date.now() + 60000,
-    }),
+    payload_json: JSON.stringify({ approval_id: approvalId, tool_name: toolName }),
     sensitivity: 'normal',
     created_at: 0,
   }
 }
 
-describe('ApprovalCard', () => {
-  beforeEach(() => {
-    decideApproval.mockClear()
-    useRunStore.setState({
-      activeRun: null,
-      fetchRunAndSteps: vi.fn().mockResolvedValue(undefined),
-    })
-  })
-
-  it('shows tool name and approve/reject buttons', () => {
-    render(<ApprovalCard event={approvalEvent()} />)
-    expect(screen.getAllByText(/publish/i).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: /Approve/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Reject/i })).toBeInTheDocument()
-  })
-
-  it('approving calls decideApproval(true) and marks decided', async () => {
-    render(<ApprovalCard event={approvalEvent()} />)
-    fireEvent.click(screen.getByRole('button', { name: /Approve/i }))
-    await waitFor(() =>
-      expect(decideApproval).toHaveBeenCalledWith('r1', 'a1', true),
+describe('ApprovalCard (controlled)', () => {
+  it('renders tool name and approve/reject buttons when pending', () => {
+    const onApprove = vi.fn()
+    const onReject = vi.fn()
+    render(
+      <ApprovalCard event={ev('a1', 'shell')} state="pending" onApprove={onApprove} onReject={onReject} />,
     )
-    expect(await screen.findByText('approved')).toBeInTheDocument()
+    expect(screen.getByText(/shell/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /approve/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /reject/i })).toBeTruthy()
   })
 
-  it('rejecting with reason calls decideApproval(false, reason)', async () => {
-    render(<ApprovalCard event={approvalEvent()} />)
-    fireEvent.click(screen.getByRole('button', { name: /Reject/i }))
-    fireEvent.change(screen.getByPlaceholderText(/Why should/i), {
-      target: { value: 'too risky' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /^Reject$/i }))
-    await waitFor(() =>
-      expect(decideApproval).toHaveBeenCalledWith('r1', 'a1', false, 'too risky'),
+  it('fires onApprove with no argument', () => {
+    const onApprove = vi.fn()
+    render(
+      <ApprovalCard event={ev('a1')} state="pending" onApprove={onApprove} onReject={vi.fn()} />,
     )
+    fireEvent.click(screen.getByRole('button', { name: /approve/i }))
+    expect(onApprove).toHaveBeenCalledTimes(1)
+    expect(onApprove).toHaveBeenCalledWith()
   })
 
-  it('hides cards whose payload has no approval_id', () => {
-    render(<ApprovalCard event={{ ...approvalEvent(), payload_json: '{}' }} />)
-    expect(screen.queryByText('publish')).toBeNull()
+  it('opens reject dialog and fires onReject with reason', async () => {
+    const onReject = vi.fn()
+    render(
+      <ApprovalCard event={ev('a1')} state="pending" onApprove={vi.fn()} onReject={onReject} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /reject/i }))
+    const textarea = await screen.findByPlaceholderText(/reason/i)
+    fireEvent.change(textarea, { target: { value: 'too risky' } })
+    fireEvent.click(screen.getByRole('button', { name: /confirm|submit/i }))
+    expect(onReject).toHaveBeenCalledWith('too risky')
+  })
+
+  it('shows a resolved badge and no action buttons when state is approved', () => {
+    render(
+      <ApprovalCard event={ev('a1')} state="approved" onApprove={vi.fn()} onReject={vi.fn()} />,
+    )
+    expect(screen.queryByRole('button', { name: /approve/i })).toBeNull()
+    expect(screen.getByText(/approved/i)).toBeTruthy()
+  })
+
+  it('shows a resolved badge and no action buttons when state is rejected', () => {
+    render(
+      <ApprovalCard event={ev('a1')} state="rejected" onApprove={vi.fn()} onReject={vi.fn()} />,
+    )
+    expect(screen.queryByRole('button', { name: /reject/i })).toBeNull()
+    expect(screen.getByText(/rejected/i)).toBeTruthy()
+  })
+
+  it('renders nothing when approval_id is missing from payload', () => {
+    const onApprove = vi.fn()
+    const { container } = render(
+      <ApprovalCard event={ev('', 'shell')} state="pending" onApprove={onApprove} onReject={vi.fn()} />,
+    )
+    expect(container.firstChild).toBeNull()
   })
 })

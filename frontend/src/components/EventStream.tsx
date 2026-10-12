@@ -212,7 +212,7 @@ export function EventStream() {
                   </span>
                 </div>
                 {e.event_type === 'approval.requested' && !masked && (
-                  <ApprovalCard event={e} />
+                  <ApprovalCard event={e} state="pending" onApprove={() => {}} onReject={() => {}} />
                 )}
               </div>
             )
