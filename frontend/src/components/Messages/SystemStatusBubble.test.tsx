@@ -1,0 +1,76 @@
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { SystemStatusBubble } from './SystemStatusBubble'
+import { api } from '@/lib/api'
+import type { Run } from '@/lib/types'
+
+vi.mock('@/lib/api', () => ({
+  api: {
+    cancelRun: vi.fn().mockResolvedValue({}),
+    resumeRun: vi.fn().mockResolvedValue({}),
+  },
+}))
+
+function run(status: Run['status']): Run {
+  return {
+    id: 'r1',
+    session_id: 's1',
+    owner_id: 'o1',
+    status,
+    mode: 'react',
+    goal: 'do thing',
+    budget: {
+      max_duration_seconds: 60,
+      max_model_calls: 10,
+      max_tool_calls: 10,
+      max_iterations: 5,
+      max_output_bytes: 1024,
+    },
+    checkpoint_id: '',
+    attempt: 1,
+    created_at: 1,
+    updated_at: 1,
+  }
+}
+
+describe('SystemStatusBubble', () => {
+  it('renders a cancel button for an active (running) run and calls onCancelRun', async () => {
+    vi.mocked(api.cancelRun).mockResolvedValue(undefined as never)
+    const onCancelRun = vi.fn()
+    const onRetryRun = vi.fn()
+    render(<SystemStatusBubble run={run('running')} onCancelRun={onCancelRun} onRetryRun={onRetryRun} />)
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+    const confirmBtn = await screen.findByRole('button', { name: /cancel run/i })
+    fireEvent.click(confirmBtn)
+    expect(onCancelRun).toHaveBeenCalledWith('r1')
+  })
+
+  it('renders a retry button for a failed run and calls onRetryRun', () => {
+    const onCancelRun = vi.fn()
+    const onRetryRun = vi.fn()
+    render(
+      <SystemStatusBubble run={run('failed')} onCancelRun={onCancelRun} onRetryRun={onRetryRun} />,
+    )
+    expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }))
+    expect(onRetryRun).toHaveBeenCalledWith('r1')
+  })
+
+  it('renders no action buttons for a succeeded run', () => {
+    render(<SystemStatusBubble run={run('succeeded')} onCancelRun={vi.fn()} onRetryRun={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull()
+  })
+
+  it('lists running steps with their descriptions', () => {
+    render(
+      <SystemStatusBubble
+        run={run('running')}
+        steps={[{ id: 'st1', run_id: 'r1', step_index: 1, description: 'step one', status: 'running' }]}
+        onCancelRun={vi.fn()}
+        onRetryRun={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('step one')).toBeTruthy()
+  })
+})
