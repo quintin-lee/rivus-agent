@@ -1,0 +1,73 @@
+import { useMemo } from 'react'
+import { deriveMessages, type ChatMessage } from '@/lib/chat-messages'
+import { groupEventsByRun } from '@/store/selectors'
+import { useRunStore } from '@/store/run-store'
+import { UserBubble } from '@/components/Messages/UserBubble'
+import { AssistantBubble } from '@/components/Messages/AssistantBubble'
+import { SystemStatusBubble } from '@/components/Messages/SystemStatusBubble'
+import { SystemEventsBubble } from '@/components/Messages/SystemEventsBubble'
+import { ApprovalBubble } from '@/components/Messages/ApprovalBubble'
+
+export function ChatMessageList() {
+  const runHistory = useRunStore((s) => s.runHistory)
+  const activeRun = useRunStore((s) => s.activeRun)
+  const activeSteps = useRunStore((s) => s.activeSteps)
+  const events = useRunStore((s) => s.events)
+  const pendingGoals = useRunStore((s) => s.pendingGoals)
+  const activateRun = useRunStore((s) => s.activateRun)
+
+  const eventsByRun = useMemo(() => groupEventsByRun(events), [events])
+
+  const messages = useMemo(
+    () =>
+      deriveMessages({
+        runHistory,
+        activeRun,
+        activeSteps,
+        eventsByRun,
+        pendingGoals,
+      }),
+    [runHistory, activeRun, activeSteps, eventsByRun, pendingGoals],
+  )
+
+  const handleRetry = (runId: string) => {
+    void activateRun(runId)
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {messages.map((m) => (
+        <Bubble key={m.id} message={m} onRetry={handleRetry} />
+      ))}
+    </div>
+  )
+}
+
+function Bubble({
+  message,
+  onRetry,
+}: {
+  message: ChatMessage
+  onRetry: (runId: string) => void
+}) {
+  switch (message.kind) {
+    case 'user':
+      return <UserBubble message={message} />
+    case 'assistant':
+      return <AssistantBubble run={message.run} />
+    case 'system-status':
+      return (
+        <SystemStatusBubble
+          run={message.run}
+          steps={message.steps}
+          onRetryRun={onRetry}
+        />
+      )
+    case 'system-events':
+      return <SystemEventsBubble message={message} />
+    case 'system-approval':
+      return <ApprovalBubble message={message} />
+    default:
+      return null
+  }
+}

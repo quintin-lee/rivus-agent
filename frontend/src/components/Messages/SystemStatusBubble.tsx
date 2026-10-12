@@ -8,11 +8,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 interface Props {
   run: Run
   steps?: Step[]
-  onCancelRun: (runId: string) => void
   onRetryRun: (runId: string) => void
 }
 
-export function SystemStatusBubble({ run, steps = [], onCancelRun, onRetryRun }: Props) {
+export function SystemStatusBubble({ run, steps = [], onRetryRun }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const isActive = !TERMINAL_RUN_STATUSES.includes(run.status)
   const isFailed = run.status === 'failed' || run.status === 'cancelled' || run.status === 'timed_out'
@@ -56,7 +55,6 @@ export function SystemStatusBubble({ run, steps = [], onCancelRun, onRetryRun }:
                     className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
                     onClick={async () => {
                       setConfirmOpen(false)
-                      onCancelRun(run.id)
                       try {
                         await api.cancelRun(run.id)
                       } catch {
