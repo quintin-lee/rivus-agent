@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { stepStatusClasses, statusBadgeClass, TERMINAL_RUN_STATUSES } from '@/lib/status'
 import type { Run, Step } from '@/lib/types'
@@ -13,8 +13,30 @@ interface Props {
 
 export function SystemStatusBubble({ run, steps = [], onRetryRun }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const isActive = !TERMINAL_RUN_STATUSES.includes(run.status)
   const isFailed = run.status === 'failed' || run.status === 'cancelled' || run.status === 'timed_out'
+
+  const handleCancel = async () => {
+    setActionError(null)
+    setConfirmOpen(false)
+    try {
+      await api.cancelRun(run.id)
+      onRetryRun(run.id)
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Cancel failed')
+    }
+  }
+
+  const handleRetry = async () => {
+    setActionError(null)
+    try {
+      await api.resumeRun(run.id)
+      onRetryRun(run.id)
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Resume failed')
+    }
+  }
 
   return (
     <div className="rounded-lg border border-border bg-card/50 p-3 text-sm">
@@ -53,14 +75,7 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun }: Props) {
                   <button
                     type="button"
                     className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
-                    onClick={async () => {
-                      setConfirmOpen(false)
-                      try {
-                        await api.cancelRun(run.id)
-                      } catch {
-                        // error surfaced by global api error handling
-                      }
-                    }}
+                    onClick={() => void handleCancel()}
                   >
                     Cancel run
                   </button>
@@ -72,16 +87,14 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun }: Props) {
             <button
               type="button"
               className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-              onClick={() => {
-                onRetryRun(run.id)
-                void api.resumeRun(run.id).catch(() => {})
-              }}
+              onClick={() => void handleRetry()}
             >
               Retry
             </button>
           ) : null}
         </div>
       </div>
+      {actionError && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{actionError}</p>}
       <p className="mt-2 text-xs text-foreground/90">{run.goal}</p>
       {steps.length > 0 && (
         <ol className="mt-2 space-y-1">

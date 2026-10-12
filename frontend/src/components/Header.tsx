@@ -26,23 +26,31 @@ export function Header() {
         : 'bg-muted'
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4">
-      <h1 className="bg-gradient-to-r from-blue-200 via-blue-400 to-cyan-300 bg-clip-text text-sm font-semibold tracking-tight text-transparent">
-        Rivus Agent
-      </h1>
-      <div className="flex items-center gap-2">
-        <StatusDot
-          color={apiReachable ? 'bg-emerald-400' : 'bg-red-500'}
-          label="API"
-          title={apiReachable ? 'API reachable' : 'API unreachable'}
-        />
-        <StatusDot
-          color={streamColor}
-          label="Stream"
-          title={`Stream: ${sseStatus}`}
-        />
-        <SettingsDialog />
-      </div>
-    </header>
+    <>
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4">
+        <h1 className="bg-gradient-to-r from-blue-200 via-blue-400 to-cyan-300 bg-clip-text text-sm font-semibold tracking-tight text-transparent">
+          Rivus Agent
+        </h1>
+        <div className="flex items-center gap-2">
+          <StatusDot
+            color={apiReachable ? 'bg-emerald-400' : 'bg-red-500'}
+            label="API"
+            title={apiReachable ? 'API reachable' : 'API unreachable'}
+          />
+          <StatusDot
+            color={streamColor}
+            label="Stream"
+            title={`Stream: ${sseStatus}`}
+          />
+          <SettingsDialog />
+        </div>
+      </header>
+      {sseStatus === 'error' && (
+        <div className="flex h-8 shrink-0 items-center justify-center gap-2 border-b border-amber-400/40 bg-amber-400/10 px-4 text-xs text-amber-600 dark:text-amber-400">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+          Stream connection lost — reconnecting, events may be delayed
+        </div>
+      )}
+    </>
   )
 }

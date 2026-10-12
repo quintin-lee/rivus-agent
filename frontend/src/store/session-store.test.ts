@@ -31,10 +31,21 @@ describe('session-store', () => {
     expect(s.sessions[0].title).toBe('demo')
   })
 
-  it('switchSession sets activeSessionId', () => {
-    useSessionStore.setState({ sessions: [mkSession('a', 'A'), mkSession('b', 'B')] })
+  it('switchSession sets activeSessionId and resets run-store to avoid cross-session run leak', () => {
+    useSessionStore.setState({ sessions: [mkSession('a', 'A'), mkSession('b', 'B')], activeSessionId: 'a' })
+    useRunStore.setState({
+      activeRunId: 'run-a',
+      activeRun: { id: 'run-a' } as never,
+      activeSteps: [],
+      events: [{ seq: 1, run_id: 'run-a', event_type: 'run.created', payload_json: '', sensitivity: 'normal', created_at: 0 }],
+    })
     useSessionStore.getState().switchSession('b')
-    expect(useSessionStore.getState().activeSessionId).toBe('b')
+    const s = useSessionStore.getState()
+    expect(s.activeSessionId).toBe('b')
+    const run = useRunStore.getState()
+    expect(run.activeRunId).toBeNull()
+    expect(run.activeRun).toBeNull()
+    expect(run.events).toEqual([])
   })
 
   it('loadSessions keeps existing activeSessionId when set', async () => {

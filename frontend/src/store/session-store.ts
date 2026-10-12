@@ -30,7 +30,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     })
   },
 
-  switchSession: (id) => set({ activeSessionId: id }),
+  switchSession: (id) => {
+    set({ activeSessionId: id })
+    useRunStore.setState({
+      activeRunId: null,
+      activeRun: null,
+      activeSteps: [],
+      events: [],
+    })
+  },
 
   loadSessions: async () => {
     const sessions = await api.listSessions()

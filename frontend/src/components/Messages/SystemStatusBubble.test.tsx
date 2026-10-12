@@ -43,12 +43,15 @@ describe('SystemStatusBubble', () => {
     expect(api.cancelRun).toHaveBeenCalledWith('r1')
   })
 
-  it('renders a retry button for a failed run and calls onRetryRun', () => {
+  it('renders a retry button for a failed run and calls api.resumeRun + onRetryRun', async () => {
     const onRetryRun = vi.fn()
     render(<SystemStatusBubble run={run('failed')} onRetryRun={onRetryRun} />)
     expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /retry/i }))
-    expect(onRetryRun).toHaveBeenCalledWith('r1')
+    await vi.waitFor(() => {
+      expect(api.resumeRun).toHaveBeenCalledWith('r1')
+      expect(onRetryRun).toHaveBeenCalledWith('r1')
+    })
   })
 
   it('renders no action buttons for a succeeded run', () => {

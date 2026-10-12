@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ChatMessage } from '@/lib/chat-messages'
 import {
   eventCategory,
@@ -21,24 +22,52 @@ export function SystemEventsBubble({ message }: { message: EventsMsg }) {
       </summary>
       <ol className="divide-y divide-border/50">
         {message.events.map((e, i) => (
-          <li key={`${e.seq}-${i}`} className="flex items-center gap-2 px-3 py-1.5">
-            <span
-              className={cn(
-                'rounded-full px-1.5 py-0.5 text-[10px]',
-                eventCategoryClasses[eventCategory(e.event_type)],
-              )}
-            >
-              {e.event_type.replace('.', ' ')}
-            </span>
-            <span className="flex-1 text-muted-foreground">
-              {e.sensitivity === 'high'
-                ? '[masked]'
-                : truncate(eventSummary(e), 80)}
-            </span>
-            <span className="text-[10px] text-muted-foreground/60">{formatTimestamp(e.created_at)}</span>
-          </li>
+          <EventRow key={`${e.seq}-${i}`} event={e} />
         ))}
       </ol>
     </details>
+  )
+}
+
+function EventRow({
+  event,
+}: {
+  event: EventsMsg['events'][number]
+}) {
+  const [showRaw, setShowRaw] = useState(false)
+
+  return (
+    <li className="px-3 py-1.5">
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            'rounded-full px-1.5 py-0.5 text-[10px]',
+            eventCategoryClasses[eventCategory(event.event_type)],
+          )}
+        >
+          {event.event_type.replace('.', ' ')}
+        </span>
+        <span className="flex-1 text-muted-foreground">
+          {event.sensitivity === 'high'
+            ? '[masked]'
+            : truncate(eventSummary(event), 80)}
+        </span>
+        <button
+          type="button"
+          className="text-[10px] text-muted-foreground/50 hover:text-foreground"
+          onClick={() => setShowRaw((v) => !v)}
+        >
+          {showRaw ? 'hide' : 'raw'}
+        </button>
+        <span className="text-[10px] text-muted-foreground/60">
+          {formatTimestamp(event.created_at)}
+        </span>
+      </div>
+      {showRaw && (
+        <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted/50 p-2 text-[10px] text-foreground/80">
+          {event.payload_json}
+        </pre>
+      )}
+    </li>
   )
 }
