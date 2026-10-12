@@ -1,7 +1,16 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api'
 import { MAX_EVENTS } from '@/App.config'
-import type { AgentEvent, EventType, Run, Step } from '@/lib/types'
+import type { AgentEvent, Budget, EventType, PendingGoal, Run, Step } from '@/lib/types'
+
+export interface SubmitRunInput {
+  sessionId: string
+  goal: string
+  mode?: 'react' | 'plan_execute'
+  constraints?: string[]
+  successCriteria?: string[]
+  budget?: Partial<Budget>
+}
 
 interface RunState {
   activeRunId: string | null
@@ -10,12 +19,15 @@ interface RunState {
   events: AgentEvent[]
   eventFilter: EventType | 'all'
   runHistory: Run[]
+  pendingGoals: PendingGoal[]
   activateRun: (id: string) => Promise<void>
   fetchRunAndSteps: (id: string) => Promise<void>
   appendEvent: (e: AgentEvent) => void
   setEventFilter: (f: EventType | 'all') => void
   clearEvents: () => void
   loadRunHistory: (sessionId: string) => Promise<void>
+  submitRun: (input: SubmitRunInput) => Promise<void>
+  dismissPendingGoal: (id: string) => void
 }
 
 const TERMINAL_EVENTS: ReadonlySet<EventType> = new Set([
@@ -24,6 +36,10 @@ const TERMINAL_EVENTS: ReadonlySet<EventType> = new Set([
   'run.cancelled',
 ])
 
+function pendingGoalId(): string {
+  return `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export const useRunStore = create<RunState>((set, get) => ({
   activeRunId: null,
   activeRun: null,
@@ -31,6 +47,7 @@ export const useRunStore = create<RunState>((set, get) => ({
   events: [],
   eventFilter: 'all',
   runHistory: [],
+  pendingGoals: [],
 
   activateRun: async (id) => {
     set({ activeRunId: id, events: [] })
@@ -62,6 +79,42 @@ export const useRunStore = create<RunState>((set, get) => ({
 
   loadRunHistory: async (sessionId) => {
     const runs = await api.listRuns(sessionId)
-    set({ runHistory: runs })
+    set({ runHistory: runs, pendingGoals: [] })
   },
+
+  submitRun: async (input) => {
+    const goalId = pendingGoalId()
+    set((s) => ({
+      pendingGoals: [
+        ...s.pendingGoals,
+        { id: goalId, goal: input.goal, status: 'pending' },
+      ],
+    }))
+    try {
+      const idempotencyKey = crypto.randomUUID()
+      const res = await api.createRun(
+        {
+          session_id: input.sessionId,
+          goal: input.goal,
+          mode: input.mode,
+          constraints: input.constraints,
+          success_criteria: input.successCriteria,
+          budget: input.budget,
+        },
+        idempotencyKey,
+      )
+      set({ pendingGoals: [] })
+      await get().activateRun(res.run_id)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '创建 Run 失败'
+      set((s) => ({
+        pendingGoals: s.pendingGoals.map((p) =>
+          p.id === goalId ? { ...p, status: 'failed', error: msg } : p,
+        ),
+      }))
+    }
+  },
+
+  dismissPendingGoal: (id) =>
+    set((s) => ({ pendingGoals: s.pendingGoals.filter((p) => p.id !== id) })),
 }))
