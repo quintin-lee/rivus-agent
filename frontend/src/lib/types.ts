@@ -141,3 +141,10 @@ export interface ModelSettings {
   api_key_set: boolean
   updated_at?: number
 }
+
+export interface PendingGoal {
+  id: string
+  goal: string
+  status: 'pending' | 'sent' | 'failed'
+  error?: string
+}

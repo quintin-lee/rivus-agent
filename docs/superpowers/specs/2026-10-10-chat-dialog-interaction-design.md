@@ -25,7 +25,7 @@
 - 复杂配置（mode/约束/成功标准/预算）收进弹窗 `NewRunDialog`，默认全部走服务端默认值。
 - 审批卡片、Steps 进度、事件流、最终结果全部内联到聊天消息流。
 - 保留会话列表（瘦侧边栏）与 Header 设置按钮（模型设置弹窗）。
-- 无后端 API 变更；纯前端重构。
+- 无后端 API 变更；纯前端重构。审批操作复用现有 `api.decideApproval(runId, approvalId, approve, reason?)`。
 
 ### 非目标
 
@@ -108,8 +108,8 @@ type ChatMessage =
 
 - `runHistory`（`run-store`）：每个 Run 生成一条 `user` + 一条 `system-status`（终态时加一条 `assistant`）。
 - `activeSteps`：注入到对应 Run 的 `system-status`。
-- SSE 事件（`useEventStream`）：实时追加到对应 Run 的 `system-events`；`waiting_approval` 生成 `system-approval`。
-- 审批操作（`api.approve`/`api.reject`）：更新对应 `system-approval.state`，同一气泡内联变化，不另起消息。
+- SSE 事件（`useEventStream`）：实时追加到对应 Run 的 `system-events`；`run_status_changed` → `waiting_approval` 时生成 `system-approval`。
+- 审批操作（`api.decideApproval(runId, approvalId, approve, reason)`）：更新对应 `system-approval.state`，同一气泡内联变化，不另起消息。
 
 新增 `store/chat-store.ts`（可选，YAGNI）：若直接由 `run-store + event-stream` 派生足够，则不加新 store；消息派生函数放 `lib/chat-messages.ts` 保持纯函数可测。
 
@@ -136,7 +136,7 @@ type ChatMessage =
 ### 5.3 审批
 
 1. SSE `run_status_changed → waiting_approval`：生成 `system-approval` 气泡。
-2. 用户点批准/拒绝 → `api.approve(approvalId, decision)`；气泡内联更新为 `approved`/`rejected`（乐观更新，失败回滚并展示错误）。
+2. 用户点批准/拒绝 → `api.decideApproval(runId, approvalId, approve, reason)`；气泡内联更新为 `approved`/`rejected`（乐观更新，失败回滚并展示错误）。
 3. SSE 继续推 status/steps/events，同一 run 的消息流继续追加。
 
 ### 5.4 断线重放
@@ -154,9 +154,9 @@ type ChatMessage =
 
 ## 7. 测试策略
 
-- 保留 `session-store.test.ts`、`run-store.test.ts`、`ui-store.test.ts`。
-- 新增 `lib/chat-messages.test.ts`：`deriveMessages` 纯函数测试（空会话、单 run 进行中、run 终态、审批 pending、断线重连事件重放）。
-- 新增 `ChatMessageList.test.tsx`：按 `kind` 渲染正确；审批气泡交互；折叠/展开。
+- 保留 `session-store.test.ts`、`run-store.test.ts`、`ui-store.test.ts`；`run-store` 新增 `pendingGoal` 队列与 `submitRun` action 需补充测试。
+- 新增 `lib/chat-messages.test.ts`：`deriveMessages` 纯函数测试（空会话、单 run 进行中、run 终态、审批 pending、断线重连事件重放、同一 run 多轮审批按 seq 排序）。
+- 新增 `ChatMessageList.test.tsx`：按 `kind` 渲染正确；审批气泡交互；折叠/展开；同一 run 多 status/system 气泡合并。
 - 新增 `ChatInputBar.test.tsx`：空禁用、提交后清空、失败保留 goal。
 - 新增 `NewRunDialog.test.tsx`：默认全留空提交（走服务端默认）、mode 切换、约束/标准增删、预算校验。
 - 迁移/删除：`RunForm.test.tsx`、`EventStream.test.tsx` 的有用断言迁到 `NewRunDialog.test.tsx` 与 `SystemEventsBubble` 内；删除独立区域测试。
