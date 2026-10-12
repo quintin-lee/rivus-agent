@@ -1,5 +1,11 @@
 import type { ChatMessage } from '@/lib/chat-messages'
-import { eventCategory, eventCategoryClasses, formatTimestamp, truncate } from '@/lib/status'
+import {
+  eventCategory,
+  eventCategoryClasses,
+  eventSummary,
+  formatTimestamp,
+  truncate,
+} from '@/lib/status'
 import { cn } from '@/lib/utils'
 
 type EventsMsg = Extract<ChatMessage, { kind: 'system-events' }>
@@ -24,8 +30,10 @@ export function SystemEventsBubble({ message }: { message: EventsMsg }) {
             >
               {e.event_type.replace('.', ' ')}
             </span>
-            <span className="flex-1 truncate text-muted-foreground">
-              {truncate(e.payload_json || '', 80)}
+            <span className="flex-1 text-muted-foreground">
+              {e.sensitivity === 'high'
+                ? '[masked]'
+                : truncate(eventSummary(e), 80)}
             </span>
             <span className="text-[10px] text-muted-foreground/60">{formatTimestamp(e.created_at)}</span>
           </li>

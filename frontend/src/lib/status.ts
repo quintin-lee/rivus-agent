@@ -1,4 +1,4 @@
-import type { RunStatus, StepStatus, EventType } from '@/lib/types'
+import type { RunStatus, StepStatus, EventType, AgentEvent } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 export const runStatusClasses: Record<RunStatus, string> = {
@@ -112,4 +112,67 @@ export function truncate(s: string, n: number): string {
   if (!s) return ''
   if (s.length <= n) return s
   return s.slice(0, n - 1) + '…'
+}
+
+/** Parse payload_json safely — returns {} on failure. */
+export function eventPayload(e: AgentEvent): Record<string, unknown> {
+  try {
+    return JSON.parse(e.payload_json || '{}')
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Render a human-readable one-line summary for an event,
+ * replacing raw JSON with meaningful text per event_type.
+ */
+export function eventSummary(e: AgentEvent): string {
+  const p = eventPayload(e)
+  switch (e.event_type) {
+    case 'tool.requested':
+    case 'tool.started':
+    case 'tool.completed':
+    case 'tool.failed':
+    case 'tool.authorized':
+    case 'tool.denied':
+      return p.tool_name ? `tool: ${String(p.tool_name)}` : e.event_type
+    case 'model.requested':
+    case 'model.completed':
+    case 'model.failed':
+      return p.call_count !== undefined
+        ? `model call ${Number(p.call_count)}`
+        : e.event_type
+    case 'step.started':
+    case 'step.finished':
+      return p.description ? String(p.description) : `step ${p.step_index ?? ''}`
+    case 'approval.requested':
+      return p.tool_name ? `approval: ${String(p.tool_name)}` : 'approval requested'
+    case 'approval.decided':
+      return p.approved ? 'approval granted' : 'approval denied'
+    case 'run.created':
+      return 'run created'
+    case 'run.started':
+      return 'run started'
+    case 'run.finished':
+      return 'run finished'
+    case 'run.failed':
+      return p.error_code ? `run failed: ${String(p.error_code)}` : 'run failed'
+    case 'run.cancelled':
+      return 'run cancelled'
+    case 'run.resumed':
+      return 'run resumed'
+    case 'plan.created':
+      return 'plan created'
+    case 'plan.updated':
+      return 'plan updated'
+    case 'checkpoint.saved':
+      return 'checkpoint saved'
+    case 'verification.passed':
+      return 'verification passed'
+    case 'verification.failed':
+      return 'verification failed'
+    default:
+      return e.event_type
+  }
 }
