@@ -476,7 +476,7 @@ it('does not render the placeholder when messages exist', () => {
 - [ ] **Step 2: Run, confirm failure**
 
 Run (workdir `frontend/`): `npx vitest run src/components/ChatMessageList.test.tsx`
-Expected: the new test FAILS; existing tests PASS.
+Expected: the placeholder test ("renders a placeholder when there are no messages") FAILS — no such text is rendered today. The non-empty test ("does not render the placeholder when messages exist") passes vacuously (the placeholder isn't rendered anywhere yet, so `queryByText` is null as asserted).
 
 - [ ] **Step 3: Implement the placeholder**
 
@@ -718,7 +718,7 @@ it('renders a compact line with the tool name when approved', () => {
 - [ ] **Step 2: Run, confirm failure**
 
 Run (workdir `frontend/`): `npx vitest run src/components/ApprovalCard.test.tsx`
-Expected: the expired test FAILS (the card renders the "Expired" badge, not the line); the pre-existing "approved badge" test still passes on `/approved/i` but the new compact-line test may already partially match — the expired test is the failing one.
+Expected: BOTH new tests FAIL pre-change (today `state="expired"` renders the "Expired" badge, not the compact line; `state="approved"` renders the badge + tool `<code>`, not the `✓ Approved shell` line). Pre-existing tests (pending buttons, missing-id null) still pass.
 
 - [ ] **Step 3: Implement the compact render**
 
@@ -732,6 +732,7 @@ export function ApprovalCard({ event, state, onApprove, onReject }: Props) {
 
   if (!approvalId) return null
 
+  const badge = BADGE[state]
   const resolved = state === 'approved' || state === 'rejected' || state === 'expired'
   if (resolved) {
     const line =
@@ -744,17 +745,21 @@ export function ApprovalCard({ event, state, onApprove, onReject }: Props) {
   }
 
   return (
-    // ... existing pending card JSX unchanged (lines 42-102, minus the now-dead `resolved` const)
+    // ... existing pending-card JSX, lines 42-102, UNCHANGED. It still references
+    // `badge.cls`/`badge.label` (header) and the `{!resolved && (...)}` wrapper
+    // around the buttons — so KEEP both consts. After the early return above, only
+    // `pending` reaches this JSX, so `badge` === `BADGE.pending` and `!resolved`
+    // is always true.
   )
 }
 ```
 
-Delete the now-unused `badge` const and the `BADGE.pending`-only usage is fine to keep for the pending card header; if `BADGE` becomes unused after the change, remove it (the pending card's header badge can stay as-is — do not restyle pending).
+Keep the `badge` and `resolved` consts (the pending-card JSX below still references both — `badge.cls`/`badge.label` in the header and the `{!resolved && (...)}` wrapper around the buttons). After the early return, only `pending` reaches that JSX, so `badge` is `BADGE.pending` and `!resolved` is always true. Do NOT delete either const. The `BADGE` map stays as-is (its non-`pending` entries become unreachable in the card JSX but are harmless; leave them).
 
 - [ ] **Step 4: Run, confirm pass**
 
 Run (workdir `frontend/`): `npx vitest run src/components/ApprovalCard.test.tsx`
-Expected: all PASS. Also run the affected neighbor: `npx vitest run src/components/Messages/ApprovalBubble.tsx src/components/ChatMessageList.test.tsx` (no test file for ApprovalBubble; the ChatMessageList approval test must still pass — it asserts the approve button works for pending approvals, which is untouched).
+Expected: all PASS. Then run the neighboring ChatMessageList approval test to confirm the pending-approval approve-button path is untouched: `npx vitest run src/components/ChatMessageList.test.tsx` (its "renders approval bubble wired to api.decideApproval" test must still pass).
 
 - [ ] **Step 5: Commit**
 
