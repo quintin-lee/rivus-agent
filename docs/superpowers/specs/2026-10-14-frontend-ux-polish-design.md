@@ -64,6 +64,13 @@ card/line layout is ready:
   `approval.decided` event **and** its run is in a terminal status, derive
   state `'expired'` (the run can no longer act on the approval). Otherwise
   `pending | approved | rejected`.
+- **Signature change (make it explicit):** `deriveApprovals(runId, events)`
+  becomes `deriveApprovals(runId, events, runTerminal: boolean)` so the
+  terminal status of the run is threaded into the derivation; and the
+  `system-approval` `ChatMessage` `state` union (chat-messages.ts:45,
+  currently `'pending' | 'approved' | 'rejected'`) is extended with
+  `'expired'`. `emitRun`/`deriveMessages` already have `run.status` in scope,
+  so the caller passes `TERMINAL_RUN_STATUSES.includes(run.status)`.
 - `ApprovalCard` rendering:
   - `pending`: unchanged card (approve/reject buttons, reject-reason dialog).
   - `approved`: single neutral line `✓ Approved {tool}` — no card border, no
@@ -114,9 +121,11 @@ Rewrite the tool/model branches against the **actual** payload shape
 | `model.completed` | `model call completed` |
 | `model.failed` | `model call failed` |
 
-No `#N` — `call_count` is not in the payload. Step/approval/run/plan branches
-already read the correct keys or are static; leave them, but switch the tool
-and model branches from `p.tool_name`/`p.call_count` to `p.tool`/`p.text`.
+No `#N` — `call_count` is not in the payload. The step/approval/run/plan
+branches already fall back to their static text when the payload keys are
+absent (those keys aren't in the live payloads either); leave them as-is
+this round — only the tool and model branches are rewritten to read
+`p.tool`/`p.text`.
 
 - Default branch: `Unknown event {event_type}` (no raw-name leak). The
   existing raw-JSON toggle in `SystemEventsBubble` still exposes the payload.
