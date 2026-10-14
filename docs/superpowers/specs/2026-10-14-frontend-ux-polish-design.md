@@ -42,23 +42,47 @@ This round fixes 1, 4, 5, 6. Gaps 2–3 are deferred to a follow-up iteration.
 - Pending goals do not interact: when a pending goal is in flight, both Send and
   Stop stay disabled (existing `busy` behavior).
 
-### 2. Approval collapse (`lib/chat-messages.ts` + `components/ApprovalCard.tsx`)
+### 2. Approval rendering (`lib/chat-messages.ts` + `components/ApprovalCard.tsx`)
 
-- `deriveApprovals` gains one state: if a requested approval has no
-  `approval.decided` event **and** its run is in a terminal status, derive state
-  `'expired'` (the run can no longer act on the approval). Otherwise
-  `pending | approved | rejected` as today.
+**Payload reality (verified):** backend `approval.requested` payloads carry
+`{"text":"{tool} requires approval"}` — **no `approval_id`**, no `tool_name`
+key. `approval.decided` payloads carry `{"approved":true|false}` only — no
+id, no reason. The domain store has a rich `domain.Approval` record
+(`RunID/ToolCallID/ToolName/ArgsHash/RequestedBy/Reason/ExpiresAt`) and the
+API supports `POST /api/v1/runs/{id}/approvals/{approval_id}`, but there is
+**no read endpoint** exposing approvals to the frontend. So approval cards
+cannot be paired today; `parseApprovalPayload` (chat-messages.ts:189) reads
+`approval_id`/`tool_name` keys that never exist, the `requested` Map stays
+empty, `ApprovalCard` returns `null`, and §2's feature + `expired` state
+cannot fire on real data.
+
+This round (frontend-only) ships the **rendering layer** so the
+card/line layout is ready:
+- `deriveApprovals` keeps reading `approval_id`/`tool_name` (harmless today:
+  returns `[]` for real data, exercises the UI with synthetic test fixtures).
+- `deriveApprovals` gains one derived state: if a requested approval has no
+  `approval.decided` event **and** its run is in a terminal status, derive
+  state `'expired'` (the run can no longer act on the approval). Otherwise
+  `pending | approved | rejected`.
 - `ApprovalCard` rendering:
   - `pending`: unchanged card (approve/reject buttons, reject-reason dialog).
-  - `approved`: single neutral line `✓ Approved {tool_name}` — no card border,
-    no badge block.
-  - `rejected`: single line `✗ Rejected {tool_name} · {reason}` (reason from the
-    `approval.decided` payload when present).
-  - `expired`: single muted line `Approval expired · {tool_name}`.
+  - `approved`: single neutral line `✓ Approved {tool}` — no card border, no
+    badge block.
+  - `rejected`: single line `✗ Rejected {tool}` (reason not yet available
+    from events; see follow-ups).
+  - `expired`: single muted line `Approval expired · {tool}`.
 - The single-line forms live in `ApprovalBubble` (or `ApprovalCard` with a
   compact render path) — implementation detail; the public shape is
   `state: 'pending' | 'approved' | 'rejected' | 'expired'` which
   `ApprovalCard` already accepts.
+
+**Follow-up (out of scope this round, needs backend):** add
+`GET /api/v1/runs/{id}/approvals` returning pending approval records
+(`approval_id`, `tool_name`, `expires_at`), and extend event payloads to
+embed `approval_id`/`tool_name` on `approval.requested`/`approval.decided`
+(tool_call_id → approval_id via the domain store). Only then can the UI pair
+requested/decided, wire `api.decideApproval(approvalId)`, and render the
+pending card for real runs. Tracked in `docs/superpowers/specs/2026-10-14-follow-ups.md`.
 
 ### 3. Event summary texts (`lib/status.ts` `eventSummary`)
 
@@ -68,22 +92,34 @@ Backend event vocabulary (verified by grep over `backend/internal`, 22 types):
 `approval.requested/decided`, `run.created/started/finished/failed/cancelled/resumed`,
 `plan.created/updated`, `checkpoint.saved`, `verification.passed/failed`.
 
-Rewrite the tool/model branches so each type is distinguishable:
+**Payload reality (verified):** live payloads are `{"text":…, "tool":…}`
+(runtime.go:35) or `{"text":…}` (runtime.go:167) — the key is `tool`, not
+`tool_name`; no `call_count` is ever emitted. The current `eventSummary`
+reads `p.tool_name`/`p.call_count`, which **never match** real data, so tool
+branches always fall back to the raw event_type and `model call #N` never
+renders.
 
-| event | text |
+Rewrite the tool/model branches against the **actual** payload shape
+(`p.tool`, `p.text`), keeping each type distinguishable:
+
+| event | text (from actual payload keys) |
 |---|---|
-| `tool.requested` | `requesting tool {tool_name}` |
-| `tool.started` | `tool {tool_name} started` |
-| `tool.completed` | `tool {tool_name} completed` |
-| `tool.failed` | `tool {tool_name} failed` |
-| `tool.authorized` | `tool {tool_name} authorized` |
-| `tool.denied` | `tool {tool_name} denied` |
-| `model.requested` | `model call #N started` |
-| `model.completed` | `model call #N completed` |
-| `model.failed` | `model call #N failed` |
+| `tool.requested` | `requesting {p.tool}` |
+| `tool.started` | `{p.tool} started` |
+| `tool.completed` | `{p.tool} completed` |
+| `tool.failed` | `{p.tool} failed` |
+| `tool.authorized` | `{p.tool} authorized` |
+| `tool.denied` | `{p.tool} denied` |
+| `model.requested` | `model call started` |
+| `model.completed` | `model call completed` |
+| `model.failed` | `model call failed` |
 
-- Default branch: `Unknown event {event_type}` (no raw-name leak). The existing
-  raw-JSON toggle in `SystemEventsBubble` still exposes the payload.
+No `#N` — `call_count` is not in the payload. Step/approval/run/plan branches
+already read the correct keys or are static; leave them, but switch the tool
+and model branches from `p.tool_name`/`p.call_count` to `p.tool`/`p.text`.
+
+- Default branch: `Unknown event {event_type}` (no raw-name leak). The
+  existing raw-JSON toggle in `SystemEventsBubble` still exposes the payload.
 
 ### 4. Empty session placeholder (`components/ChatMessageList.tsx`)
 
@@ -93,15 +129,23 @@ this session." Uses the existing `card/50` background token, no new styling.
 
 ### 5. Terminal-without-result bubbles (`components/Messages/AssistantBubble.tsx`)
 
+**Payload reality (verified):** cancel sets `error_code="cancelled"`
+(run_service.go:89) → `AssistantBubble` currently renders the rose "Run
+failed" box. `RunTimedOut` is declared in the domain state machine but **no
+code path sets it** (budget.go returns `ErrTimeout`; nothing maps it to
+`RunTimedOut`), so the `timed_out` row is unreachable without a backend
+change.
+
 | run state | no result | with result |
 |---|---|---|
-| `cancelled` | neutral single line "Run cancelled" | result block + top line "Cancelled — partial result" |
-| `timed_out` | orange line "Run timed out" (reuses the rose/error styling pattern with orange tokens) | result block + top line "Timed out — partial result" |
+| `cancelled` | neutral single line "Run cancelled" (not the rose error box) | result block + top line "Cancelled — partial result" |
 | `failed` | unchanged (rose error box, existing behavior) | unchanged |
 | `succeeded` | unchanged | unchanged |
 
-`AssistantBubble` currently renders `null` when neither `error_code` nor
-`result_json` is present; the cancelled/timed_out cases above close that hole.
+The `timed_out` row is dropped from this table (unreachable; needs the
+backend `ErrTimeout` → `RunTimedOut` mapping in follow-ups). The cancelled
+case above closes the `null`-when-neither hole: when `error_code` is
+`"cancelled"` the bubble shows the neutral line instead of the rose box.
 
 ## Data flow
 
@@ -109,23 +153,39 @@ No pipeline changes. Only additions:
 
 - `run-store`: `cancelling: boolean`, `cancelError: string | null`, and the
   `cancelRun` action (which calls `api.cancelRun`, manages the two fields).
+  Both fields are set `false`/`null` on **success** (before the terminal
+  refetch) and on any `activeRun`/session change; `cancelling` stays
+  `true` only while the HTTP call is in flight.
 - Everything else reuses the existing SSE → `run-store.events` →
   `deriveMessages` → bubble pipeline.
 
 ```
 Stop click ──► api.cancelRun(id) ──► cancelling=true (button disabled)
                               │
-            success: SSE run.cancelled ──► existing REFRESH ──► getRun
-                     ──► terminal status ──► Stop → Send, cancelling=false
+            success: cancelling=false, cancelError=null ──►
+                     SSE/poller delivers run.cancelled ──► REFRESH ──► getRun
+                     ──► terminal status ──► Stop → Send
             failure: cancelError set ──► inline line under input bar ──►
                      cancelling=false (button re-enabled for retry)
 ```
 
-## Out of scope (explicit YAGNI)
+Note: the `run.cancelled` refresh reaches the UI via **either** the live SSE
+stream or the 2s poller fallback (whichever is active). Both trigger the same
+`REFRESH` → `getRun` path, so the Stop button's success state does not depend
+on SSE being connected.
+
+## Out of scope (explicit YAGNI / follow-ups)
+
+Defer to `docs/superpowers/specs/2026-10-14-follow-ups.md`:
 
 - Streaming token output (needs backend SSE delta events).
 - Live progress / budget consumption in the running bubble (needs backend
   budget events).
+- **Backend approval read endpoint** (`GET /runs/{id}/approvals`) + event
+  payload enrichment (`approval_id`/`tool_name`) so §2's pending card and
+  `api.decideApproval` can wire up for real runs.
+- **Backend `ErrTimeout` → `RunTimedOut` mapping** so the timed-out bubble
+  row becomes reachable (§5 drops it for this round).
 - Manual dismiss of stuck pending goals (kept as-is).
 - Multi-run Stop (Stop targets `activeRun` only).
 
@@ -136,11 +196,11 @@ Extend existing test files; no new source files. One new test file:
 
 | file | new cases |
 |---|---|
-| `components/ChatInputBar.test.tsx` | Stop rendered when activeRun non-terminal; Stop click calls `api.cancelRun`; button disabled while `cancelling`; `cancelError` renders inline |
-| `lib/chat-messages.test.ts` | decided approvals keep `approved`/`rejected`; undecided approval on terminal run → `expired` |
-| `components/ApprovalCard.test.tsx` (or `ApprovalBubble`) | resolved states render single-line form with no buttons; rejected shows reason; expired muted line |
-| `components/Messages/AssistantBubble.test.tsx` | cancelled without result → neutral line; timed_out without result → orange line; cancelled with result → result + "Cancelled — partial result" |
-| `lib/status.test.ts` (new) | each tool/model event type renders its distinct text; default returns `Unknown event {type}` |
+| `components/ChatInputBar.test.tsx` | Stop rendered when activeRun non-terminal; Stop click calls `api.cancelRun`; button disabled while `cancelling`; `cancelError` renders inline; `cancelling`/`cancelError` reset on success |
+| `lib/chat-messages.test.ts` | decided approvals keep `approved`/`rejected`; undecided approval on terminal run → `expired`; **real-data shape** (payloads lacking `approval_id`) derives `[]` approvals, matching production behavior |
+| `components/ApprovalCard.test.tsx` (or `ApprovalBubble`) | resolved states render single-line form with no buttons; rejected shows `tool`; expired muted line; pending card unchanged |
+| `components/Messages/AssistantBubble.test.tsx` | `error_code="cancelled"` without result → neutral line (not rose box); cancelled with result → result + "Cancelled — partial result" |
+| `lib/status.test.ts` (new) | tool branches read `p.tool` and render distinct text per type; model branches render without `#N`; default returns `Unknown event {type}`; real-payload fixtures (no `tool_name`/`call_count`) produce the new text, not the raw fallback |
 | `components/ChatMessageList.test.tsx` | empty input renders placeholder; non-empty does not |
 
 Acceptance: `npm test` (frontend) all green; manual smoke — submit a task,
