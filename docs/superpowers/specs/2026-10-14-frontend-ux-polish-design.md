@@ -205,4 +205,6 @@ Extend existing test files; no new source files. One new test file:
 
 Acceptance: `npm test` (frontend) all green; manual smoke — submit a task,
 watch Stop appear while running, click Stop, observe bubble + button return to
-idle; approve a pending approval, observe the card collapse to one line.
+idle. (The approval-collapse smoke step is unreachable this round — pending
+cards cannot render on real data, see §2/follow-ups §1; it ships with that
+round's acceptance.)
