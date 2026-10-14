@@ -93,7 +93,7 @@ pending card for real runs. Tracked in `docs/superpowers/specs/2026-10-14-follow
 
 ### 3. Event summary texts (`lib/status.ts` `eventSummary`)
 
-Backend event vocabulary (verified by grep over `backend/internal`, 22 types):
+Backend event vocabulary (verified by grep over `backend/internal`, 24 types):
 `tool.requested/started/completed/failed/authorized/denied`,
 `model.requested/completed/failed`, `step.started/finished`,
 `approval.requested/decided`, `run.created/started/finished/failed/cancelled/resumed`,
