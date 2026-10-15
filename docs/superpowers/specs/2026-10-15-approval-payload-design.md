@@ -90,7 +90,7 @@ _, _ = s.events.Append(ctx, in.RunID, domain.EvtApprovalDecided, string(payload)
 - 新增 import `encoding/json`（该文件当前未 import）。
 - 删除 `boolStr`（`run_service.go:166`）——改后无任何引用，避免死代码（已核实 `boolStr` 仅此一处使用）。
 
-**关键坑**：`approved` 必须是 JSON 布尔（`true`/`false`），不能是字符串 `"true"`。前端 `parseApprovalPayload` 用 `p.approved === true` 严格判断（`chat-messages.ts:196`），字符串 `"true"` 会被判为 rejected。故 decided payload 用 `map[string]any`（`approved` 放 bool），而 requested payload 三字段全字符串，可用 `map[string]string`。
+**关键坑**：`approved` 必须是 JSON 布尔（`true`/`false`），不能是字符串 `"true"`。前端 `parseApprovalPayload` 用 `p.approved === true` 严格判断（`chat-messages.ts:200`），字符串 `"true"` 会被判为 rejected。故 decided payload 用 `map[string]any`（`approved` 放 bool），而 requested payload 三字段全字符串，可用 `map[string]string`。
 
 ## 明确不做（YAGNI）
 
