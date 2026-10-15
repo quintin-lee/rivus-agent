@@ -38,6 +38,18 @@ describe('AssistantBubble', () => {
     expect(screen.getByText(/timed out/i)).toBeTruthy()
   })
 
+  it('renders a neutral line when error_code is "cancelled" and there is no result', () => {
+    const run_ = { ...run('cancelled'), error_code: 'cancelled', error_summary: 'cancelled by user' } as Run
+    render(<AssistantBubble run={run_} />)
+    expect(screen.getByText(/run cancelled/i)).toBeTruthy()
+  })
+
+  it('renders the result plus a partial-result note when cancelled with a result', () => {
+    const run_ = { ...run('cancelled', '{"ok":true}'), error_code: 'cancelled' } as Run
+    render(<AssistantBubble run={run_} />)
+    expect(screen.getByText(/cancelled — partial result/i)).toBeTruthy()
+  })
+
   it('renders nothing meaningful when there is no result and no error', () => {
     const { container } = render(<AssistantBubble run={run('succeeded') as Run} />)
     expect(container.textContent).toBe('')
