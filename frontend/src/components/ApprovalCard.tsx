@@ -37,6 +37,15 @@ export function ApprovalCard({ event, state, onApprove, onReject }: Props) {
 
   const badge = BADGE[state]
   const resolved = state === 'approved' || state === 'rejected' || state === 'expired'
+  if (resolved) {
+    const line =
+      state === 'approved'
+        ? `✓ Approved ${toolName}`
+        : state === 'rejected'
+          ? `✗ Rejected ${toolName}`
+          : `Approval expired · ${toolName}`
+    return <p className="text-xs text-muted-foreground">{line}</p>
+  }
 
   return (
     <div className="rounded-lg border border-border bg-card p-3">

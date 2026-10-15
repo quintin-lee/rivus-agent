@@ -64,6 +64,21 @@ describe('ApprovalCard (controlled)', () => {
     expect(screen.getByText(/rejected/i)).toBeTruthy()
   })
 
+  it('renders a compact single line with no buttons when expired', () => {
+    render(
+      <ApprovalCard event={ev('a1')} state="expired" onApprove={vi.fn()} onReject={vi.fn()} />,
+    )
+    expect(screen.getByText(/approval expired/i)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /approve/i })).toBeNull()
+  })
+
+  it('renders a compact line with the tool name when approved', () => {
+    render(
+      <ApprovalCard event={ev('a1', 'shell')} state="approved" onApprove={vi.fn()} onReject={vi.fn()} />,
+    )
+    expect(screen.getByText(/✓ approved shell/i)).toBeTruthy()
+  })
+
   it('renders nothing when approval_id is missing from payload', () => {
     const onApprove = vi.fn()
     const { container } = render(
