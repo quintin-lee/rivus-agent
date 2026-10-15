@@ -91,13 +91,15 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 		if _, err := r.deps.Approvals.FindPendingByToolCall(bg, runID, toolCallID); err == nil {
 			return
 		}
-		_ = r.deps.Approvals.Create(bg, &domain.Approval{
+		a := &domain.Approval{
 			RunID: runID, ToolCallID: toolCallID, ToolName: toolName,
 			ArgsHash: itool.ArgsHash(args), RequestedBy: ownerID,
 			Reason:    "high-risk tool call requires approval",
 			ExpiresAt: time.Now().Add(30 * time.Minute).UnixMilli(),
-		})
-		r.append(bg, runID, domain.EvtApprovalRequested, toolName+" requires approval")
+		}
+		if err := r.deps.Approvals.Create(bg, a); err == nil {
+			r.appendApproval(bg, runID, a)
+		}
 	})
 	defer r.deps.Runner.SetNeedApprovalHandler(run.ID, nil)
 
@@ -166,6 +168,16 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 func (r *Runtime) append(ctx context.Context, runID string, typ domain.EventType, text string) {
 	payload, _ := json.Marshal(map[string]string{"text": text})
 	_, _ = r.deps.Events.Append(ctx, runID, typ, string(payload), "normal")
+}
+
+// appendApproval 发带 approval_id + tool_name 的 approval.requested 事件。
+func (r *Runtime) appendApproval(ctx context.Context, runID string, a *domain.Approval) {
+	payload, _ := json.Marshal(map[string]string{
+		"text":        a.ToolName + " requires approval",
+		"approval_id": a.ID,
+		"tool_name":   a.ToolName,
+	})
+	_, _ = r.deps.Events.Append(ctx, runID, domain.EvtApprovalRequested, string(payload), "normal")
 }
 
 func itoa(n int) string {

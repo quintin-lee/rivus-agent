@@ -64,6 +64,13 @@ func TestApprovalApproveResume(t *testing.T) {
 		t.Fatalf("create run: %d", code)
 	}
 	a := waitApproval(t, h, id)
+	req := findEventPayload(t, h, id, domain.EvtApprovalRequested)
+	if req["approval_id"] != a.ID {
+		t.Fatalf("requested payload approval_id = %v, want %s", req["approval_id"], a.ID)
+	}
+	if req["tool_name"] != a.ToolName {
+		t.Fatalf("requested payload tool_name = %v, want %s", req["tool_name"], a.ToolName)
+	}
 	code, body := h.Do("POST", "/api/v1/runs/"+id+"/approvals/"+a.ID,
 		map[string]any{"approve": true, "reason": "looks good"}, nil)
 	if code != 200 {
@@ -86,6 +93,13 @@ func TestApprovalReject(t *testing.T) {
 	ses := h.CreateSession("s")
 	id, _, _ := h.CreateRun(ses, map[string]any{"goal": "publish it"}, "apr-no-1")
 	a := waitApproval(t, h, id)
+	req := findEventPayload(t, h, id, domain.EvtApprovalRequested)
+	if req["approval_id"] != a.ID {
+		t.Fatalf("requested payload approval_id = %v, want %s", req["approval_id"], a.ID)
+	}
+	if req["tool_name"] != a.ToolName {
+		t.Fatalf("requested payload tool_name = %v, want %s", req["tool_name"], a.ToolName)
+	}
 	code, body := h.Do("POST", "/api/v1/runs/"+id+"/approvals/"+a.ID,
 		map[string]any{"approve": false, "reason": "nope"}, nil)
 	if code != 200 {
@@ -106,4 +120,24 @@ func contains(s, sub string) bool {
 		}
 		return false
 	})()
+}
+
+// findEventPayload 拉某 run 的指定类型事件，解析其 payload_json 为 map。
+func findEventPayload(t *testing.T, h *testutil.Harness, runID string, typ domain.EventType) map[string]any {
+	t.Helper()
+	evs, err := h.Events.ListAfter(context.Background(), runID, 0, 500)
+	if err != nil {
+		t.Fatalf("ListAfter: %v", err)
+	}
+	for _, e := range evs {
+		if e.Type == typ {
+			var m map[string]any
+			if err := json.Unmarshal([]byte(e.PayloadJSON), &m); err != nil {
+				t.Fatalf("unmarshal %s payload %q: %v", typ, e.PayloadJSON, err)
+			}
+			return m
+		}
+	}
+	t.Fatalf("no %s event found for run %s", typ, runID)
+	return nil
 }
