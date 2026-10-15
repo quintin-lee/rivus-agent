@@ -126,6 +126,8 @@ SSE 事件持久化于 `agent_events` 表（`EventRepo.Append`），`handleEvent
 | `Approvals.Decide` 已决定/过期（`run_service.go`） | 既有 `ErrConflict`/`approval_expired` 路径不变，本 spec 不触碰 |
 | `in.Reason` 为空串（Approve 无理由） | payload `reason` 为空串；前端 approved 单行不显示 reason，符合预期 |
 | 副信号路径的 `approval.requested`（无 `approval_id`） | 前端 `if (p.approvalId)` 守卫跳过，不建 entry、不配对 |
+| `approval.decided` 的 `approval_id` 无对应 `approval.requested`（孤儿事件） | 前端 `deriveApprovals` 只遍历 `requested` Map 的 key（`chat-messages.ts` `deriveApprovals`），孤立的 decided 不建 entry、静默丢弃，无 UI 垃圾 |
+| 同一 tool_call 重复中断（`FindPendingByToolCall` 命中，`runtime.go:91`） | 命中守卫直接 `return`，**不重发** `approval.requested`（首条已持久化）；保持既有幂等语义 |
 
 ## 测试（全部后端；前端零改动）
 
