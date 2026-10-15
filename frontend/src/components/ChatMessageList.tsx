@@ -4,6 +4,7 @@ import { groupEventsByRun } from '@/store/selectors'
 import { useRunStore } from '@/store/run-store'
 import { UserBubble } from '@/components/Messages/UserBubble'
 import { AssistantBubble } from '@/components/Messages/AssistantBubble'
+import { Inbox } from 'lucide-react'
 import { SystemStatusBubble } from '@/components/Messages/SystemStatusBubble'
 import { SystemEventsBubble } from '@/components/Messages/SystemEventsBubble'
 import { ApprovalBubble } from '@/components/Messages/ApprovalBubble'
@@ -32,6 +33,15 @@ export function ChatMessageList() {
 
   const handleRetry = (runId: string) => {
     void activateRun(runId)
+  }
+  if (messages.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card/50 p-8 text-center">
+        <Inbox className="h-5 w-5 text-muted-foreground/60" aria-hidden />
+        <p className="text-sm font-medium">No tasks yet</p>
+        <p className="text-xs text-muted-foreground">Describe a task below to start this session.</p>
+      </div>
+    )
   }
 
   return (

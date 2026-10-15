@@ -97,4 +97,19 @@ describe('ChatMessageList', () => {
       expect(api.decideApproval).toHaveBeenCalledWith('r1', 'a1', true),
     )
   })
+  it('renders a placeholder when there are no messages', () => {
+    seedStores(null, [], [], [])
+    render(<ChatMessageList />)
+    expect(screen.getByText(/no tasks yet/i)).toBeTruthy()
+  })
+
+  it('does not render the placeholder when messages exist', () => {
+    seedStores(null, [], [], [])
+    useRunStore.setState({
+      runHistory: [mkRun('succeeded', { result_json: '{"ok":true}' })],
+      activeRun: null,
+    })
+    render(<ChatMessageList />)
+    expect(screen.queryByText(/no tasks yet/i)).toBeNull()
+  })
 })
