@@ -9,6 +9,7 @@ vi.mock('@/lib/api', () => ({
     getRun: vi.fn().mockResolvedValue({ run: {}, steps: [] }),
     listRuns: vi.fn().mockResolvedValue([]),
     createRun: vi.fn().mockResolvedValue({ run_id: 'r1', status: 'queued', duplicated: false }),
+    cancelRun: vi.fn().mockResolvedValue(undefined),
   },
 }))
 
@@ -23,6 +24,11 @@ function mkEvent(seq: number): AgentEvent {
   }
 }
 
+// The submitRun tests permanently clobber activateRun in store state via
+// setState({ activateRun: mockFn }); capture the real action once so tests
+// that need it can restore it.
+const realActivateRun = useRunStore.getState().activateRun
+
 describe('run-store', () => {
   beforeEach(() => {
     useRunStore.setState({
@@ -33,6 +39,9 @@ describe('run-store', () => {
       eventFilter: 'all',
       runHistory: [],
       pendingGoals: [],
+      cancelling: false,
+      cancelError: null,
+      activateRun: realActivateRun,
     })
   })
 
@@ -138,5 +147,29 @@ describe('run-store', () => {
     })
     // After successful submit, all pendingGoals are cleared (the stale failed one is dropped too)
     expect(useRunStore.getState().pendingGoals).toHaveLength(0)
+  })
+
+  it('cancelActiveRun: calls api.cancelRun and clears cancelling/cancelError on success', async () => {
+    useRunStore.setState({ activeRunId: 'r1', cancelling: true, cancelError: 'old' })
+    await useRunStore.getState().cancelActiveRun('r1')
+    expect(vi.mocked(api.cancelRun)).toHaveBeenCalledWith('r1')
+    expect(useRunStore.getState().cancelling).toBe(false)
+    expect(useRunStore.getState().cancelError).toBeNull()
+  })
+
+  it('cancelActiveRun: stores the error message and re-enables on failure', async () => {
+    vi.mocked(api.cancelRun).mockRejectedValueOnce(new Error('stop failed'))
+    useRunStore.setState({ activeRunId: 'r1' })
+    await useRunStore.getState().cancelActiveRun('r1')
+    expect(useRunStore.getState().cancelling).toBe(false)
+    expect(useRunStore.getState().cancelError).toBe('stop failed')
+  })
+
+  it('activateRun resets cancelling and cancelError', async () => {
+    vi.mocked(api.getRun).mockResolvedValueOnce({ run: {}, steps: [] } as never)
+    useRunStore.setState({ cancelling: true, cancelError: 'old' })
+    await useRunStore.getState().activateRun('r2')
+    expect(useRunStore.getState().cancelling).toBe(false)
+    expect(useRunStore.getState().cancelError).toBeNull()
   })
 })

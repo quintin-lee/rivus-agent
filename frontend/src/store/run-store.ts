@@ -20,6 +20,8 @@ interface RunState {
   eventFilter: EventType | 'all'
   runHistory: Run[]
   pendingGoals: PendingGoal[]
+  cancelling: boolean
+  cancelError: string | null
   activateRun: (id: string) => Promise<void>
   fetchRunAndSteps: (id: string) => Promise<void>
   appendEvent: (e: AgentEvent) => void
@@ -28,6 +30,7 @@ interface RunState {
   loadRunHistory: (sessionId: string) => Promise<void>
   submitRun: (input: SubmitRunInput) => Promise<void>
   dismissPendingGoal: (id: string) => void
+  cancelActiveRun: (id: string) => Promise<void>
 }
 
 const TERMINAL_EVENTS: ReadonlySet<EventType> = new Set([
@@ -54,9 +57,11 @@ export const useRunStore = create<RunState>((set, get) => ({
   eventFilter: 'all',
   runHistory: [],
   pendingGoals: [],
+  cancelling: false,
+  cancelError: null,
 
   activateRun: async (id) => {
-    set({ activeRunId: id, events: [] })
+    set({ activeRunId: id, events: [], cancelling: false, cancelError: null })
     await get().fetchRunAndSteps(id)
   },
 
@@ -85,7 +90,7 @@ export const useRunStore = create<RunState>((set, get) => ({
 
   loadRunHistory: async (sessionId) => {
     const runs = await api.listRuns(sessionId)
-    set({ runHistory: runs, pendingGoals: [] })
+    set({ runHistory: runs, pendingGoals: [], cancelling: false, cancelError: null })
   },
 
   submitRun: async (input) => {
@@ -123,4 +128,14 @@ export const useRunStore = create<RunState>((set, get) => ({
 
   dismissPendingGoal: (id) =>
     set((s) => ({ pendingGoals: s.pendingGoals.filter((p) => p.id !== id) })),
+
+  cancelActiveRun: async (id) => {
+    set({ cancelling: true, cancelError: null })
+    try {
+      await api.cancelRun(id)
+      set({ cancelling: false, cancelError: null })
+    } catch (e) {
+      set({ cancelling: false, cancelError: e instanceof Error ? e.message : 'Stop failed' })
+    }
+  },
 }))
