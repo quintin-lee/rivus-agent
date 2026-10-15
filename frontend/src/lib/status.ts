@@ -131,18 +131,23 @@ export function eventSummary(e: AgentEvent): string {
   const p = eventPayload(e)
   switch (e.event_type) {
     case 'tool.requested':
+      return p.tool ? `requesting ${String(p.tool)}` : 'tool requested'
     case 'tool.started':
+      return p.tool ? `tool ${String(p.tool)} started` : 'tool started'
     case 'tool.completed':
+      return p.tool ? `tool ${String(p.tool)} completed` : 'tool completed'
     case 'tool.failed':
+      return p.tool ? `tool ${String(p.tool)} failed` : 'tool failed'
     case 'tool.authorized':
+      return p.tool ? `tool ${String(p.tool)} authorized` : 'tool authorized'
     case 'tool.denied':
-      return p.tool_name ? `tool: ${String(p.tool_name)}` : e.event_type
+      return p.tool ? `tool ${String(p.tool)} denied` : 'tool denied'
     case 'model.requested':
+      return 'model call started'
     case 'model.completed':
+      return 'model call completed'
     case 'model.failed':
-      return p.call_count !== undefined
-        ? `model call ${Number(p.call_count)}`
-        : e.event_type
+      return 'model call failed'
     case 'step.started':
     case 'step.finished':
       return p.description ? String(p.description) : `step ${p.step_index ?? ''}`
@@ -173,6 +178,6 @@ export function eventSummary(e: AgentEvent): string {
     case 'verification.failed':
       return 'verification failed'
     default:
-      return e.event_type
+      return `Unknown event ${e.event_type}`
   }
 }
