@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -155,17 +156,16 @@ func (s *RunService) DecideApproval(ctx context.Context, in DecideApprovalInput)
 	if err := s.approvals.Decide(ctx, in.ApprovalID, in.Approve, in.OwnerID, in.Reason); err != nil {
 		return err
 	}
-	_, _ = s.events.Append(ctx, in.RunID, domain.EvtApprovalDecided, `{"approved":`+boolStr(in.Approve)+`}`, "normal")
+	approvalPayload, _ := json.Marshal(map[string]any{
+		"approved":    in.Approve,
+		"approval_id": in.ApprovalID,
+		"tool_name":   a.ToolName,
+		"reason":      in.Reason,
+	})
+	_, _ = s.events.Append(ctx, in.RunID, domain.EvtApprovalDecided, string(approvalPayload), "normal")
 	if in.Approve {
 		return s.Resume(ctx, in.OwnerID, in.RunID)
 	}
 	_ = s.tasks.UpdateStatus(ctx, in.OwnerID, in.RunID, domain.RunFailed, "approval_rejected", "approval rejected by "+in.OwnerID)
 	return nil
-}
-
-func boolStr(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }

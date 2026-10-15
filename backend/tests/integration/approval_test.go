@@ -76,6 +76,20 @@ func TestApprovalApproveResume(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("decide: %d %s", code, body)
 	}
+	dec := findEventPayload(t, h, id, domain.EvtApprovalDecided)
+	approved, ok := dec["approved"].(bool)
+	if !ok || approved != true {
+		t.Fatalf("decided payload approved = %T %v, want bool true", dec["approved"], dec["approved"])
+	}
+	if dec["approval_id"] != a.ID {
+		t.Fatalf("decided payload approval_id = %v, want %s", dec["approval_id"], a.ID)
+	}
+	if dec["tool_name"] != a.ToolName {
+		t.Fatalf("decided payload tool_name = %v, want %s", dec["tool_name"], a.ToolName)
+	}
+	if dec["reason"] != "looks good" {
+		t.Fatalf("decided payload reason = %v, want \"looks good\"", dec["reason"])
+	}
 	run := h.WaitTerminal(id, 30*time.Second)
 	if run.Status != domain.RunSucceeded {
 		t.Fatalf("want succeeded after approval, got %s (%s)", run.Status, run.ErrorSummary)
@@ -104,6 +118,20 @@ func TestApprovalReject(t *testing.T) {
 		map[string]any{"approve": false, "reason": "nope"}, nil)
 	if code != 200 {
 		t.Fatalf("decide: %d %s", code, body)
+	}
+	dec := findEventPayload(t, h, id, domain.EvtApprovalDecided)
+	approved, ok := dec["approved"].(bool)
+	if !ok || approved != false {
+		t.Fatalf("decided payload approved = %T %v, want bool false", dec["approved"], dec["approved"])
+	}
+	if dec["approval_id"] != a.ID {
+		t.Fatalf("decided payload approval_id = %v, want %s", dec["approval_id"], a.ID)
+	}
+	if dec["tool_name"] != a.ToolName {
+		t.Fatalf("decided payload tool_name = %v, want %s", dec["tool_name"], a.ToolName)
+	}
+	if dec["reason"] != "nope" {
+		t.Fatalf("decided payload reason = %v, want \"nope\"", dec["reason"])
 	}
 	run := h.WaitTerminal(id, 30*time.Second)
 	if run.Status != domain.RunFailed || run.ErrorCode != "approval_rejected" {
