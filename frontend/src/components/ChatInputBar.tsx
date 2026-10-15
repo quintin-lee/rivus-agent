@@ -1,16 +1,24 @@
 import { useState } from 'react'
 import { useSessionStore } from '@/store/session-store'
 import { useRunStore } from '@/store/run-store'
+import { isActiveRunStatus } from '@/lib/status'
+
 import { NewRunDialog } from '@/components/NewRunDialog'
 
 export function ChatInputBar() {
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const submitRun = useRunStore((s) => s.submitRun)
+  const activeRun = useRunStore((s) => s.activeRun)
+  const cancelling = useRunStore((s) => s.cancelling)
+  const cancelError = useRunStore((s) => s.cancelError)
+  const cancelActiveRun = useRunStore((s) => s.cancelActiveRun)
   const pendingGoals = useRunStore((s) => s.pendingGoals)
   const [goal, setGoal] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
 
   const busy = pendingGoals.some((p) => p.status === 'pending')
+
+  const stopping = activeRun !== null && isActiveRunStatus(activeRun.status)
 
   const submit = () => {
     const trimmed = goal.trim()
@@ -51,15 +59,29 @@ export function ChatInputBar() {
         >
           ⚙
         </button>
-        <button
-          type="button"
-          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          disabled={busy || !goal.trim()}
-          onClick={submit}
-        >
-          Send
-        </button>
+        {stopping ? (
+          <button
+            type="button"
+            className="rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-medium text-rose-50 hover:bg-rose-500 disabled:opacity-50"
+            disabled={busy || cancelling}
+            onClick={() => activeRun && void cancelActiveRun(activeRun.id)}
+          >
+            {cancelling ? 'Stopping…' : '⏹ Stop'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            disabled={busy || !goal.trim()}
+            onClick={submit}
+          >
+            Send
+          </button>
+        )}
       </div>
+      {cancelError && (
+        <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{cancelError}</p>
+      )}
       <NewRunDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </div>
   )
