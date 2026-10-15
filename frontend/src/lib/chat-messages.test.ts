@@ -216,4 +216,36 @@ describe('deriveMessages', () => {
     const statusCount = out.filter((m) => m.kind === 'system-status').length
     expect(statusCount).toBe(1)
   })
+
+  it('derives expired when an approval was never decided and its run is terminal', () => {
+    const run = mkRun('r1', 'failed')
+    const out = deriveMessages({
+      runHistory: [run], activeRun: run, activeSteps: [],
+      eventsByRun: { r1: [mkEv(1, 'approval.requested', '{"approval_id":"a1","tool_name":"t1"}')] },
+      pendingGoals: [],
+    })
+    const a = out.find((m) => m.kind === 'system-approval') as { state: string } | undefined
+    expect(a?.state).toBe('expired')
+  })
+
+  it('keeps pending when the approval is undecided but the run is not terminal', () => {
+    const run = mkRun('r1', 'waiting_approval')
+    const out = deriveMessages({
+      runHistory: [run], activeRun: run, activeSteps: [],
+      eventsByRun: { r1: [mkEv(1, 'approval.requested', '{"approval_id":"a1","tool_name":"t1"}')] },
+      pendingGoals: [],
+    })
+    const a = out.find((m) => m.kind === 'system-approval') as { state: string } | undefined
+    expect(a?.state).toBe('pending')
+  })
+
+  it('derives no approval messages for real-data payloads (no approval_id key)', () => {
+    const run = mkRun('r1', 'waiting_approval')
+    const out = deriveMessages({
+      runHistory: [run], activeRun: run, activeSteps: [],
+      eventsByRun: { r1: [mkEv(1, 'approval.requested', '{"text":"shell requires approval"}')] },
+      pendingGoals: [],
+    })
+    expect(out.filter((m) => m.kind === 'system-approval')).toHaveLength(0)
+  })
 })

@@ -42,7 +42,7 @@ export type ChatMessage =
       id: string
       runId: string
       event: AgentEvent
-      state: 'pending' | 'approved' | 'rejected'
+      state: 'pending' | 'approved' | 'rejected' | 'expired'
     }
 
 export interface DeriveInput {
@@ -133,7 +133,7 @@ function emitRun(
     })
   }
 
-  const approvalMsgs = deriveApprovals(run.id, events)
+  const approvalMsgs = deriveApprovals(run.id, events, TERMINAL_RUN_STATUSES.includes(run.status))
   messages.push(...approvalMsgs)
 
   if (TERMINAL_RUN_STATUSES.includes(run.status)) {
@@ -150,7 +150,11 @@ function emitRun(
   }
 }
 
-function deriveApprovals(runId: string, events: AgentEvent[]): ChatMessage[] {
+function deriveApprovals(
+  runId: string,
+  events: AgentEvent[],
+  runTerminal: boolean,
+): ChatMessage[] {
   const sorted = [...events].sort((a, b) => a.seq - b.seq)
   const requested = new Map<string, AgentEvent>()
   const decided = new Map<string, { approved: boolean; reason?: string }>()
@@ -167,9 +171,9 @@ function deriveApprovals(runId: string, events: AgentEvent[]): ChatMessage[] {
   const out: ChatMessage[] = []
   for (const [approvalId, event] of requested) {
     const d = decided.get(approvalId)
-    const state: 'pending' | 'approved' | 'rejected' = d
+    const state: 'pending' | 'approved' | 'rejected' | 'expired' = d
       ? (d.approved ? 'approved' : 'rejected')
-      : 'pending'
+      : runTerminal ? 'expired' : 'pending'
     out.push({
       kind: 'system-approval',
       id: `approval-${runId}-${approvalId}`,
