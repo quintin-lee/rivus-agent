@@ -23,11 +23,16 @@
 2. **`runtime.go run()`**：事件循环（`for ev := range ch`）结束后、`waitApproval` 判定之后、verify 分支之前，插入：
 
 ```go
+// 关键：此刻 ctx.Err()==DeadlineExceeded（已过期），database/sql 会对该 ctx
+// 短路所有写操作（prepareContext 先返回 ctx.Err()，不落库），若用 ctx 写库则
+// UpdateStatus/事件 Append 全部静默失败，run 永远停在 running —— 修复本身 no-op。
+// 故所有写库走 context.Background()。
 if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-    _ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunTimedOut, "timed_out", "run exceeded max duration budget")
-    r.append(ctx, run.ID, domain.EvtRunTimedOut, "run timed out")
+    bgCtx := context.Background()
+    _ = r.deps.Tasks.UpdateStatus(bgCtx, ownerID, run.ID, domain.RunTimedOut, "timed_out", "run exceeded max duration budget")
+    r.append(bgCtx, run.ID, domain.EvtRunTimedOut, "run timed out")
     observability.IncrRunFinished(false)
-    r.deps.Runner.DeleteCheckpointsByRun(context.Background(), run.ID)
+    r.deps.Runner.DeleteCheckpointsByRun(bgCtx, run.ID)
     return
 }
 ```
@@ -35,9 +40,9 @@ if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 插入点选在 `if waitApproval || needApproval.Load()` 块之后（该块命中则已 return，不会误判为超时），verify 之前。
 
 **精确性约束**：
-- 用户 Stop 走 `ctx.Err() == context.Canceled`（`run_service.go:85` `runner.Cancel` + 取消注册表），**不是** `DeadlineExceeded`，不会被误判成 timed_out。
+- 用户 Stop 走 `ctx.Err() == context.Canceled`（`run_service.go:86` `runner.Cancel` + 取消注册表），**不是** `DeadlineExceeded`，不会被误判成 timed_out。
 - 用 `errors.Is(ctx.Err(), context.DeadlineExceeded)` 而非直接判 `ctx.Err() != nil`，以区分 cancel 与 timeout。
-- `runtime.go` 需新增 import `"errors"`、`"context"`（`context` 已在、`errors` 需确认是否已 import）。
+- `runtime.go` 需新增 import `"errors"`（现未 import；`context` 已在）。超时分支的写库**必须**用 `context.Background()`，不能用已过期的 `ctx`（见上代码块注释）。
 
 3. **前端 5 处各 1 行**（`run.timed_out` 进终态/刷新集）：
    - `frontend/src/lib/types.ts`：`EventType` union 加 `'run.timed_out'`。
@@ -56,7 +61,7 @@ if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 deadline 到期 → drain 发 EvtRunCancelled(ctx 结束信号)
   → run() 事件循环结束
   → errors.Is(ctx.Err(), DeadlineExceeded) 命中
-  → UpdateStatus(RunTimedOut, "timed_out", "…") + 发 EvtRunTimedOut + 清 checkpoint + return
+  → 用 `context.Background()` 写：UpdateStatus(RunTimedOut,"timed_out","…") + 发 EvtRunTimedOut + 清 checkpoint + return
   → 前端: run.timed_out 进 TERMINAL/REFRESH → getRun 刷新 → status=timed_out
   → running 气泡徽章变 orange "timed out"；AssistantBubble 橙色 "Run timed out" 行
 ```
@@ -66,13 +71,13 @@ deadline 到期 → drain 发 EvtRunCancelled(ctx 结束信号)
 | 场景 | 行为 |
 |---|---|
 | 正常 deadline 到期 | `RunTimedOut` + `run.timed_out` 事件 |
-| 用户 Stop（cancel） | 仍走既有 `run.cancelled`（`run_service.go:89`），不进 timed_out |
+| 用户 Stop（cancel） | 仍走既有 `run.cancelled`（`run_service.go:90`），不进 timed_out |
 | 审批中断（waitApproval 先 return） | 不受影响，不进 timed_out 分支 |
-| 部分结果（超时前已产出 tool evidence / finalText） | 仍置 `timed_out`；`AssistantBubble` 若有 `result_json` 显示 partial + 橙行 |
+| 部分结果 | 本 spec 超时分支**不**调 `SetResult`，故 timed_out run 的 `result_json` 恒空、无 partial 可展示；`AssistantBubble` 仅显示橙色 "Run timed out" 行 |
 
 ## 测试
 
-- **后端集成**（`tests/integration/`，复用 `testutil.Harness`）：造一个 `MaxDurationSeconds` 极小（如 1s）且模型慢/挂的 run，断言终态为 `domain.RunTimedOut` 且 `error_code == "timed_out"`，且事件流含 `run.timed_out`。需要一个能卡住模型的 script（`ScriptedModel` 支持 `EnqueueText`/挂起）——若 harness 不便造"慢模型"，退化为直接断言 `errors.Is(ctx.Err(), DeadlineExceeded)` 分支的单测路径，或最小改 `runtime_test`。
+- **后端集成**（`tests/integration/`，复用 `testutil.Harness`）：造一个 `MaxDurationSeconds` 极小（如 1s）且模型阻塞的 run——用 `ScriptedModel` 的 `EnqueueFunc`（`harness.go` 提供，可挂起 fn 并 sleep）阻塞模型，使其在 1s deadline 内到期；断言终态为 `domain.RunTimedOut`、`error_code == "timed_out"`、事件流含 `run.timed_out`，且终态经 `context.Background()` 写库（非过期 ctx）。
 - **前端**：`AssistantBubble.test.tsx` 加 `error_code="timed_out"` 无 result → 橙色 "Run timed out" 行；`status.test.ts` 加 `run.timed_out` → `eventSummary === 'run timed out'`；`run-store`/`sse-client` 终态集包含 `run.timed_out`。
 
 ## 验收

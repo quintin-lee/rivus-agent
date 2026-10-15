@@ -29,13 +29,14 @@ func (s *RunService) ListApprovals(ctx context.Context, ownerID, runID string) (
 
 - 路由（`routes()`）：`s.mux.HandleFunc("GET /api/v1/runs/{id}/approvals", s.handleListApprovals)`。
 - handler：
+- 404 判定用 `sql.ErrNoRows`（`tasks.GetRun` 对不存在的 run 直接返回 `QueryRowContext` 的原始 `sql.ErrNoRows`，**非** `domain.ErrNotFound`，见 `task_repo.go` `GetRun`）+ `domain.ErrForbidden`（非 owner 读他人 run）；其余错误走 500。`sql`/`errors`/`domain` 均已在 `server.go` import。
 
 ```go
 func (s *Server) handleListApprovals(w http.ResponseWriter, r *http.Request) {
     id := r.PathValue("id")
     approvals, err := s.runs.ListApprovals(r.Context(), ownerOf(r), id)
     if err != nil {
-        if errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrForbidden) {
+        if errors.Is(err, sql.ErrNoRows) || errors.Is(err, domain.ErrForbidden) {
             writeErr(w, 404, "not_found", "run not found", false)
             return
         }
@@ -64,11 +65,12 @@ GET /api/v1/runs/{id}/approvals
 
 | 场景 | 行为 |
 |---|---|
-| run 不存在 / 非本 owner | `tasks.GetRun` 返回 `ErrNotFound`/`ErrForbidden` → 404 |
+| run 不存在 | `tasks.GetRun` 返回 `sql.ErrNoRows` → 404 |
+| 非本 owner 的 run | `tasks.GetRun` 返回 `domain.ErrForbidden` → 404 |
 | run 存在但无审批 | `{"approvals":[]}` 200 |
 | DB 读失败 | 500 `retryable:true` |
 
-（`ErrForbidden` 与 `ErrNotFound` 合并走 404，避免泄露他人 run 是否存在——与 `handleGetRun` 既有取舍一致。）
+（`sql.ErrNoRows` 与 `domain.ErrForbidden` 合并走 404，避免泄露他人 run 是否存在；`ListByRun` 的 DB 读失败仍走 500。）
 
 ## 测试
 
@@ -78,6 +80,7 @@ GET /api/v1/runs/{id}/approvals
 | 审批后 `GET /runs/{id}/approvals` | 200，`approvals` 含 1 条，`id`/`tool_name`/`status` 与 `waitApproval` 拿到的记录一致 |
 | 无审批的 run | 200 `{"approvals":[]}`（非 `null`） |
 | 不存在的 run id | 404 |
+| 非 owner 读他人 run（`X-Owner-ID: intruder`）| 404（跨租户校验生效）|
 
 复用 `testutil.Harness.Do("GET", "/api/v1/runs/"+id+"/approvals", nil, nil)`。
 
