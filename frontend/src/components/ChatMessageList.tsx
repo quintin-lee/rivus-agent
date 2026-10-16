@@ -27,6 +27,7 @@ export function ChatMessageList() {
         activeSteps,
         eventsByRun,
         pendingGoals,
+        now: Date.now(),
       }),
     [runHistory, activeRun, activeSteps, eventsByRun, pendingGoals],
   )

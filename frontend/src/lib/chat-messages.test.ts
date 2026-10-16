@@ -55,6 +55,7 @@ describe('deriveMessages', () => {
       activeSteps: [],
       eventsByRun: {},
       pendingGoals: [],
+      now: 0,
     })
     expect(out).toEqual([])
   })
@@ -67,6 +68,7 @@ describe('deriveMessages', () => {
       activeSteps: [],
       eventsByRun: {},
       pendingGoals: [],
+      now: 0,
     })
     const kinds = out.map((m) => m.kind)
     expect(kinds).toContain('user')
@@ -82,6 +84,7 @@ describe('deriveMessages', () => {
       activeSteps: [mkStep()],
       eventsByRun: {},
       pendingGoals: [],
+      now: 0,
     })
     expect(out.map((m) => m.kind)).not.toContain('assistant')
   })
@@ -93,6 +96,7 @@ describe('deriveMessages', () => {
       activeSteps: [],
       eventsByRun: {},
       pendingGoals: [{ id: 'p1', goal: 'g', status: 'pending' }],
+      now: 0,
     })
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ kind: 'user', goal: 'g', status: 'pending' })
@@ -105,6 +109,7 @@ describe('deriveMessages', () => {
       activeSteps: [],
       eventsByRun: {},
       pendingGoals: [{ id: 'p1', goal: 'g', status: 'failed', error: 'boom' }],
+      now: 0,
     })
     expect(out[0]).toMatchObject({ kind: 'user', goal: 'g', status: 'failed', error: 'boom' })
   })
@@ -118,6 +123,7 @@ describe('deriveMessages', () => {
       activeSteps: [],
       eventsByRun: {},
       pendingGoals: [],
+      now: 0,
     })
     const userGoals = out.filter((m): m is Extract<ChatMessage, { kind: 'user' }> => m.kind === 'user')
     expect(userGoals.map((m) => m.runId)).toEqual(['r1', 'r2'])
@@ -136,6 +142,7 @@ describe('deriveMessages', () => {
         ],
       },
       pendingGoals: [],
+      now: 0,
     })
     const approvals = out.filter((m) => m.kind === 'system-approval')
     expect(approvals).toHaveLength(2)
@@ -158,6 +165,7 @@ describe('deriveMessages', () => {
         ],
       },
       pendingGoals: [],
+      now: 0,
     })
     const approval = out.find((m) => m.kind === 'system-approval') as
       | { state: string }
@@ -180,6 +188,7 @@ describe('deriveMessages', () => {
         ],
       },
       pendingGoals: [],
+      now: 0,
     })
     const approval = out.find((m) => m.kind === 'system-approval') as
       | { state: string }
@@ -196,6 +205,7 @@ describe('deriveMessages', () => {
       activeSteps: steps,
       eventsByRun: {},
       pendingGoals: [],
+      now: 0,
     })
     const status = out.find((m) => m.kind === 'system-status') as
       | { steps: { id: string }[]; budget: { max_model_calls: number } }
@@ -212,6 +222,7 @@ describe('deriveMessages', () => {
       activeSteps: [],
       eventsByRun: {},
       pendingGoals: [],
+      now: 0,
     })
     const statusCount = out.filter((m) => m.kind === 'system-status').length
     expect(statusCount).toBe(1)
@@ -223,6 +234,7 @@ describe('deriveMessages', () => {
       runHistory: [run], activeRun: run, activeSteps: [],
       eventsByRun: { r1: [mkEv(1, 'approval.requested', '{"approval_id":"a1","tool_name":"t1"}')] },
       pendingGoals: [],
+      now: 0,
     })
     const a = out.find((m) => m.kind === 'system-approval') as { state: string } | undefined
     expect(a?.state).toBe('expired')
@@ -234,6 +246,7 @@ describe('deriveMessages', () => {
       runHistory: [run], activeRun: run, activeSteps: [],
       eventsByRun: { r1: [mkEv(1, 'approval.requested', '{"approval_id":"a1","tool_name":"t1"}')] },
       pendingGoals: [],
+      now: 0,
     })
     const a = out.find((m) => m.kind === 'system-approval') as { state: string } | undefined
     expect(a?.state).toBe('pending')
@@ -245,7 +258,38 @@ describe('deriveMessages', () => {
       runHistory: [run], activeRun: run, activeSteps: [],
       eventsByRun: { r1: [mkEv(1, 'approval.requested', '{"text":"shell requires approval"}')] },
       pendingGoals: [],
+      now: 0,
     })
     expect(out.filter((m) => m.kind === 'system-approval')).toHaveLength(0)
+  })
+
+  it('derives progress (tool/model counts + elapsed) for an active run', () => {
+    const startMs = 1_000_000
+    const now = startMs + 2000
+    const run = mkRun('r1', 'running', { started_at: startMs })
+    const evs = [
+      mkEv(1, 'tool.completed'),
+      mkEv(2, 'tool.completed'),
+      mkEv(3, 'model.completed'),
+      mkEv(4, 'model.completed'),
+      mkEv(5, 'model.completed'),
+    ]
+    const out = deriveMessages({ runHistory: [], activeRun: run, activeSteps: [], eventsByRun: { r1: evs }, pendingGoals: [], now })
+    const status = out.find((m) => m.kind === 'system-status')
+    expect(status).toMatchObject({ progress: { toolCalls: 2, modelCalls: 3, seconds: 2 } })
+  })
+
+  it('does not derive progress for a terminal run', () => {
+    const run = mkRun('r1', 'succeeded', { started_at: 1 })
+    const out = deriveMessages({ runHistory: [run], activeRun: null, activeSteps: [], eventsByRun: { r1: [mkEv(1, 'tool.completed')] }, pendingGoals: [], now: 1000 })
+    const status = out.find((m) => m.kind === 'system-status') as Extract<ChatMessage, { kind: 'system-status' }> | undefined
+    expect(status?.progress).toBeUndefined()
+  })
+
+  it('falls back to created_at when started_at is missing (active run)', () => {
+    const run = mkRun('r1', 'running') // created_at:1, no started_at
+    const out = deriveMessages({ runHistory: [], activeRun: run, activeSteps: [], eventsByRun: { r1: [mkEv(1, 'tool.completed')] }, pendingGoals: [], now: 5001 })
+    const status = out.find((m) => m.kind === 'system-status') as Extract<ChatMessage, { kind: 'system-status' }> | undefined
+    expect(status?.progress).toMatchObject({ toolCalls: 1, seconds: 5 })
   })
 })

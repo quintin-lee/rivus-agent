@@ -1,5 +1,5 @@
 import type { AgentEvent, Budget, PendingGoal, Run, Step } from './types'
-import { TERMINAL_RUN_STATUSES } from './status'
+import { TERMINAL_RUN_STATUSES, isActiveRunStatus } from './status'
 
 export type ChatMessage =
   | {
@@ -28,6 +28,7 @@ export type ChatMessage =
       goal: string
       steps: Step[]
       budget: Budget
+      progress?: { toolCalls: number; modelCalls: number; seconds: number }
       error?: { code: string; summary?: string }
     }
   | {
@@ -51,6 +52,7 @@ export interface DeriveInput {
   activeSteps: Step[]
   eventsByRun: Record<string, AgentEvent[]>
   pendingGoals: PendingGoal[]
+  now: number
 }
 
 /**
@@ -59,7 +61,7 @@ export interface DeriveInput {
  * newest, not-yet-committed turns), then runs by created_at ascending.
  */
 export function deriveMessages(input: DeriveInput): ChatMessage[] {
-  const { runHistory, activeRun, activeSteps, eventsByRun, pendingGoals } = input
+  const { runHistory, activeRun, activeSteps, eventsByRun, pendingGoals, now } = input
 
   const messages: ChatMessage[] = []
 
@@ -82,10 +84,10 @@ export function deriveMessages(input: DeriveInput): ChatMessage[] {
   for (const run of ordered) {
     if (run.id === activeRun?.id) continue
     seen.add(run.id)
-    emitRun(messages, run, activeSteps, eventsByRun)
+    emitRun(messages, run, activeSteps, eventsByRun, now)
   }
   if (activeRun && !seen.has(activeRun.id)) {
-    emitRun(messages, activeRun, activeSteps, eventsByRun)
+    emitRun(messages, activeRun, activeSteps, eventsByRun, now)
   }
 
   return messages
@@ -96,6 +98,7 @@ function emitRun(
   run: Run,
   steps: Step[],
   eventsByRun: Record<string, AgentEvent[]>,
+  now: number,
 ) {
   const userMsg: ChatMessage = {
     kind: 'user',
@@ -105,6 +108,16 @@ function emitRun(
     status: 'sent',
   }
   messages.push(userMsg)
+
+  let progress: { toolCalls: number; modelCalls: number; seconds: number } | undefined
+  if (isActiveRunStatus(run.status)) {
+    const evs = eventsByRun[run.id] ?? []
+    const toolCalls = evs.filter((e) => e.event_type === 'tool.completed').length
+    const modelCalls = evs.filter((e) => e.event_type === 'model.completed').length
+    const startMs = run.started_at ?? run.created_at
+    const seconds = startMs > 0 ? Math.max(0, Math.round((now - startMs) / 1000)) : 0
+    progress = { toolCalls, modelCalls, seconds }
+  }
 
   const statusMsg: ChatMessage = {
     kind: 'system-status',
@@ -119,6 +132,7 @@ function emitRun(
     error: run.error_code
       ? { code: run.error_code, summary: run.error_summary }
       : undefined,
+    progress,
   }
   messages.push(statusMsg)
 
