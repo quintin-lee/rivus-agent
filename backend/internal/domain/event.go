@@ -9,6 +9,7 @@ const (
 	EvtRunFinished       EventType = "run.finished"
 	EvtRunFailed         EventType = "run.failed"
 	EvtRunCancelled      EventType = "run.cancelled"
+	EvtRunTimedOut       EventType = "run.timed_out"
 	EvtPlanCreated       EventType = "plan.created"
 	EvtPlanUpdated       EventType = "plan.updated"
 	EvtStepStarted       EventType = "step.started"
