@@ -26,7 +26,7 @@
 ### Task 1: `chat-messages.ts` 进度派生
 
 **Files:**
-- Modify: `frontend/src/lib/chat-messages.ts`
+- Modify: `frontend/src/lib/chat-messages.ts`、`frontend/src/components/ChatMessageList.tsx`（仅 `now` 注入；`progress` 接线在 Chunk 2）
 
 - [ ] **Step 1: 写失败测试**
 
@@ -73,9 +73,24 @@ it('does not derive progress for a terminal run', () => {
   const status = out.find((m) => m.kind === 'system-status')
   expect((status as any).progress).toBeUndefined()
 })
+
+it('falls back to created_at when started_at is missing (active run)', () => {
+  // mkRun 默认 created_at:1、无 started_at → startMs = created_at = 1
+  const run = mkRun('r1', 'running')
+  const out = deriveMessages({
+    runHistory: [],
+    activeRun: run,
+    activeSteps: [],
+    eventsByRun: { r1: [mkEv(1, 'tool.completed')] },
+    pendingGoals: [],
+    now: 5001, // 1 + 5000ms = 5s
+  })
+  const status = out.find((m) => m.kind === 'system-status')
+  expect((status as any).progress).toMatchObject({ toolCalls: 1, seconds: 5 })
+})
 ```
 
-注意：现有所有 `deriveMessages({ ... })` 调用（约 6-8 处）需补 `now` 字段（mechanical：传任意 `number`，如 `now: 0` 或合适的 ms）。先加新用例，`tsc`/`vitest` 会因 `now` 未声明而报错——这就是失败态。
+注意：现有所有 `deriveMessages({ ... })` 测试调用（约 14 处）需补 `now` 字段（mechanical：传任意 `number`，如 `now: 0` 或合适的 ms）。**同时**唯一的生产调用点 `ChatMessageList.tsx` 的 useMemo（`deriveMessages({ … })`）也必须在本 Chunk 内补 `now: Date.now()`——因为 `DeriveInput.now` 是必需字段，缺了它 Chunk 1 的 `npx tsc --noEmit` 会报 "Property 'now' is missing"，Chunk 1 的提交就带红。`progress` 的渲染接线仍留 Chunk 2。先加新用例，`tsc`/`vitest` 会因 `now` 未声明而报错——这就是失败态。
 
 - [ ] **Step 2: 运行确认失败**
 
@@ -124,6 +139,8 @@ Expected: FAIL —— 类型层 `DeriveInput` 无 `now`、`progress` 未定义�
    }
    ```
    （`statusMsg` 是 `ChatMessage`；用 `as any` 或声明为带 `progress` 的具体 union 成员后直接赋值——以更整洁的类型为准，优先给局部变量 `const statusMsg: ChatMessage = {…}` 后单独 `statusMsg.progress = …`，TS 会因 union 收窄报错，故实现时用 `as { progress?: … }` 断言或重构该局部为 `typeof statusMsg & { progress?: … }`。任选其一，以 `tsc` 通过为准。）
+6. **生产调用点（本 Chunk 内完成，勿留到 Chunk 2）**：`frontend/src/components/ChatMessageList.tsx` 的 useMemo（line 22-24，`deriveMessages({ … })`）加 `now: Date.now()` 字段。不要把 `Date.now()` 放进 useMemo 依赖数组（否则每次 render 重算、破坏 memo）；`now` 仅用于派生时长，随事件 append 触发重算已足够。
+
 
 - [ ] **Step 4: 运行确认通过**
 
@@ -133,7 +150,7 @@ Expected: PASS + 类型绿。
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src/lib/chat-messages.ts frontend/src/lib/chat-messages.test.ts
+git add frontend/src/lib/chat-messages.ts frontend/src/lib/chat-messages.test.ts frontend/src/components/ChatMessageList.tsx
 git commit -m "feat(frontend): derive live progress (tool/model counts + elapsed) in system-status"
 ```
 
@@ -189,11 +206,10 @@ Expected: FAIL —— `SystemStatusBubble` 未接受 `progress`。
 )}
 ```
 
-- [ ] **Step 4: 实现 `ChatMessageList` 传参 + 注入 now**
+- [ ] **Step 4: `ChatMessageList` 补传 progress（now 已在 Chunk 1 注入）**
 
-`ChatMessageList.tsx`：
-- useMemo（line 22-24，`deriveMessages({ … })`）加 `now: Date.now()` 字段，并把 `Date.now()` 依赖加进 useMemo 依赖数组（或保持现有依赖；`now` 仅用于派生时长，随事件 append 重算已足够——若把 `Date.now()` 放进依赖会导致每次 render 重算且打破 memo，故**不加**进依赖数组，接受"时长随事件到达刷新"的既有节奏）。
-- `system-status` 分支（line 70 `<SystemStatusBubble`）加 `progress={message.progress}`。
+`ChatMessageList.tsx` 的 `system-status` 分支（line 70 `<SystemStatusBubble`）加 `progress={message.progress}`。
+（`now: Date.now()` 已在 Chunk 1 Task 1 Step 3 的 useMemo 注入，本步只补 progress 接线。）
 
 - [ ] **Step 5: 运行确认通过**
 

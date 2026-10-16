@@ -223,6 +223,7 @@ Expected: 全绿。
 - [ ] **Step 4: Commit**
 
 ```bash
+cd backend && gofmt -w tests/integration/approval_list_test.go
 git add backend/tests/integration/approval_list_test.go
 git commit -m "test(integration): approval list endpoint 200/empty/404/cross-tenant"
 ```
