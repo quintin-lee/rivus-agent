@@ -71,6 +71,7 @@ function Bubble({
         <SystemStatusBubble
           run={message.run}
           steps={message.steps}
+          progress={message.progress}
           onRetryRun={onRetry}
         />
       )

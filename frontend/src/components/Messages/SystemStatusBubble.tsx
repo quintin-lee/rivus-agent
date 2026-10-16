@@ -9,9 +9,10 @@ interface Props {
   run: Run
   steps?: Step[]
   onRetryRun: (runId: string) => void
+  progress?: { toolCalls: number; modelCalls: number; seconds: number }
 }
 
-export function SystemStatusBubble({ run, steps = [], onRetryRun }: Props) {
+export function SystemStatusBubble({ run, steps = [], onRetryRun, progress }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const isActive = !TERMINAL_RUN_STATUSES.includes(run.status)
@@ -96,6 +97,12 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun }: Props) {
       </div>
       {actionError && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{actionError}</p>}
       <p className="mt-2 text-xs text-foreground/90">{run.goal}</p>
+      {isActive && progress && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          工具 {progress.toolCalls}/{run.budget.max_tool_calls} · 模型 {progress.modelCalls}/{run.budget.max_model_calls} ·{' '}
+          {progress.seconds}s
+        </p>
+      )}
       {steps.length > 0 && (
         <ol className="mt-2 space-y-1">
           {steps.map((s) => (

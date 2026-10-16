@@ -70,4 +70,23 @@ describe('SystemStatusBubble', () => {
     )
     expect(screen.getByText('step one')).toBeTruthy()
   })
+
+  it('renders a live progress row for an active run with progress', () => {
+    const r = { ...run('running'), started_at: 1 }
+    render(
+      <SystemStatusBubble
+        run={r}
+        onRetryRun={vi.fn()}
+        progress={{ toolCalls: 2, modelCalls: 3, seconds: 2 }}
+      />,
+    )
+    expect(screen.getByText(/工具 2\/10/)).toBeTruthy()
+    expect(screen.getByText(/模型 3\/10/)).toBeTruthy()
+    expect(screen.getByText(/2s/)).toBeTruthy()
+  })
+
+  it('renders no progress row when progress is absent (terminal)', () => {
+    render(<SystemStatusBubble run={run('succeeded')} onRetryRun={vi.fn()} />)
+    expect(screen.queryByText(/工具 \d+\/\d+/)).toBeNull()
+  })
 })
