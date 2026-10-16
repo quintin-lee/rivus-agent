@@ -22,6 +22,7 @@ export type EventType =
   | 'run.finished'
   | 'run.failed'
   | 'run.cancelled'
+  | 'run.timed_out'
   | 'run.resumed'
   | 'plan.created'
   | 'plan.updated'

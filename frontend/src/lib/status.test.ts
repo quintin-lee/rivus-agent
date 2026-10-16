@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { eventSummary } from '@/lib/status'
+import { eventSummary, eventCategory } from '@/lib/status'
 import type { AgentEvent, EventType } from '@/lib/types'
 
 function ev(type: EventType, payload: Record<string, unknown> = {}): AgentEvent {
@@ -32,5 +32,15 @@ describe('eventSummary', () => {
 
   it('labels unknown event types instead of leaking the raw name', () => {
     expect(eventSummary(ev('weird.new.event' as EventType))).toBe('Unknown event weird.new.event')
+  })
+
+  it('summarizes run.timed_out', () => {
+    expect(eventSummary(ev('run.timed_out'))).toBe('run timed out')
+  })
+})
+
+describe('eventCategory', () => {
+  it('categorizes run.timed_out as run', () => {
+    expect(eventCategory('run.timed_out')).toBe('run')
   })
 })

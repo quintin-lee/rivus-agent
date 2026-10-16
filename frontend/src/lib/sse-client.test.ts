@@ -97,6 +97,18 @@ describe('startEventStream', () => {
     stop()
   })
 
+  it('stops without reconnect on run.timed_out terminal event', async () => {
+    fetchMock.mockResolvedValue(sseResponse([frame(4, 'run.timed_out')]))
+    const { opts, onStatus, onFallback } = baseOpts({ getRunStatus: async () => 'running' as RunStatus })
+    const stop = startEventStream(opts)
+    await flush()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(onStatus).toHaveBeenCalledWith('stopped')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(onFallback).not.toHaveBeenCalled()
+    stop()
+  })
+
   it('reconnects with backoff and resumes from last seq', async () => {
     let after = 0
     const onEvent = vi.fn((e: { seq: number }) => {

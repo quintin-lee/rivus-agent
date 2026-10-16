@@ -51,6 +51,7 @@ export function eventCategory(type: EventType): EventCategory {
     case 'run.finished':
     case 'run.failed':
     case 'run.cancelled':
+    case 'run.timed_out':
     case 'run.resumed':
       return 'run'
     case 'model.requested':
@@ -165,6 +166,8 @@ export function eventSummary(e: AgentEvent): string {
       return p.error_code ? `run failed: ${String(p.error_code)}` : 'run failed'
     case 'run.cancelled':
       return 'run cancelled'
+    case 'run.timed_out':
+      return 'run timed out'
     case 'run.resumed':
       return 'run resumed'
     case 'plan.created':

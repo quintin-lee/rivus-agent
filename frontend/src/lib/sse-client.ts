@@ -14,8 +14,8 @@ export interface StreamOpts {
   maxRetries?: number
 }
 
-const TERMINAL_EVENTS = new Set(['run.finished', 'run.failed', 'run.cancelled'])
-const TERMINAL_STATUS = new Set<RunStatus>(['succeeded', 'failed', 'cancelled', 'timed_out'])
+const TERMINAL_EVENTS: Record<string, boolean> = { 'run.finished': true, 'run.failed': true, 'run.cancelled': true, 'run.timed_out': true }
+const TERMINAL_STATUS: Record<RunStatus, boolean> = { queued: false, running: false, waiting_approval: false, paused: false, succeeded: true, failed: true, cancelled: true, timed_out: true }
 
 function parseBlock(block: string, runId: string): AgentEvent | null {
   let seq = 0
@@ -70,7 +70,7 @@ export function startEventStream(opts: StreamOpts): () => void {
           const e = parseBlock(block, opts.runId)
           if (!e) continue
           opts.onEvent(e)
-          if (TERMINAL_EVENTS.has(e.event_type)) return finish()
+          if (TERMINAL_EVENTS[e.event_type]) return finish()
         }
       }
     } catch {
@@ -79,7 +79,7 @@ export function startEventStream(opts: StreamOpts): () => void {
     // 服务端正常关闭（终态后关闭）：确认终态则停，否则重连续播。
     try {
       const status = await opts.getRunStatus(opts.runId)
-      if (TERMINAL_STATUS.has(status)) return finish()
+      if (TERMINAL_STATUS[status]) return finish()
     } catch { /* 查不到就重连 */ }
     return scheduleReconnect()
   }

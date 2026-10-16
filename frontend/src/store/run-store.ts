@@ -33,17 +33,18 @@ interface RunState {
   cancelActiveRun: (id: string) => Promise<void>
 }
 
-const TERMINAL_EVENTS: ReadonlySet<EventType> = new Set([
-  'run.finished',
-  'run.failed',
-  'run.cancelled',
-])
+const TERMINAL_EVENTS: Partial<Record<EventType, boolean>> = {
+  'run.finished': true,
+  'run.failed': true,
+  'run.cancelled': true,
+  'run.timed_out': true,
+}
 
-const REFRESH_EVENTS: ReadonlySet<EventType> = new Set([
-  'run.resumed',
-  'approval.decided',
+const REFRESH_EVENTS: Partial<Record<EventType, boolean>> = {
+  'run.resumed': true,
+  'approval.decided': true,
   ...TERMINAL_EVENTS,
-])
+}
 
 function pendingGoalId(): string {
   return `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -78,7 +79,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       events.splice(0, events.length - MAX_EVENTS)
     }
     set({ events })
-    if (REFRESH_EVENTS.has(e.event_type)) {
+    if (REFRESH_EVENTS[e.event_type]) {
       const id = get().activeRunId
       if (id) void get().fetchRunAndSteps(id)
     }
