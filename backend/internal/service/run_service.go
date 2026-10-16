@@ -128,6 +128,16 @@ func (s *RunService) collectApprovals(ctx context.Context, runID string) map[str
 	return out
 }
 
+// ListApprovals 返回某 run 的全部审批记录（按 created_at 升序），供前端 bootstrap pending 卡。
+func (s *RunService) ListApprovals(ctx context.Context, ownerID, runID string) ([]domain.Approval, error) {
+	// 先做租户归属校验：不存在的 run（GetRun 返回 sql.ErrNoRows）或非本 owner 的 run
+	// （GetRun 返回 domain.ErrForbidden）都直接返回，防越权读他人审批。
+	if _, err := s.tasks.GetRun(ctx, ownerID, runID); err != nil {
+		return nil, err
+	}
+	return s.approvals.ListByRun(ctx, runID)
+}
+
 type DecideApprovalInput struct {
 	OwnerID    string
 	RunID      string
