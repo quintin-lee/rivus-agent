@@ -2,7 +2,7 @@
 
 - **日期**: 2026-10-15
 - **范围**: 纯前端工程。`frontend/eslint.config.js`（新建）、`frontend/.eslintrc.cjs`（删）、`frontend/package.json`（加 devDeps + 改 `lint` script）、`frontend/src/**`（仅修 lint 报出的问题，不重构）、`frontend/.github/workflows/ci.yml`（frontend job 加 lint step）。
-- **状态**: 设计已确认。
+- **状态**: 设计完成，**本轮搁置**。Blocker（spec review 实测）: 仓库 lockfile 钉 `typescript@7.0.2`，而 `typescript-eslint` 任一发行版 peer cap `TS<6.1`、且模块加载即抛 `does not support TS 7.0`（无发行版支持 TS≥7）；`eslint-plugin-react@7.37.5` 的 `settings.react.version:'detect'` 在 ESLint 10 下 `context.getFilename` 缺失而崩溃。本 spec 按现写法在 TS7 下**无法实施**——需先降级 `typescript@^6.0.3`（重验 tsc+vitest+vite build）或等 `typescript-eslint` 支持 TS7。3 份 ready spec（timed-out / approval-list / run-progress）先行进 plan。
 
 ## 背景 / 现状
 
