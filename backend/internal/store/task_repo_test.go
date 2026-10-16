@@ -78,3 +78,40 @@ func TestDeleteSessionWrongOwner(t *testing.T) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 }
+
+func TestListChildrenByRun(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	ses, err := tasks.CreateSession(ctx, "u1", "sub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 顶层父
+	if err := tasks.CreateRun(ctx, &domain.Run{ID: "p1", SessionID: ses, OwnerID: "u1", Status: domain.RunQueued, Mode: "react", Goal: "g", Budget: domain.Budget{}, Attempt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	// 子行（parent_run_id=p1）
+	if err := tasks.CreateRun(ctx, &domain.Run{ID: "p1c", SessionID: ses, OwnerID: "u1", Status: domain.RunQueued, Mode: "react", Goal: "cg", Budget: domain.Budget{}, ParentRunID: "p1", Attempt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	kids, err := tasks.ListChildrenByRun(ctx, "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kids) != 1 || kids[0].ID != "p1c" {
+		t.Fatalf("want 1 child p1c, got %+v", kids)
+	}
+	// 未知 parent → 非 nil 空切片
+	empty, err := tasks.ListChildrenByRun(ctx, "nope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty == nil || len(empty) != 0 {
+		t.Fatalf("want non-nil empty [] got %v", empty)
+	}
+}

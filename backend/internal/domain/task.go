@@ -104,6 +104,7 @@ type SessionInfo struct {
 type Run struct {
 	ID              string    `json:"id"`
 	SessionID       string    `json:"session_id"`
+	ParentRunID     string    `json:"parent_run_id,omitempty"`
 	OwnerID         string    `json:"owner_id"`
 	Status          RunStatus `json:"status"`
 	Mode            string    `json:"mode"`

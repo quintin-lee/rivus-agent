@@ -122,11 +122,11 @@ func (r *TaskRepo) CreateRun(ctx context.Context, run *domain.Run) error {
 	run.CreatedAt, run.UpdatedAt = ts, ts
 	_, err := r.db.ExecContext(ctx, `INSERT INTO runs(id, session_id, owner_id, status, mode, goal,
 		constraints_json, success_criteria_json, budget_json, checkpoint_id, attempt, idempotency_key,
-		started_at, finished_at, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		parent_run_id, started_at, finished_at, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.SessionID, run.OwnerID, string(run.Status), run.Mode, run.Goal,
 		string(cj), string(scj), string(bj), run.CheckpointID, run.Attempt, nullIfEmpty(run.IdempotencyKey),
-		nullInt(run.StartedAt), nullInt(run.FinishedAt), run.CreatedAt, run.UpdatedAt)
+		nullIfEmpty(run.ParentRunID), nullInt(run.StartedAt), nullInt(run.FinishedAt), run.CreatedAt, run.UpdatedAt)
 	return err
 }
 
@@ -147,14 +147,14 @@ func (r *TaskRepo) GetRun(ctx context.Context, ownerID, runID string) (*domain.R
 	var run domain.Run
 	var status, mode, goal string
 	var cj, scj, bj sql.NullString
-	var cpid, idem, ecode, esum, resj sql.NullString
+	var cpid, idem, pr, ecode, esum, resj sql.NullString
 	var sa, fa sql.NullInt64
 	err := r.db.QueryRowContext(ctx, `SELECT id, session_id, owner_id, status, mode, goal,
 		constraints_json, success_criteria_json, budget_json, checkpoint_id, attempt, idempotency_key,
-		started_at, finished_at, error_code, error_summary, result_json, created_at, updated_at
+		parent_run_id, started_at, finished_at, error_code, error_summary, result_json, created_at, updated_at
 		FROM runs WHERE id = ?`, runID).Scan(
 		&run.ID, &run.SessionID, &run.OwnerID, &status, &mode, &goal,
-		&cj, &scj, &bj, &cpid, &run.Attempt, &idem, &sa, &fa, &ecode, &esum, &resj,
+		&cj, &scj, &bj, &cpid, &run.Attempt, &idem, &pr, &sa, &fa, &ecode, &esum, &resj,
 		&run.CreatedAt, &run.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -166,10 +166,54 @@ func (r *TaskRepo) GetRun(ctx context.Context, ownerID, runID string) (*domain.R
 	_ = json.Unmarshal([]byte(strOr(cj, "[]")), &run.Constraints)
 	_ = json.Unmarshal([]byte(strOr(scj, "[]")), &run.SuccessCriteria)
 	_ = json.Unmarshal([]byte(strOr(bj, "{}")), &run.Budget)
-	run.CheckpointID, run.IdempotencyKey = strOr(cpid, ""), strOr(idem, "")
+	run.CheckpointID, run.IdempotencyKey, run.ParentRunID = strOr(cpid, ""), strOr(idem, ""), strOr(pr, "")
 	run.ErrorCode, run.ErrorSummary, run.ResultJSON = strOr(ecode, ""), strOr(esum, ""), strOr(resj, "")
 	run.StartedAt, run.FinishedAt = intOr(sa), intOr(fa)
 	return &run, nil
+}
+
+// ListChildrenByRun 返回 parent_run_id = parentRunID 的全部子 run（created_at 升序）；无行时返回非 nil 空切片。
+func (r *TaskRepo) ListChildrenByRun(ctx context.Context, parentRunID string) ([]domain.Run, error) {
+	out := []domain.Run{}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, session_id, owner_id, status, mode, goal,
+			constraints_json, success_criteria_json, budget_json,
+			checkpoint_id, attempt, idempotency_key, parent_run_id, started_at, finished_at,
+			error_code, error_summary, result_json, created_at, updated_at
+		 FROM runs WHERE parent_run_id = ? ORDER BY created_at ASC`, parentRunID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var run domain.Run
+		var status, mode, goal string
+		var cj, scj, bj sql.NullString
+		var cpid, idem, pr, ecode, esum, resj sql.NullString
+		var sa, fa sql.NullInt64
+		if err := rows.Scan(
+			&run.ID, &run.SessionID, &run.OwnerID, &status, &mode, &goal,
+			&cj, &scj, &bj, &cpid, &run.Attempt, &idem, &pr, &sa, &fa, &ecode, &esum, &resj,
+			&run.CreatedAt, &run.UpdatedAt); err != nil {
+			return nil, err
+		}
+		run.Status = domain.RunStatus(status)
+		run.Mode = mode
+		run.Goal = goal
+		_ = json.Unmarshal([]byte(strOr(cj, "[]")), &run.Constraints)
+		_ = json.Unmarshal([]byte(strOr(scj, "[]")), &run.SuccessCriteria)
+		_ = json.Unmarshal([]byte(strOr(bj, "{}")), &run.Budget)
+		run.CheckpointID = strOr(cpid, "")
+		run.IdempotencyKey = strOr(idem, "")
+		run.ParentRunID = strOr(pr, "")
+		run.ErrorCode = strOr(ecode, "")
+		run.ErrorSummary = strOr(esum, "")
+		run.ResultJSON = strOr(resj, "")
+		run.StartedAt = intOr(sa)
+		run.FinishedAt = intOr(fa)
+		out = append(out, run)
+	}
+	return out, rows.Err()
 }
 
 func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID string, limit int) ([]domain.Run, error) {
