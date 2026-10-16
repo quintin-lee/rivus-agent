@@ -170,35 +170,7 @@ func shortHash(h string) string {
 }
 
 func (r *EinoRunner) buildAgent(ctx context.Context, runID string, budget domain.Budget, approved map[string]bool) (*adk.ChatModelAgent, error) {
-	base, err := r.modelFactory()
-	if err != nil {
-		return nil, err
-	}
-	var tools []tool.BaseTool
-	for _, d := range r.registry.List() {
-		d := d
-		tools = append(tools, &gatewayTool{
-			def: d, runID: runID, approved: approved,
-			executor: r.executor, onNeedApproval: r.needApprovalHandler(runID),
-		})
-	}
-	withTools, err := base.WithTools(collectInfos(tools))
-	if err != nil {
-		return nil, err
-	}
-	maxIter := budget.MaxIterations
-	if maxIter <= 0 {
-		maxIter = 12
-	}
-	cfg := &adk.ChatModelAgentConfig{
-		Name:          "rivus",
-		Description:   "general purpose agent",
-		Instruction:   r.instruction,
-		Model:         withTools,
-		MaxIterations: maxIter,
-	}
-	cfg.ToolsConfig.Tools = tools
-	return adk.NewChatModelAgent(ctx, cfg)
+	return r.buildAgentFiltered(ctx, runID, budget, approved, nil, 0)
 }
 
 func collectInfos(tools []tool.BaseTool) []*schema.ToolInfo {
