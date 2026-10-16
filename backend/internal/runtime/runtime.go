@@ -69,6 +69,9 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 	}
 	ctx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
+	// 顶层注入 depth-0 TaskContext（保 values 流入 runner.Run → 每个 task 工具调用可见）
+	ctx = WithTaskContext(ctx, TaskContext{OwnerID: ownerID, ParentRunID: run.ID,
+		SessionID: run.SessionID, ParentBudget: run.Budget, Depth: 0})
 
 	mode := SelectMode(run.Mode, run.Goal)
 	if mode == "plan_execute" {
