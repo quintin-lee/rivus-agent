@@ -44,6 +44,15 @@ describe('AssistantBubble', () => {
     expect(screen.getByText(/run cancelled/i)).toBeTruthy()
   })
 
+  it('renders an orange "Run timed out" row when error_code is "timed_out" with no result', () => {
+    const run_ = { ...run('timed_out'), error_code: 'timed_out' } as Run
+    const { container } = render(<AssistantBubble run={run_} />)
+    expect(screen.getByText(/run timed out/i)).toBeTruthy()
+    // 复用 timed_out 徽标的橙色 token（runStatusClasses）
+    const el = container.querySelector('.text-orange-400')
+    expect(el).toBeTruthy()
+  })
+
   it('renders the result plus a partial-result note when cancelled with a result', () => {
     const run_ = { ...run('cancelled', '{"ok":true}'), error_code: 'cancelled' } as Run
     render(<AssistantBubble run={run_} />)

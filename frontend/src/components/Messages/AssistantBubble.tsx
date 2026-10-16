@@ -19,6 +19,14 @@ export function AssistantBubble({ run }: { run: Run }) {
       </p>
     )
   }
+
+  if (run.error_code === 'timed_out') {
+    return (
+      <p className="rounded-lg border border-orange-500/30 bg-orange-500/15 p-3 text-sm text-orange-400">
+        Run timed out
+      </p>
+    )
+  }
   if (run.error_code) {
     return (
       <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm">
