@@ -56,6 +56,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/runs/{id}/cancel", s.handleCancel)
 	s.mux.HandleFunc("POST /api/v1/runs/{id}/resume", s.handleResume)
 	s.mux.HandleFunc("POST /api/v1/runs/{id}/approvals/{approval_id}", s.handleApproval)
+	s.mux.HandleFunc("GET /api/v1/runs/{id}/approvals", s.handleListApprovals)
 	s.mux.HandleFunc("GET /api/v1/settings/model", s.handleGetModelSettings)
 	s.mux.HandleFunc("PUT /api/v1/settings/model", s.handleUpdateModelSettings)
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
@@ -364,6 +365,24 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "decided"})
+}
+
+// handleListApprovals 只读列出某 run 的全部审批记录（bootstrap pending 卡用）。
+func (s *Server) handleListApprovals(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	approvals, err := s.runs.ListApprovals(r.Context(), ownerOf(r), id)
+	if err != nil {
+		// GetRun 对不存在的 run 返回 sql.ErrNoRows（非 domain.ErrNotFound），
+		// 对非本 owner 的 run 返回 domain.ErrForbidden；两者都走 404，避免泄露他人 run 是否存在。
+		// ListByRun 的 DB 读失败仍走 500。
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, domain.ErrForbidden) {
+			writeErr(w, 404, "not_found", "run not found", false)
+			return
+		}
+		writeErr(w, 500, "internal", "list approvals failed", true)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"approvals": approvals})
 }
 
 func (s *Server) modelSettings(ctx context.Context) (provider, baseURL, name string, keySet bool) {
