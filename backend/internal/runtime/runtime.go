@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -134,6 +135,18 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 	if waitApproval || needApproval.Load() {
 		_ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunWaitingApproval, "", "")
 		observability.IncrRunFinished(false)
+		return
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		// ctx is DEAD here: database/sql short-circuits writes on a dead context
+		// (prepareContext returns ctx.Err() without touching the driver). All writes
+		// in this branch must use context.Background() or the status update / event
+		// append silently no-op and the run stays `running` forever.
+		bgCtx := context.Background()
+		_ = r.deps.Tasks.UpdateStatus(bgCtx, ownerID, run.ID, domain.RunTimedOut, "timed_out", "run exceeded max duration budget")
+		r.append(bgCtx, run.ID, domain.EvtRunTimedOut, "run timed out")
+		observability.IncrRunFinished(false)
+		r.deps.Runner.DeleteCheckpointsByRun(bgCtx, run.ID)
 		return
 	}
 	if modelFailed && toolEvidence == 0 {
