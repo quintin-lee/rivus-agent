@@ -301,6 +301,8 @@ func ReadToolConfig(ctx context.Context, s *store.SettingsRepo) (ToolConfig, err
 	return out, nil
 }
 
+// getStr reads a settings key; a read error is treated as "absent" (empty)
+// on purpose — a missing mcp.servers key means "no MCP servers", not a failure.
 func getStr(ctx context.Context, s *store.SettingsRepo, key string) string {
 	v, _, _ := s.Get(ctx, key)
 	return v
@@ -456,6 +458,8 @@ func (f *StdioTransportFactory) New(ctx context.Context, spec ServerSpec) (Trans
 - Create: `backend/internal/mcp/fake_test.go`
 
 `FakeTransport` is a `Transport` that answers canned JSON-RPC without a subprocess. It is **exported and in a non-test file** so both `internal/mcp` tests and `tests/integration` can import it (a `_test.go`-only fake can't be imported across packages). It has two modes: **up** (canned `initialize`/`tools/list`/`tools/call`) and **crash** (`ReadLine` immediately errors, simulating a disconnected server).
+
+(TDD order note: Task 4 Step 1 is "Implement" rather than "Write failing test" — the `FakeTransport` is the test seam that *later* tasks' failing tests depend on, so it ships with a smoke test (Step 2) rather than a red test first. This is an intentional, documented deviation from the fail-first pattern, not a violation of the chunk green-gate: the chunk still compiles + tests green at each commit.)
 
 - [ ] **Step 1: Implement** — `backend/internal/mcp/fake.go`:
 ```go
@@ -772,7 +776,7 @@ func joinText(p []string) string {
 }
 ```
 
-**Important (fixes the ordering + double-wrap concerns):** the `FakeTransport` in Task 4 must actually answer the client's three method calls in sequence — that's why Task 4 (fake) precedes Task 5 (client). And note the `Handler` from the bridge (Task 6) will NOT add its own timeout: the executor already wraps every tool call with `context.WithTimeout(def.TimeoutMs)` (`tool/executor.go`), so the `mcp__` def just sets `TimeoutMs: 30000` and relies on that.
+**Important (fixes the ordering + double-wrap concerns):** the `FakeTransport` in Task 4 must actually answer the client's three method calls in sequence — that's why Task 4 (fake) precedes Task 5 (client). And note the `Handler` from the bridge (Task 7) will NOT add its own timeout: the executor already wraps every tool call with `context.WithTimeout(def.TimeoutMs)` (`tool/executor.go:73-75`), so the `mcp__` def just sets `TimeoutMs: 30000` and relies on that.
 
 - [ ] **Step 4: Run to verify pass** — `cd backend && go test ./internal/mcp/ -run TestClientListAndCall -v` → PASS.
 - [ ] **Step 5: Commit** — `git add backend/internal/mcp/client.go backend/internal/mcp/client_test.go && git commit -m "feat(mcp): JSON-RPC client (initialize/tools list/call, content block->string, isError->error)"`
@@ -1008,9 +1012,11 @@ import (
 )
 
 func TestMCPDefinitions(t *testing.T) {
-	m := NewManager(NewFakeTransportFactory())
+	f := NewFakeTransportFactory()
+	f.ByServer["fs"] = &FakeTransport{Tools: []string{"read"}, CallResult: "data"}
+	m := NewManager(f)
 	_ = m.SpawnAll(context.Background(), []ServerSpec{{Name: "fs", Command: "npx"}})
-	// (fs fake returns one tool "read")
+	// fs fake (pre-seeded above) returns one tool "read"
 	defs := MCPDefinitions(m.Status(), m)
 	if len(defs) != 1 {
 		t.Fatalf("want 1 def, got %d", len(defs))
@@ -1154,17 +1160,22 @@ func InvokeSkill(l *Loader, maxBytes int) tool.Definition {
 
 - [ ] **Step 1: Write failing test** — build a runner, `SetSkillInstructions("demo: does X")`, assert `buildAgent`'s assembled instruction contains `demo`. Also assert concurrent `SetSkillInstructions` + build doesn't race (`go test -race`).
 - [ ] **Step 2: Run fail** — `undefined: r.SetSkillInstructions`.
-- [ ] **Step 3: Implement** — add to `EinoRunner`:
+- [ ] **Step 3: Implement** — the setter must be **idempotent** (Task 12 calls it on every enable-save and with `""` on disable; accumulating would duplicate the skills section). Store the base instruction once and **replace** the skills section on every call:
 ```go
-func (r *EinoRunner) SetSkillInstructions(listening string) {
+// baseInstruction is set once in NewEinoRunner (the existing instruction value).
+// SetSkillInstructions rebuilds the full instruction as base + optional skills section,
+// so repeated enables don't accumulate and "" removes the section.
+func (r *EinoRunner) SetSkillInstructions(listing string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if listening != "" {
-		r.instruction = r.instruction + "\n\n可用技能：\n" + listening
+	if listing == "" {
+		r.instruction = r.baseInstruction
+		return
 	}
+	r.instruction = r.baseInstruction + "\n\n可用技能：\n" + listing
 }
 ```
-and in `buildAgentFiltered`/`buildAgent`, read `r.instruction` under `r.mu.RLock()`. (The runner's existing `mu` already guards `needApprovalByRun`; reuse it.)
+Add the `baseInstruction string` field to `EinoRunner` and set it in `NewEinoRunner` (same place the existing instruction literal is assigned); also initialize `r.instruction = r.baseInstruction` there. In `buildAgentFiltered`/`buildAgent`, read `r.instruction` under `r.mu.RLock()`. (The runner's existing `mu` already guards `needApprovalByRun`; reuse it.)
 - [ ] **Step 4: Run pass** — `go test -race ./internal/runtime/ -run TestInstruction -v`.
 - [ ] **Step 5: Commit** — `git commit -m "feat(runtime): guarded skill-name instruction augmentation (delta a)"`.
 
@@ -1176,11 +1187,21 @@ and in `buildAgentFiltered`/`buildAgent`, read `r.instruction` under `r.mu.RLock
 
 `EvtToolFailed` (`domain/event.go:25`) is declared but never emitted; the tool-error branch of `drain` today only emits run-level `EvtModelFailed`/`EvtRunFailed`.
 
-- [ ] **Step 1: Write failing test** — script a tool that errors; assert the runner's event channel carries an `EvtToolFailed` for that tool (before the run-fail path).
-- [ ] **Step 2: Run fail** — no `EvtToolFailed` emitted.
-- [ ] **Step 3: Implement** — in `drain`'s tool-error path (where `ev.Err != nil` and it is a tool error, `runner_eino.go:247-254`), add `r.emit(out, runID, domain.EvtToolFailed, ev.Err.Error(), toolName, "")` **before** the existing run-fail emission. Do **not** change the run-fail behavior (v1 still fails the run; §9 non-goal).
-- [ ] **Step 4: Run pass** — `go test ./internal/runtime/ -run TestEmitToolFailed -v`.
-- [ ] **Step 5: Commit** — `git commit -m "feat(runtime): emit EvtToolFailed in drain (delta b, run-fail behavior unchanged)"`.
+- [ ] **Step 1: Write failing test** — `backend/internal/runtime/runner_failed_tool_test.go`. **Do NOT import `tests/testutil` here** — `testutil` imports `internal/runtime` (harness exposes `Runner *runtime.EinoRunner`), so an in-package `package runtime` test that imports `testutil` is an import cycle. Instead build a tiny local stub `ToolCallingChatModel` (satisfies `einomodel.ToolCallingChatModel`: one scripted tool-call that makes the gateway tool return a `domain.Wrap("tool_failed", …)` error) and drive `runner.drain` through it. Assert the `out` channel carries an `EvtToolFailed` (before `EvtRunFailed`).
+- [ ] **Step 2: Run fail** — `cd backend && go test ./internal/runtime/ -run TestEmitToolFailed -v` → no `EvtToolFailed` emitted (FAIL).
+- [ ] **Step 3: Implement** — a failed tool call surfaces in `drain` as a `*domain.CodedError{Code:"tool_failed"}` (the executor wraps every handler error this way, `tool/executor.go:82`). It carries **no tool-name field**, so the exact failing tool is not recoverable — track a best-effort `lastTool` (the most recent `mo.ToolName` seen) as a hint. Concretely, in `drain` (`runner_eino.go:231-281`):
+  1. Next to `var lastText string`, add `lastTool := ""`.
+  2. In the `mo.ToolName != ""` branch (existing `runner_eino.go:269-271`), set `lastTool = mo.ToolName` before the existing `EvtToolCompleted` emit.
+  3. In the `if ev.Err != nil` branch (existing `runner_eino.go:247-254`), **before** the `EvtModelFailed`/`EvtRunFailed` emissions, add:
+```go
+var ce *domain.CodedError
+if errors.As(ev.Err, &ce) && ce.Code == "tool_failed" {
+	r.emit(out, runID, domain.EvtToolFailed, ev.Err.Error(), lastTool, "")
+}
+```
+  4. **Do NOT change the run-fail behavior** (v1 still emits `EvtModelFailed` + `EvtRunFailed` and returns; §9 non-goal). Add the `errors` import if not present.
+- [ ] **Step 4: Run pass** — `cd backend && go test ./internal/runtime/ -run TestEmitToolFailed -v` → PASS.
+- [ ] **Step 5: Commit** — `git add backend/internal/runtime/runner_eino.go backend/internal/runtime/runner_failed_tool_test.go && git commit -m "feat(runtime): emit EvtToolFailed in drain for tool_failed errors (run-fail behavior unchanged)"`.
 
 ---
 
@@ -1273,8 +1294,8 @@ Routes (add inside `routes()`; the tool handlers are no-ops that return a struct
 s.mux.HandleFunc("GET /api/v1/settings/tools", s.handleGetTools)
 s.mux.HandleFunc("PUT /api/v1/settings/tools", s.handleUpdateTools)
 ```
-- `handleGetTools`: if `s.tools == nil` → 501 `{"error":"tools not configured"}`; else call `s.tools.GetToolsStatus(r.Context())` → 200 `ToolStatus`.
-- `handleUpdateTools`: if `s.tools == nil` → 501; else decode `ToolConfigIn`, call `s.tools.SaveTools(r.Context(), in)` → 200 `{}`.
+- `handleGetTools`: if `s.tools == nil` → `writeErr(w, http.StatusNotImplemented, "tools_not_configured", "tools provider not set on this server", false)`; else call `s.tools.GetToolsStatus(r.Context())` → 200 `ToolStatus`.
+- `handleUpdateTools`: if `s.tools == nil` → same `writeErr(..., 501, "tools_not_configured", …)`; else decode `ToolConfigIn`, call `s.tools.SaveTools(r.Context(), in)` → 200 `{}`. (Use the existing `writeErr` shape — `{code,message,retryable}` — not a bare JSON error, to match `server.go:84-88`.)
 
 Handlers call the provider; `SaveTools` persists + triggers reconcile (implemented by the App, Task 12).
 
@@ -1425,13 +1446,15 @@ func skillListing(l *skill.Loader) string {
 (Import the exact `httpapi` path as it is laid out in this repo — `internal/api/http` is imported elsewhere as `httpapi "rivus-agent-backend/internal/api/http"`; confirm the module path prefix from `go.mod`.)
 
 - [ ] **Step 2: Wire `Start`** (`app.go`, replacing the discarded loader `Refresh()` at `app.go:79`):
-  1. `loader := skill.NewLoader(cfg.SkillsDir)`; keep the value; `_ = loader.Refresh()`.
-  2. `manager := mcp.NewManager(mcp.NewStdioTransportFactory())`.
-  3. `tc, _ := mcp.ReadToolConfig(ctx, settings)`; `manager.SpawnAll(ctx, tc.Servers)`; `registry.Replace("mcp__", mcp.MCPDefinitions(manager.Status(), manager))`.
-  4. If `tc.SkillsEnabled`: `registry.Register(skill.InvokeSkill(loader, 32*1024))` + `runner.SetSkillInstructions(skillListing(loader))`.
-  5. `provider := newToolConfigProvider(settings, manager, loader, registry, runner)`.
+  0. Add fields to the `App` struct (`app.go:34-39`): `manager *mcp.Manager` and `skillLoader *skill.Loader` (so `Stop` and the provider can reach them).
+  1. `a.skillLoader = skill.NewLoader(cfg.SkillsDir)`; keep the value; `_ = a.skillLoader.Refresh()`.
+  2. `a.manager = mcp.NewManager(mcp.NewStdioTransportFactory())`.
+  3. `tc, _ := mcp.ReadToolConfig(ctx, settings)`; `a.manager.SpawnAll(ctx, tc.Servers)`; `registry.Replace("mcp__", mcp.MCPDefinitions(a.manager.Status(), a.manager))`.
+  4. If `tc.SkillsEnabled`: `registry.Register(skill.InvokeSkill(a.skillLoader, 32*1024))` + `runner.SetSkillInstructions(skillListing(a.skillLoader))`.
+  5. `provider := newToolConfigProvider(settings, a.manager, a.skillLoader, registry, runner)`.
   6. Pass the option into the server: `srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions, httpapi.WithToolConfigProvider(provider))`.
-- [ ] **Step 3: Wire `Stop`** — `manager.StopAll()` before/with `a.srv.Shutdown(ctx)`.
+
+- [ ] **Step 3: Wire `Stop`** — `a.manager.StopAll()` before/with `a.srv.Shutdown(ctx)` (in `App.Stop`, `app.go:99`). Guard against a nil manager (the provider is optional).
 - [ ] **Step 4: Sync note** — the registry mutation and `SetSkillInstructions` here can race an in-flight `EinoRunner.drain` that reads `registry.List()` live. Two guards are already in place from earlier tasks: registry mutations are `Registry.mu`-guarded (`registry.go:50`), and `SetSkillInstructions` is `EinoRunner.mu`-guarded (§6 delta a). A run in flight keeps the agent snapshot it built at start; reconcile only affects **new** agent builds. No extra lock is needed; document this invariant in `toolconfig.go`.
 - [ ] **Step 5: Build + vet** — `cd backend && go build ./... && go vet ./internal/app/ ./internal/api/http/`.
 - [ ] **Step 6: Smoke test** — `make run`, then `curl localhost:8080/api/v1/settings/tools` (expect the shape from §4.6, mcp `servers` empty or reflecting configured servers); `PUT` a `mcp.servers` value and confirm reconcile in the logs.
@@ -1464,7 +1487,7 @@ The `tests/integration` package **cannot** import the `internal/mcp` `FakeTransp
 
 - [ ] **Step 1: Wire harness** — in `harness.New`: register `skill.InvokeSkill(loader, 32*1024)` (point `loader` at a fixture `SKILL.md` dir); register a canned `mcp__fake__echo` def (`Risk=external, Approval=always`, `RequiredScopes` empty, stub handler); construct a minimal `ToolConfigProvider` stub and pass `httpapi.New(..., httpapi.WithToolConfigProvider(stub))` (the variadic option — existing 7-arg calls keep compiling).
 - [ ] **Step 2: Write tests** — `backend/tests/integration/toolconfig_test.go`:
-  - a run whose model calls the read-only-shaped MCP tool → `tool.completed` event + parent succeeds.
+  - a run whose model calls the **pre-approved** `mcp__fake__echo` tool (add it to `RunRequest.ApprovedTools`, keyed `name:argsHash` as `gatewayTool.InvokableRun` expects) → `tool.completed` event + parent succeeds.
   - a run whose model calls the `external/always` MCP tool → `waiting_approval` → `decide` (approve) → `resume` (mirror `approval_test.go`'s pattern).
   - `invoke_skill` returns the SKILL.md body as tool output.
   - `GET /settings/tools` shape; `PUT` persists + reconciles (assert the stub recorded the payload).
