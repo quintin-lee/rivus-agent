@@ -28,6 +28,9 @@ func (r *Registry) RemoveByPrefix(prefix string) int {
 // Replace 清除所有以 prefix 开头的工具，再通过 Register 重新注册 defs
 // （TimeoutMs/MaxResultBytes 默认值与重名校验保持单一来源）。
 // 返回首次注册错误。
+// 注意：非原子——RemoveByPrefix 与 Register 循环各自独立加锁，中间窗口内并发
+// goroutine 可能看到已被清除的 prefix。单线程 reconcile 路径（ToolConfigProvider）安全。
+// 空 prefix 匹配所有名称，等同清空整个 registry。
 func (r *Registry) Replace(prefix string, defs []Definition) error {
 	r.RemoveByPrefix(prefix)
 	for i := range defs {
