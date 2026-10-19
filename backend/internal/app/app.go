@@ -16,6 +16,7 @@ import (
 	"rivus-agent-backend/internal/model"
 	"rivus-agent-backend/internal/observability"
 	"rivus-agent-backend/internal/runtime"
+	"rivus-agent-backend/internal/subagent"
 	"rivus-agent-backend/internal/service"
 	"rivus-agent-backend/internal/skill"
 	"rivus-agent-backend/internal/store"
@@ -66,6 +67,10 @@ func (a *App) Start(ctx context.Context) error {
 			return v, ok
 		})
 	}, registry, executor, checkpoints)
+	// task 工具（同步只读子 agent）：runner 同时满足 ChildExecutor + CheckpointCleaner。
+	if err := registry.Register(subagent.TaskTool(registry, tasks, runner, runner)); err != nil {
+		return err
+	}
 	rt := runtime.New(runtime.Deps{Tasks: tasks, Events: events, Approvals: approvals, Runner: runner}, cfg.WorkerConcurrency)
 
 	if _, err := runtime.RecoverOrphans(ctx, tasks, events); err != nil {

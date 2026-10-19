@@ -19,6 +19,7 @@ import (
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/runtime"
+	"rivus-agent-backend/internal/subagent"
 	"rivus-agent-backend/internal/service"
 	"rivus-agent-backend/internal/store"
 	"rivus-agent-backend/internal/tool"
@@ -118,6 +119,7 @@ type Harness struct {
 	Events    *store.EventRepo
 	Approvals *store.ApprovalRepo
 	Model     *ScriptedModel
+	Runner    *runtime.EinoRunner
 	Server    *httptest.Server
 	Client    *http.Client
 }
@@ -147,6 +149,10 @@ func New(t TB, extraTools ...tool.Definition) *Harness {
 	runner := runtime.NewEinoRunner(func() (einomodel.ToolCallingChatModel, error) {
 		return model, nil
 	}, registry, executor, checkpoints)
+	// task 工具（镜像 app.go）：runner 同时满足 ChildExecutor + CheckpointCleaner。
+	if err := registry.Register(subagent.TaskTool(registry, tasks, runner, runner)); err != nil {
+		t.Fatal(err)
+	}
 	rt := runtime.New(runtime.Deps{Tasks: tasks, Events: events, Approvals: approvals, Runner: runner}, 4)
 
 	cfg := config.Default()
@@ -159,7 +165,7 @@ func New(t TB, extraTools ...tool.Definition) *Harness {
 	t.Cleanup(ts.Close)
 
 	return &Harness{T: t, DB: db, Tasks: tasks, Events: events, Approvals: approvals,
-		Model: model, Server: ts, Client: ts.Client()}
+		Model: model, Runner: runner, Server: ts, Client: ts.Client()}
 }
 
 func (h *Harness) Do(method, path string, body any, headers map[string]string) (int, []byte) {
