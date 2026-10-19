@@ -44,7 +44,7 @@ func ServersFromJSON(v string) ([]ServerSpec, error) {
 	}
 	var out []ServerSpec
 	if err := json.Unmarshal([]byte(v), &out); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mcp.servers: %w", err)
 	}
 	for i := range out {
 		if !ValidServerName(out[i].Name) || out[i].Command == "" {
