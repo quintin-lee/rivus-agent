@@ -79,13 +79,17 @@ internal/mcp/
 - **Reconcile (registry mutation seam)**: `Registry` exposes only
   `Register`/`Get`/`List` today and `Register` **rejects duplicates**
   (`registry.go:57-73`) — it has **no delete/replace API**. So reconcile must
-  mutate the shared registry in place. **Add two small, testable methods to
-  `tool.Registry`:** `RemoveByPrefix(prefix string) int` and
-  `Replace(prefix string, defs []Definition)` (clear prefix, re-add). `Manager`
-  drives them on config change: stop removed servers → `RemoveByPrefix("mcp__<name>__")`
+  mutate the shared registry in place. **Add three small, testable methods to
+  `tool.Registry`:** `Remove(name string) bool` (exact-name, for `invoke_skill`
+  live-toggle), `RemoveByPrefix(prefix string) int`, and
+  `Replace(prefix string, defs []Definition)` (clear prefix, re-add through Register).
+  The Manager drives them on config change: stop removed servers → `RemoveByPrefix("mcp__<name>__")`
   → spawn added servers → `Replace("mcp__", allCurrentMCPDefs)`. This keeps the
   runner (which holds the `*Registry` pointer) fully valid with **zero runner
-  re-wiring**.
+  re-wiring**. `Replace` must re-add each def **through `Register`'s
+  normalization** (the `TimeoutMs`/`MaxResultBytes` defaults + duplicate check at
+  `registry.go:57-73`) so those invariants stay single-sourced; it is a
+  clear-prefix-then-Register loop, not a raw map write.
 
 ### 4.2 `internal/skill` — `invoke_skill` tool (new tool, existing package)
 
@@ -163,8 +167,13 @@ Two endpoints (mirror the existing `GET/PUT /api/v1/settings/model`,
 - `PUT /api/v1/settings/tools` →
   body `{ "skillsEnabled": bool, "mcpEnabled": bool,
           "mcpServers": [{"name","command","args":[]}] }`; persists the three
-  settings keys then **triggers `Manager.Reconcile`** (the same save path where
-  model settings are applied today).
+  settings keys then **triggers reconcile** on the shared registry:
+  - **skills**: `skillsEnabled` on/off → `Register(invoke_skill)` / `Remove("invoke_skill")`
+    (add `Registry.Remove(name)` for the exact-name case; `RemoveByPrefix` is for the `mcp__` family).
+  - **mcp**: `Manager.Reconcile` (stop removed / spawn added / `Replace("mcp__", …)`).
+  (The model-settings path persists keys only; its application is lazy, per run,
+  via the model-factory lookup at `app.go:62-68`. Tool reconcile is a distinct,
+  explicit step here — not "the same place model settings apply".)
 
 **Wiring to the server layer:** `app.go` constructs the `*mcp.Manager` (holding
 its child connections) and the `*skill.Loader`. `httpapi.New` gains a small
@@ -179,6 +188,13 @@ implemented in `internal/app` (which owns the `SettingsRepo`, the `Manager`, and
 the `Loader`). This is the seam the reviewer flagged ("how do the MCP Manager +
 skill Loader reach the server layer") — solved by App implementing the provider
 and passing it into `httpapi.New`, keeping the HTTP layer decoupled from both.
+
+**`Manager.Status()` shape** (feeds the `GET` payload; §7 fake-server tests assert it):
+one entry per configured server —
+`{ name, command, status: "up"|"down"|"error", err string,
+   tools: [{ name, description }] }`,
+where `tools` is the cached `tools/list` result and `status="up"` only after a
+successful `initialize` + `tools/list`.
 
 ## 5. Data Flow
 
@@ -202,9 +218,13 @@ output → model continues with it as context.
 
 - **(a) Skill-name instruction augmentation.** `instruction` is a hardcoded field
   set at construction (`runner_eino.go:55,75`) and consumed at agent build
-  (`runner_child.go:105`). Add a setter / builder hook so the assembled instruction
-  appends the available skill names + one-line descriptions (empty when no
-  skills). Bounded: one field + one call.
+  (`runner_child.go:105`, where `buildAgentFiltered` reads it **without** the
+  runner mutex). Add a setter + augment-on-build so the instruction appends the
+  available skill names + one-line descriptions (empty when no skills). Because
+  a live skill-toggle (`skills.enabled`) rewrites this, the write must be
+  guarded by `EinoRunner`'s existing `mu` (or invoked only before the first
+  `Run` in `app.go Start` ordering) — a bare field write races a concurrent
+  agent build. Bounded: one field + one guarded setter.
 - **(b) `EvtToolFailed` emission.** `EvtToolFailed` is declared in the domain
   (`domain/event.go:25`) but emitted nowhere; `drain` handles tool errors only
   via the run-level `EvtModelFailed`/`EvtRunFailed` path. Add one `EvtToolFailed`
@@ -223,7 +243,7 @@ Everything else is unchanged:
 
 ## 7. Testing
 
-- **`tool.Registry` mutation**: `RemoveByPrefix` + `Replace` unit tests
+- **`tool.Registry` mutation**: `Remove` + `RemoveByPrefix` + `Replace` unit tests
   (add/remove/re-add `mcp__` entries; assert no dup-register error, assert
   `List` reflects the change on the *same* pointer).
 - **`internal/mcp`**: in-process fake MCP stdio server (canned
@@ -246,7 +266,7 @@ Everything else is unchanged:
 
 ## 8. Sequenced Chunks
 
-1. `tool.Registry` mutation methods (`RemoveByPrefix`/`Replace`) + settings keys
+1. `tool.Registry` mutation methods (`Remove`/`RemoveByPrefix`/`Replace`) + settings keys
    (`skills.enabled`, `mcp.enabled`, `mcp.servers`) + `/settings/tools` API +
    `ToolConfigProvider` wiring.
 2. `internal/mcp` (transport → client → manager) + registry bridge (`Replace`).
