@@ -1147,7 +1147,7 @@ func InvokeSkill(l *Loader, maxBytes int) tool.Definition {
 }
 ```
 - [ ] **Step 4: Run pass** — `go test ./internal/skill/ -run TestInvokeSkill -v`.
-- [ ] **Step 5: Commit** — `git commit -m "feat(skill): invoke_skill tool backed by Loader (read/never)"`.
+- [ ] **Step 5: Commit** — `git add backend/internal/skill/skill_tool.go backend/internal/skill/skill_tool_test.go && git commit -m "feat(skill): invoke_skill tool backed by Loader (read/never)"`.
 
 ### Task 9: runner delta (a) — guarded skill-name instruction augmentation
 
@@ -1498,7 +1498,7 @@ The `tests/integration` package **cannot** import the `internal/mcp` `FakeTransp
 
 - [ ] **Step 1: Full suite** — `cd backend && go build ./... && go vet ./... && go test ./...` (expect green; `git diff --name-only` shows no unintended Go/frontend cross-contamination per acceptance).
 - [ ] **Step 2: Docs** — add a "Tool configuration" section to `backend/README.md` (settings keys, stdio server example, default-high-risk + empty-scopes invariant, `invoke_skill`).
-- [ ] **Step 3: Commit** — `git commit -m "docs: tool configuration (skill + MCP + global config)"`.
+- [ ] **Step 3: Commit** — `git add backend/README.md && git commit -m "docs: tool configuration (skill + MCP + global config)"`.
 
 ---
 
