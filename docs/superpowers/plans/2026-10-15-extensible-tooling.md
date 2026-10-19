@@ -331,7 +331,7 @@ git commit -m "feat(mcp): tool-config schema + settings keys (skills.enabled/mcp
 - Create: `backend/internal/mcp/transport.go`
 - Test: `backend/internal/mcp/transport_test.go`
 
-One JSON-RPC message per line over a child process (its own process group for clean kill). The `Transport` interface is the seam that makes the whole thing testable without a subprocess: the Manager is built against a `TransportFactory`, and tests inject the in-memory `FakeTransport` from Task 5.
+One JSON-RPC message per line over a child process (its own process group for clean kill). The `Transport` interface is the seam that makes the whole thing testable without a subprocess: the Manager is built against a `TransportFactory`, and tests inject the in-memory `FakeTransport` from Task 4.
 
 - [ ] **Step 1: Write the failing test** — `backend/internal/mcp/transport_test.go`:
 ```go
@@ -1487,7 +1487,7 @@ The `tests/integration` package **cannot** import the `internal/mcp` `FakeTransp
 
 - [ ] **Step 1: Wire harness** — in `harness.New`: register `skill.InvokeSkill(loader, 32*1024)` (point `loader` at a fixture `SKILL.md` dir); register a canned `mcp__fake__echo` def (`Risk=external, Approval=always`, `RequiredScopes` empty, stub handler); construct a minimal `ToolConfigProvider` stub and pass `httpapi.New(..., httpapi.WithToolConfigProvider(stub))` (the variadic option — existing 7-arg calls keep compiling).
 - [ ] **Step 2: Write tests** — `backend/tests/integration/toolconfig_test.go`:
-  - a run whose model calls the **pre-approved** `mcp__fake__echo` tool (add it to `RunRequest.ApprovedTools`, keyed `name:argsHash` as `gatewayTool.InvokableRun` expects) → `tool.completed` event + parent succeeds.
+  - a run whose model calls the **pre-approved** `mcp__fake__echo` tool → `tool.completed` event + parent succeeds. `harness.CreateRun` always drives `rt.Execute` with an empty `ApprovedTools` map (`run_service.go:89`), so to exercise the pre-approved path drive the runner directly: `h.Runner.Run(ctx, runtime.RunRequest{RunID:…, OwnerID:…, Goal:…, ApprovedTools: map[string]bool{"mcp__fake__echo:" + itool.ArgsHash(rawArgs): true}})` where `rawArgs` is the exact argument JSON the scripted model emits. The unapproved path (bullet 2) goes through the public API.
   - a run whose model calls the `external/always` MCP tool → `waiting_approval` → `decide` (approve) → `resume` (mirror `approval_test.go`'s pattern).
   - `invoke_skill` returns the SKILL.md body as tool output.
   - `GET /settings/tools` shape; `PUT` persists + reconciles (assert the stub recorded the payload).
