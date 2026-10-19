@@ -16,21 +16,22 @@
 
 New files:
 - `backend/internal/tool/registry_mutate.go` — `Remove`, `RemoveByPrefix`, `Replace` on `*Registry`
-- `backend/internal/mcp/transport.go` — `Transport` interface + `stdioTransport`
+- `backend/internal/mcp/transport.go` — `Transport` interface + `StdioTransport` (real child process) + `StdioTransportFactory`
+- `backend/internal/mcp/fake.go` — exported in-memory `FakeTransport` (canned JSON-RPC, up/crash modes) for client/Manager tests + `FakeTransportFactory`
 - `backend/internal/mcp/client.go` — one-server JSON-RPC client (`initialize`/`tools/list`/`tools/call`)
-- `backend/internal/mcp/manager.go` — `Manager` (`SpawnAll`/`Reconcile`/`StopAll`/`Status`/`Call`)
-- `backend/internal/mcp/config.go` — `ServerSpec`, `ToolConfig`, settings key constants + encode/decode
+- `backend/internal/mcp/manager.go` — `Manager` (`SpawnAll`/`Reconcile`/`StopAll`/`Status`/`Call`) + `StatusEntry` + `TransportFactory`
+- `backend/internal/mcp/bridge.go` — `MCPDefinitions` → `[]tool.Definition` (external/always, empty RequiredScopes)
+- `backend/internal/mcp/config.go` — `ServerSpec`, `ToolConfig`, settings keys + encode/decode
 - `backend/internal/skill/skill_tool.go` — `InvokeSkill` `tool.Definition`
 - `backend/internal/app/toolconfig.go` — `ToolConfigProvider` impl (App owns SettingsRepo + Manager + Loader)
-- `backend/tests/integration/subagent`-style `toolconfig_test.go` — integration tests
-- `frontend/src/components/ToolsPanel.tsx` + a settings store slice
+- `backend/tests/integration/toolconfig_test.go` — integration tests
+- `frontend/src/components/ToolsPanel.tsx` + settings store slice
 
 Modified files:
-- `backend/internal/tool/registry.go` — (only if needed; prefer new file `registry_mutate.go`)
-- `backend/internal/runtime/runner_eino.go` + `runner_child.go` — instruction setter + `EvtToolFailed`
-- `backend/internal/app/app.go` — construct Manager + wire Loader + register tools + Stop→StopAll
-- `backend/internal/api/http/server.go` — `ToolConfigProvider` param + `/settings/tools` routes
-- `backend/tests/testutil/harness.go` — register `invoke_skill` + a fake MCP server for integration tests
+- `backend/internal/runtime/runner_eino.go` + `runner_child.go` — guarded instruction setter + `EvtToolFailed` emission
+- `backend/internal/app/app.go` — construct Manager + wire Loader + register tools + `Stop`→`StopAll` + pass provider option
+- `backend/internal/api/http/server.go` — **variadic `Option`** on `New` (backward-compatible; existing 7-arg calls still compile) + `WithToolConfigProvider` + `/settings/tools` routes/handlers
+- `backend/tests/testutil/harness.go` — register `invoke_skill` + a **canned `mcp__` tool definition** (no real MCP process) + provider stub
 - `frontend/src/components/SettingsDialog.tsx` + `frontend/src/lib/*` — Tools panel + API
 
 Sequenced chunks (each compiles + tests green on its own):
@@ -322,15 +323,257 @@ git commit -m "feat(mcp): tool-config schema + settings keys (skills.enabled/mcp
 
 ## Chunk 2: `internal/mcp` (Transport + client + Manager) + registry bridge
 
-### Task 3: stdio `Transport`
+### Task 3: `Transport` interface + `StdioTransport` + `StdioTransportFactory`
 
 **Files:**
 - Create: `backend/internal/mcp/transport.go`
 - Test: `backend/internal/mcp/transport_test.go`
 
-One JSON-RPC message per line over a stdio child process in its own process group.
+One JSON-RPC message per line over a child process (its own process group for clean kill). The `Transport` interface is the seam that makes the whole thing testable without a subprocess: the Manager is built against a `TransportFactory`, and tests inject the in-memory `FakeTransport` from Task 5.
 
-- [ ] **Step 1: Write the failing test** — a fake in-process "MCP server" (a Go function serving on a pipe) is the realistic seam, but `stdioTransport` shells out. Test the interface contract minimally with a `/bin/cat`-style echo process:
+- [ ] **Step 1: Write the failing test** — `backend/internal/mcp/transport_test.go`:
+```go
+package mcp
+
+import (
+	"context"
+	"strings"
+	"testing"
+)
+
+// /bin/cat is deterministic: it echoes each stdin line to stdout verbatim.
+func TestStdioTransportRoundTrip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires /bin/cat")
+	}
+	tt, err := NewStdioTransport(context.Background(), "/bin/cat", nil)
+	if err != nil {
+		t.Fatalf("start /bin/cat: %v", err)
+	}
+	defer func() { _ = tt.Stop() }()
+	if err := tt.WriteLine([]byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	line, err := tt.ReadLine()
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if strings.TrimSpace(string(line)) != "ping" {
+		t.Fatalf("round-trip = %q, want ping", line)
+	}
+}
+```
+- [ ] **Step 2: Run to verify fail** — `cd backend && go test ./internal/mcp/ -run TestStdioTransportRoundTrip -v` → `undefined: NewStdioTransport`.
+- [ ] **Step 3: Implement** — `backend/internal/mcp/transport.go`:
+```go
+package mcp
+
+import (
+	"bufio"
+	"context"
+	"io"
+	"os/exec"
+	"syscall"
+)
+
+// Transport is one MCP server connection. WriteLine sends a JSON-RPC message
+// (a single line); ReadLine returns one response line. The seam lets tests
+// substitute an in-memory fake for the real stdio child process.
+type Transport interface {
+	WriteLine(p []byte) error
+	ReadLine() ([]byte, error) // io.EOF when the server closed
+	Stop() error
+}
+
+// TransportFactory builds a Transport for a configured server.
+type TransportFactory interface {
+	New(ctx context.Context, spec ServerSpec) (Transport, error)
+}
+
+// StdioTransport runs one MCP server as a child process in its own process
+// group so Stop() can kill the whole group.
+type StdioTransport struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *bufio.Reader
+}
+
+func NewStdioTransport(ctx context.Context, command string, args []string) (*StdioTransport, error) {
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return &StdioTransport{cmd: cmd, stdin: stdin, stdout: bufio.NewReader(stdout)}, nil
+}
+
+func (t *StdioTransport) WriteLine(p []byte) error {
+	if _, err := t.stdin.Write(p); err != nil {
+		return err
+	}
+	_, err := t.stdin.Write([]byte("\n"))
+	return err
+}
+
+func (t *StdioTransport) ReadLine() ([]byte, error) {
+	return t.stdout.ReadBytes('\n')
+}
+
+func (t *StdioTransport) Stop() error {
+	_ = t.stdin.Close()
+	if t.cmd.Process != nil {
+		_ = syscall.Kill(-t.cmd.Process.Pid, syscall.SIGKILL)
+		_, _ = t.cmd.Process.Wait()
+	}
+	return nil
+}
+
+// StdioTransportFactory is the production TransportFactory.
+type StdioTransportFactory struct{}
+
+func NewStdioTransportFactory() *StdioTransportFactory { return &StdioTransportFactory{} }
+
+func (f *StdioTransportFactory) New(ctx context.Context, spec ServerSpec) (Transport, error) {
+	return NewStdioTransport(ctx, spec.Command, spec.Args)
+}
+```
+(UNIX-only, matching the project target. `ServerSpec` is from Task 2's `config.go`.)
+- [ ] **Step 4: Run to verify pass** — `cd backend && go test ./internal/mcp/ -run TestStdioTransportRoundTrip -v` → PASS.
+- [ ] **Step 5: Commit** — `git add backend/internal/mcp/transport.go backend/internal/mcp/transport_test.go && git commit -m "feat(mcp): Transport interface + StdioTransport (child process group) + factory"`
+
+### Task 4: in-memory `FakeTransport` (exported test seam)
+
+**Files:**
+- Create: `backend/internal/mcp/fake.go` (exported, non-test — importable by `tests/integration`)
+- Create: `backend/internal/mcp/fake_test.go`
+
+`FakeTransport` is a `Transport` that answers canned JSON-RPC without a subprocess. It is **exported and in a non-test file** so both `internal/mcp` tests and `tests/integration` can import it (a `_test.go`-only fake can't be imported across packages). It has two modes: **up** (canned `initialize`/`tools/list`/`tools/call`) and **crash** (`ReadLine` immediately errors, simulating a disconnected server).
+
+- [ ] **Step 1: Implement** — `backend/internal/mcp/fake.go`:
+```go
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+)
+
+// FakeTransport is an in-memory Transport for tests. It captures each request
+// (method + id) on WriteLine and returns the canned response for that method on
+// the next ReadLine. The client drives one request at a time, so a single
+// "last request" slot is enough for correlation.
+type FakeTransport struct {
+	Tools      []string // names returned by tools/list
+	CallResult string   // text returned for a successful tools/call
+	CallError  bool     // if true, tools/call returns isError
+	Crash      bool     // if true, the server is disconnected
+
+	mu      sync.Mutex
+	pending *jsonRequest
+}
+
+type jsonRequest struct {
+	ID     int             `json:"id"`
+	Method string         `json:"method"`
+	Params json.RawMessage `json:"params"`
+}
+
+// FakeTransportFactory builds FakeTransports for a named server spec.
+type FakeTransportFactory struct {
+	ByServer map[string]*FakeTransport
+}
+
+func NewFakeTransportFactory() *FakeTransportFactory {
+	return &FakeTransportFactory{ByServer: map[string]*FakeTransport{}}
+}
+
+func (f *FakeTransportFactory) New(_ context.Context, spec ServerSpec) (Transport, error) {
+	if ft, ok := f.ByServer[spec.Name]; ok {
+		return ft, nil
+	}
+	ft := &FakeTransport{Tools: []string{"echo"}}
+	f.ByServer[spec.Name] = ft
+	return ft, nil
+}
+
+// WriteLine decodes the request method + id and holds it for the next ReadLine.
+func (ft *FakeTransport) WriteLine(p []byte) error {
+	if ft.Crash {
+		return fmt.Errorf("mcp fake: crashed")
+	}
+	var req jsonRequest
+	if err := json.Unmarshal(p, &req); err != nil {
+		return fmt.Errorf("mcp fake: bad request: %w", err)
+	}
+	ft.mu.Lock()
+	ft.pending = &req
+	ft.mu.Unlock()
+	return nil
+}
+
+// ReadLine emits the canned JSON-RPC response for the last request method.
+func (ft *FakeTransport) ReadLine() ([]byte, error) {
+	if ft.Crash {
+		return nil, fmt.Errorf("mcp fake: disconnected")
+	}
+	ft.mu.Lock()
+	req := ft.pending
+	ft.pending = nil
+	ft.mu.Unlock()
+	if req == nil {
+		return nil, fmt.Errorf("mcp fake: ReadLine before WriteLine")
+	}
+	body, err := ft.cannedFor(req)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":%s}`, req.ID, body)), nil
+}
+
+// cannedFor builds the "result" JSON body for a request.
+func (ft *FakeTransport) cannedFor(req *jsonRequest) (string, error) {
+	switch req.Method {
+	case "initialize":
+		return `{"protocolVersion":"2024-11-05","capabilities":{},"serverInfo":{"name":"fake"}}`, nil
+	case "tools/list":
+		type mcpTool struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		}
+		tools := make([]mcpTool, 0, len(ft.Tools))
+		for _, n := range ft.Tools {
+			tools = append(tools, mcpTool{Name: n, Description: "fake tool"})
+		}
+		b, err := json.Marshal(map[string]any{"tools": tools})
+		return string(b), err
+	case "tools/call":
+		if ft.CallError {
+			return `{"content":[{"type":"text","text":"boom"}],"isError":true}`, nil
+		}
+		b, _ := json.Marshal(map[string]any{
+			"content": []any{map[string]string{"type": "text", "text": ft.CallResult}},
+		})
+		return string(b), nil
+	default:
+		return "", fmt.Errorf("mcp fake: unknown method %q", req.Method)
+	}
+}
+
+func (ft *FakeTransport) Stop() error { return nil }
+```
+(Import `context`, `encoding/json`, `fmt`, `sync`; `ServerSpec` is from Task 2's `config.go`. The factory's default server returns one tool `"echo"`; tests override `ByServer` with their own `Tools`.)
+
+- [ ] **Step 2: Add a smoke test** — `backend/internal/mcp/fake_test.go`:
 ```go
 package mcp
 
@@ -339,72 +582,411 @@ import (
 	"testing"
 )
 
-func TestStdioTransportLifecycle(t *testing.T) {
-	tt, err := NewStdioTransport(context.Background(), "/bin/echo", []string{""})
+func TestFakeTransportFactory(t *testing.T) {
+	f := NewFakeTransportFactory()
+	f.ByServer["fs"] = &FakeTransport{Tools: []string{"read"}, CallResult: "ok"}
+	tt, err := f.New(context.Background(), ServerSpec{Name: "fs", Command: "npx"})
 	if err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() { _ = tt.Stop() }()
-	if err := tt.Write([]byte("hello\n")); err != nil {
 		t.Fatal(err)
 	}
-	frame, err := tt.ReadFrame()
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if string(frame) != "hello " { // /bin/echo appends a space? assert round-trip of what was written
-		t.Fatalf("frame = %q", frame)
+	if ft, ok := tt.(*FakeTransport); !ok || ft != f.ByServer["fs"] {
+		t.Fatalf("factory must return the configured fake, got %T", tt)
 	}
 }
 ```
-(If `/bin/echo` behavior is flaky on CI, use `python3 -c "import sys; print(sys.stdin.readline().rstrip())"` or the in-pipe fake from Task 5. The test's point: Start→Write→ReadFrame→Stop round-trips a line and Stop kills the child.)
+- [ ] **Step 3: Run** — `cd backend && go test ./internal/mcp/ -run TestFakeTransportFactory -v` → PASS.
+- [ ] **Step 4: Commit** — `git add backend/internal/mcp/fake.go backend/internal/mcp/fake_test.go && git commit -m "feat(mcp): exported in-memory FakeTransport + factory (up/crash modes)"`
 
-- [ ] **Step 2: Run to verify fail** — `cd backend && go test ./internal/mcp/ -run TestStdioTransportLifecycle -v` → `undefined: NewStdioTransport`.
-- [ ] **Step 3: Implement** — `Transport` interface `{ Start(ctx) error; Write([]byte) error; ReadFrame() ([]byte, error); Stop() error }` + `stdioTransport` (`os/exec` with `SysProcAttr{Setpgid: true}`, `io.Pipe` for stdin/stdout, `cmd.ProcessGroup` kill on Stop, line-buffered reads).
-- [ ] **Step 4: Run to verify pass** — same command → PASS.
-- [ ] **Step 5: Commit** — `git commit -m "feat(mcp): stdio Transport (child process group, line framing)"`.
-
-### Task 4: JSON-RPC `client`
+### Task 5: JSON-RPC `client`
 
 **Files:**
 - Create: `backend/internal/mcp/client.go`
 - Test: `backend/internal/mcp/client_test.go`
 
-Speaks `initialize` → `tools/list` → `tools/call` over a `Transport`; maps MCP content blocks to `(string, error)`.
+Speaks the three MCP methods over a `Transport`. Concrete wire shapes (one JSON-RPC message per line):
 
-- [ ] **Step 1: Write failing test** — use the in-pipe fake MCP server from Task 5 (a scripted JSON-RPC responder): canned `initialize`→result, `tools/list`→one tool, `tools/call`→a text content block. Assert `ListTools` returns the tool and `Call` returns its text; an `isError` result maps to a Go error.
-- [ ] **Step 2: Run fail** — `undefined: NewClient` / `Client.ListTools`.
-- [ ] **Step 3: Implement** — `client.go`: request-id counter, one-message-per-line JSON-RPC writer/reader with a 5s deadline on `initialize`/`tools/list`; `tools/call` maps `result.content[]` text blocks (joined) → string, `result.isError` → error.
-- [ ] **Step 4: Run pass**.
-- [ ] **Step 5: Commit** — `git commit -m "feat(mcp): JSON-RPC client (initialize/tools list/call, block→string mapping)"`.
+| step | request (`method`, `id`) | response shape |
+|---|---|---|
+| initialize | `{"jsonrpc":"2.0","id":N,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"rivus"}}}` | `result{protocolVersion, capabilities, serverInfo}` |
+| tools/list | `{"jsonrpc":"2.0","id":N,"method":"tools/list","params":{}}` | `result.tools[] = {name, description, inputSchema}` |
+| tools/call | `{"jsonrpc":"2.0","id":N,"method":"tools/call","params":{"name":"<tool>","arguments":{...}}}` | `result.content[] = {type:"text", text}`, optional `isError` |
 
-### Task 5: in-process fake MCP stdio server (test seam)
+Request `id` is a monotonically-incrementing counter (one in flight at a time per client); the response's `id` must match before the call returns. `initialize` and `tools/list` run under a 5s context deadline.
 
-**Files:**
-- Create: `backend/internal/mcp/fake_test.go` (test-only)
+- [ ] **Step 1: Write failing test** — `backend/internal/mcp/client_test.go` (uses `FakeTransport` from Task 4):
+```go
+package mcp
 
-A fake that speaks just enough MCP stdio to drive `client`/`manager` tests. This is the seam §7 relies on for crash + reconcile tests.
+import (
+	"context"
+	"strings"
+	"testing"
+)
 
-- [ ] **Step 1: Implement the fake** — a small stdio JSON-RPC responder (canned initialize/tools_list/call; a "crash" mode that closes its pipes; a "down" mode that never answers). Keep it in `mcp` (test-only, `_test.go`) so client/manager tests can construct it.
-- [ ] **Step 2: Add a smoke test** that the fake answers `initialize`+`tools/list`.
-- [ ] **Step 3: Run** — `go test ./internal/mcp/ -run TestFakeServer -v` → PASS.
-- [ ] **Step 4: Commit** — `git commit -m "test(mcp): in-process fake stdio MCP server (up/crash/down modes)"`.
+func TestClientListAndCall(t *testing.T) {
+	ft := &FakeTransport{Tools: []string{"echo", "sum"}, CallResult: "42"}
+	c := NewClient(ft)
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	tools, err := c.ListTools(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 2 || tools[0].Name != "echo" {
+		t.Fatalf("tools = %+v", tools)
+	}
+	out, err := c.Call(context.Background(), "echo", map[string]any{"x": 1})
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if out != "42" {
+		t.Fatalf("call output = %q, want 42", out)
+	}
+	// isError result maps to a Go error
+	ft.CallError = true
+	if _, err := c.Call(context.Background(), "echo", nil); err == nil || !strings.Contains(err.Error(), "mcp") {
+		t.Fatalf("isError must map to error, got %v", err)
+	}
+}
+```
+- [ ] **Step 2: Run to verify fail** — `cd backend && go test ./internal/mcp/ -run TestClientListAndCall -v` → `undefined: NewClient`.
+- [ ] **Step 3: Implement** — `backend/internal/mcp/client.go`:
+```go
+package mcp
 
-### Task 6: `Manager` (SpawnAll / Reconcile / StopAll / Status / Call)
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync/atomic"
+)
+
+// Tool is one entry from an MCP tools/list result.
+type Tool struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema,omitempty"`
+}
+
+// Client drives one MCP server over a Transport (initialize → tools/list → tools/call).
+type Client struct {
+	transport Transport
+	id        int32
+}
+
+func NewClient(t Transport) *Client { return &Client{transport: t} }
+
+func (c *Client) nextID() int { return int(atomic.AddInt32(&c.id, 1)) }
+
+// rpc sends one JSON-RPC request and returns its response body (the "result" field).
+func (c *Client) rpc(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	id := c.nextID()
+	req, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+	if err != nil {
+		return nil, err
+	}
+	if err := c.transport.WriteLine(req); err != nil {
+		return nil, fmt.Errorf("mcp write %s: %w", method, err)
+	}
+	line, err := c.transport.ReadLine()
+	if err != nil {
+		return nil, fmt.Errorf("mcp server disconnected reading %s: %w", method, err)
+	}
+	var resp struct {
+		ID     int             `json:"id"`
+		Err    *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+		Result json.RawMessage `json:"result"`
+	}
+	if err := json.Unmarshal(line, &resp); err != nil {
+		return nil, fmt.Errorf("mcp unmarshal %s: %w", method, err)
+	}
+	if resp.Err != nil {
+		return nil, fmt.Errorf("mcp %s: %s", method, resp.Err.Message)
+	}
+	return resp.Result, nil
+}
+
+func (c *Client) Initialize(ctx context.Context) error {
+	_, err := c.rpc(ctx, "initialize", map[string]any{
+		"protocolVersion": "2024-11-05", "capabilities": map[string]any{},
+		"clientInfo": map[string]any{"name": "rivus"},
+	})
+	return err
+}
+
+func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
+	res, err := c.rpc(ctx, "tools/list", map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Tools []Tool `json:"tools"`
+	}
+	if err := json.Unmarshal(res, &out); err != nil {
+		return nil, err
+	}
+	return out.Tools, nil
+}
+
+// Call invokes tools/call and maps the content blocks to a joined string.
+// A result with isError=true is returned as a Go error.
+func (c *Client) Call(ctx context.Context, name string, arguments map[string]any) (string, error) {
+	res, err := c.rpc(ctx, "tools/call", map[string]any{"name": name, "arguments": arguments})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		IsError bool `json:"isError"`
+	}
+	if err := json.Unmarshal(res, &out); err != nil {
+		return "", err
+	}
+	var sb []string
+	for _, b := range out.Content {
+		if b.Type == "text" {
+			sb = append(sb, b.Text)
+		}
+	}
+	if out.IsError {
+		return "", fmt.Errorf("mcp tool %s error: %s", name, joinText(sb))
+	}
+	return joinText(sb), nil
+}
+
+func joinText(p []string) string {
+	s := ""
+	for i, v := range p {
+		if i > 0 {
+			s += "\n"
+		}
+		s += v
+	}
+	return s
+}
+```
+
+**Important (fixes the ordering + double-wrap concerns):** the `FakeTransport` in Task 4 must actually answer the client's three method calls in sequence — that's why Task 4 (fake) precedes Task 5 (client). And note the `Handler` from the bridge (Task 6) will NOT add its own timeout: the executor already wraps every tool call with `context.WithTimeout(def.TimeoutMs)` (`tool/executor.go`), so the `mcp__` def just sets `TimeoutMs: 30000` and relies on that.
+
+- [ ] **Step 4: Run to verify pass** — `cd backend && go test ./internal/mcp/ -run TestClientListAndCall -v` → PASS.
+- [ ] **Step 5: Commit** — `git add backend/internal/mcp/client.go backend/internal/mcp/client_test.go && git commit -m "feat(mcp): JSON-RPC client (initialize/tools list/call, content block->string, isError->error)"`
+
+### Task 6: `Manager` (`StatusEntry`, `SpawnAll`, `Reconcile`, `StopAll`, `Call`)
 
 **Files:**
 - Create: `backend/internal/mcp/manager.go`
 - Test: `backend/internal/mcp/manager_test.go`
 
-- [ ] **Step 1: Write failing test** — with the fake server:
-  - `SpawnAll` of one server → `Status()` has one entry `status="up"` with the cached `tools`.
-  - `Reconcile` removing that server → entry gone; adding a second → new entry appears.
-  - `Call` against a crashed server returns an `error` containing `"disconnected"`.
-  - `StopAll` → all statuses cleared/stopped.
-- [ ] **Step 2: Run fail** — `undefined: NewManager`.
-- [ ] **Step 3: Implement** — `Manager` owns `map[string]*client` (or connection) + a `Status()` slice matching §4.6 shape `{name, command, status:"up"|"down"|"error", err, tools:[{name,description}]}`. `SpawnAll(cfg)` spawns each; a failed `initialize` marks `status="error"` (logged + skipped, others continue). `Reconcile(cfg)` diffs the set: stop removed, spawn added, return the fresh `[]tool.Definition` for the `mcp__` family. `Call(server, tool, args, timeout)` → `tools/call`; a dead connection returns `"mcp server <name> disconnected"`.
-- [ ] **Step 4: Run pass**.
-- [ ] **Step 5: Commit** — `git commit -m "feat(mcp): Manager (spawn/reconcile/status/call, keep-alive)"`.
+The Manager owns connections + per-server status only. It does NOT touch the `tool.Registry` — the single registry-mutation call site is Task 12 (App assembly / provider), per spec §4.1 "Task 12 is the sole `registry.Replace` call site".
+
+**Types** (define in `manager.go`):
+```go
+package mcp
+
+import (
+	"context"
+	"fmt"
+	"sync"
+)
+
+// StatusEntry is one configured MCP server's live state (feeds GET /settings/tools).
+type StatusEntry struct {
+	Name    string    `json:"name"`
+	Command string    `json:"command"`
+	Status  string    `json:"status"` // "up" | "down" | "error"
+	Err     string    `json:"err,omitempty"`
+	Tools   []Tool    `json:"tools"` // cached tools/list result
+}
+
+// Manager owns all live MCP server connections.
+type Manager struct {
+	mu     sync.RWMutex
+	factory TransportFactory
+	clis   map[string]*Client // keyed by server name
+	status map[string]StatusEntry
+}
+
+// NewManager builds a Manager over a TransportFactory (stdio in prod, fake in tests).
+func NewManager(factory TransportFactory) *Manager {
+	return &Manager{factory: factory, clis: map[string]*Client{}, status: map[string]StatusEntry{}}
+}
+```
+
+- [ ] **Step 1: Write failing test** — `backend/internal/mcp/manager_test.go`:
+```go
+package mcp
+
+import (
+	"context"
+	"strings"
+	"testing"
+)
+
+func TestManagerLifecycle(t *testing.T) {
+	f := NewFakeTransportFactory()
+	f.ByServer["fs"] = &FakeTransport{Tools: []string{"read"}, CallResult: "data"}
+	m := NewManager(f)
+
+	// SpawnAll: one up server
+	if err := m.SpawnAll(context.Background(), []ServerSpec{{Name: "fs", Command: "npx"}}); err != nil {
+		t.Fatal(err)
+	}
+	if st := m.Status(); len(st) != 1 || st[0].Status != "up" || len(st[0].Tools) != 1 {
+		t.Fatalf("Status = %+v", st)
+	}
+
+	// Reconcile: remove fs, add git (crash mode)
+	f.ByServer["git"] = &FakeTransport{Crash: true}
+	if err := m.Reconcile(context.Background(), []ServerSpec{{Name: "git", Command: "git-mcp"}}); err != nil {
+		t.Fatal(err)
+	}
+	st := m.Status()
+	if len(st) != 1 || st[0].Name != "git" {
+		t.Fatalf("after Reconcile Status = %+v", st)
+	}
+	if st[0].Status != "error" { // crashed server -> error, others continue
+		t.Fatalf("git status = %q, want error", st[0].Status)
+	}
+
+	// Call on a crashed server -> "disconnected"
+	if _, err := m.Call(context.Background(), "git", "status", nil); err == nil || !strings.Contains(err.Error(), "disconnected") {
+		t.Fatalf("want disconnected error, got %v", err)
+	}
+
+	// StopAll clears live connections
+	if err := m.StopAll(); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Status()) != 0 {
+		t.Fatalf("StopAll must clear status, got %+v", m.Status())
+	}
+}
+```
+- [ ] **Step 2: Run to verify fail** — `cd backend && go test ./internal/mcp/ -run TestManagerLifecycle -v` → `undefined: (NewManager/SpawnAll/…)`.
+- [ ] **Step 3: Implement** — complete `manager.go` methods:
+```go
+// SpawnAll connects to every server in specs; a failed initialize marks it "error"
+// (logged, others continue). Idempotent for servers already connected.
+func (m *Manager) SpawnAll(ctx context.Context, specs []ServerSpec) error {
+	for _, s := range specs {
+		if _, ok := m.clientFor(s.Name); ok {
+			continue
+		}
+		m.connect(ctx, s)
+	}
+	return nil
+}
+
+// Reconcile stops servers not in specs and spawns new ones. It does NOT mutate
+// the tool registry (Task 12 is that call site).
+func (m *Manager) Reconcile(ctx context.Context, specs []ServerSpec) error {
+	keep := map[string]bool{}
+	for _, s := range specs {
+		keep[s.Name] = true
+	}
+	m.mu.Lock()
+	for name := range m.clis {
+		if !keep[name] {
+			_ = m.clis[name].transport.Stop()
+			delete(m.clis, name)
+			delete(m.status, name)
+		}
+	}
+	m.mu.Unlock()
+	for _, s := range specs {
+		if _, ok := m.clientFor(s.Name); !ok {
+			m.connect(ctx, s)
+		}
+	}
+	return nil
+}
+
+func (m *Manager) connect(ctx context.Context, s ServerSpec) {
+	tt, err := m.factory.New(ctx, s)
+	if err != nil {
+		m.setStatus(s.Name, s.Command, "error", err.Error())
+		return
+	}
+	c := NewClient(tt)
+	ictx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := c.Initialize(ictx); err != nil {
+		m.setStatus(s.Name, s.Command, "error", "initialize: "+err.Error())
+		return
+	}
+	tools, err := c.ListTools(ictx)
+	if err != nil {
+		m.setStatus(s.Name, s.Command, "error", "tools/list: "+err.Error())
+		return
+	}
+	m.mu.Lock()
+	m.clis[s.Name] = c
+	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Status: "up", Tools: tools}
+	m.mu.Unlock()
+}
+
+// Call invokes tools/call on a server. A dead connection returns a "disconnected" error.
+func (m *Manager) Call(ctx context.Context, server, tool string, args map[string]any) (string, error) {
+	c, ok := m.clientFor(server)
+	if !ok {
+		return "", fmt.Errorf("mcp server %s disconnected", server)
+	}
+	out, err := c.Call(ctx, tool, args)
+	if err != nil {
+		return "", fmt.Errorf("mcp server %s disconnected: %w", server, err)
+	}
+	return out, nil
+}
+
+func (m *Manager) clientFor(name string) (*Client, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	c, ok := m.clis[name]
+	return c, ok
+}
+
+// Status returns a snapshot of every configured server's state.
+func (m *Manager) Status() []StatusEntry {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]StatusEntry, 0, len(m.status))
+	for _, e := range m.status {
+		out = append(out, e)
+	}
+	return out
+}
+
+func (m *Manager) setStatus(name, command, status, errMsg string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e := StatusEntry{Name: name, Command: command, Status: status}
+	if errMsg != "" {
+		e.Err = errMsg
+	}
+	m.status[name] = e
+}
+
+// StopAll stops every connection and clears status.
+func (m *Manager) StopAll() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for name, c := range m.clis {
+		_ = c.transport.Stop()
+		delete(m.status, name)
+	}
+	m.clis = map[string]*Client{}
+	return nil
+}
+```
+(The `Client.transport` field is already defined in Task 5's `client.go` — `type Client struct { transport Transport; id int32 }` — so the Manager's `m.clis[...].transport.Stop()` works as-is. Add the `time` import to `manager.go` for the 5s `context.WithTimeout`.)
+- [ ] **Step 4: Run to verify pass** — `cd backend && go test ./internal/mcp/ -run TestManagerLifecycle -v` → PASS.
+- [ ] **Step 5: Commit** — `git add backend/internal/mcp/manager.go backend/internal/mcp/manager_test.go && git commit -m "feat(mcp): Manager (spawn/reconcile/status/call) with StatusEntry; registry mutation stays in app layer"`
 
 ### Task 7: MCP → `tool.Definition` bridge
 
@@ -412,11 +994,99 @@ A fake that speaks just enough MCP stdio to drive `client`/`manager` tests. This
 - Create: `backend/internal/mcp/bridge.go`
 - Test: `backend/internal/mcp/bridge_test.go`
 
-- [ ] **Step 1: Write failing test** — given a `Manager.Status()` with tools, `MCPDefinitions` returns one `tool.Definition` per tool named `mcp__<server>__<tool>`, `Risk=external, Approval=always`, **`RequiredScopes` empty**, and a `Handler` that delegates to `manager.Call` with the tool's default `TimeoutMs` (30000).
-- [ ] **Step 2: Run fail** — `undefined: MCPDefinitions`.
-- [ ] **Step 3: Implement** — `MCPDefinitions(st []StatusEntry, mgr *Manager) []tool.Definition` (build the defs; the handler marshals its `json.RawMessage` to `mgr.Call`). Enforce the §4.3 invariant: `RequiredScopes` stays empty.
-- [ ] **Step 4: Run pass**.
-- [ ] **Step 5: Commit** — `git commit -m "feat(mcp): bridge MCP tools to tool.Definition (external/always, empty scopes, mangled names)"`.
+**Data-flow (single path):** `Manager.Status()` → `MCPDefinitions(status, manager)` → `[]tool.Definition` → Task 12 calls `registry.Replace("mcp__", defs)`. The Manager itself never touches the registry.
+
+- [ ] **Step 1: Write failing test** — `backend/internal/mcp/bridge_test.go`:
+```go
+package mcp
+
+import (
+	"context"
+	"testing"
+
+	"rivus-agent-backend/internal/tool"
+)
+
+func TestMCPDefinitions(t *testing.T) {
+	m := NewManager(NewFakeTransportFactory())
+	_ = m.SpawnAll(context.Background(), []ServerSpec{{Name: "fs", Command: "npx"}})
+	// (fs fake returns one tool "read")
+	defs := MCPDefinitions(m.Status(), m)
+	if len(defs) != 1 {
+		t.Fatalf("want 1 def, got %d", len(defs))
+	}
+	d := defs[0]
+	if d.Name != "mcp__fs__read" {
+		t.Fatalf("name = %q", d.Name)
+	}
+	if d.Risk != tool.RiskExternal || d.Approval != tool.ApprovalAlways {
+		t.Fatalf("want external/always, got %s/%s", d.Risk, d.Approval)
+	}
+	if len(d.RequiredScopes) != 0 {
+		t.Fatalf("RequiredScopes must be empty (else CheckPolicy hard-denies), got %v", d.RequiredScopes)
+	}
+	if d.TimeoutMs != 30000 {
+		t.Fatalf("TimeoutMs = %d, want 30000 (default)", d.TimeoutMs)
+	}
+}
+```
+- [ ] **Step 2: Run to verify fail** — `cd backend && go test ./internal/mcp/ -run TestMCPDefinitions -v` → `undefined: MCPDefinitions`.
+- [ ] **Step 3: Implement** — `backend/internal/mcp/bridge.go`:
+```go
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+
+	"rivus-agent-backend/internal/tool"
+)
+
+// MCPDefinitions builds one tool.Definition per discovered MCP tool, named
+// mcp__<server>__<tool>. Invariant (spec §4.3): Risk=external, Approval=always,
+// RequiredScopes EMPTY (the gateway passes nil scopes, so any scope hard-denies).
+// Handler delegates to Manager.Call; the executor already applies TimeoutMs, so
+// the handler does NOT add its own context deadline.
+func MCPDefinitions(status []StatusEntry, mgr *Manager) []tool.Definition {
+	var defs []tool.Definition
+	for _, e := range status {
+		if e.Status != "up" {
+			continue // only live servers expose tools
+		}
+		for _, tl := range e.Tools {
+			name := "mcp__" + e.Name + "__" + tl.Name
+			server, t := e.Name, tl.Name
+			defs = append(defs, tool.Definition{
+				Name:        name,
+				Description: tl.Description,
+				Version:     "v1",
+				InputSchema: inputSchemaFor(tl),
+				Risk:        tool.RiskExternal,
+				Approval:    tool.ApprovalAlways,
+				TimeoutMs:   30000,
+				MaxResultBytes: 64 * 1024,
+				Handler: func(ctx context.Context, raw json.RawMessage) (string, error) {
+					var a map[string]any
+					_ = json.Unmarshal(raw, &a)
+					return mgr.Call(ctx, server, t, a)
+				},
+			})
+		}
+	}
+	return defs
+}
+
+func inputSchemaFor(t Tool) string {
+	if t.InputSchema != nil {
+		if b, err := json.Marshal(t.InputSchema); err == nil {
+			return string(b)
+		}
+	}
+	return `{"type":"object"}`
+}
+```
+- [ ] **Step 4: Run to verify pass** — `cd backend && go test ./internal/mcp/ -run TestMCPDefinitions -v` → PASS.
+- [ ] **Step 5: Commit** — `git add backend/internal/mcp/bridge.go backend/internal/mcp/bridge_test.go && git commit -m "feat(mcp): bridge MCP tools to tool.Definition (external/always, empty scopes, mangled names)"`
 
 ---
 
@@ -528,17 +1198,89 @@ type ToolConfigProvider interface {
 	GetToolsStatus(ctx context.Context) (ToolStatus, error)
 	SaveTools(ctx context.Context, in ToolConfigIn) error
 }
+
+// ToolStatus is the GET /settings/tools payload (mirrors §4.6; per-server shape
+// matches mcp.StatusEntry but the httpapi layer defines its own type so it
+// doesn't import internal/mcp).
+type ToolStatus struct {
+	Skills SkillsStatus   `json:"skills"`
+	MCP    MCPStatus      `json:"mcp"`
+}
+type SkillsStatus struct {
+	Enabled   bool                 `json:"enabled"`
+	Available []SkillInfo          `json:"available"`
+}
+type SkillInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+type MCPStatus struct {
+	Enabled bool            `json:"enabled"`
+	Servers []MCPServerInfo `json:"servers"`
+}
+type MCPServerInfo struct {
+	Name    string   `json:"name"`
+	Status  string   `json:"status"` // "up" | "down" | "error"
+	Command string   `json:"command"`
+	Tools   []ToolInfo `json:"tools"`
+}
+type ToolInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// ToolConfigIn is the PUT /settings/tools payload.
+type ToolConfigIn struct {
+	SkillsEnabled bool           `json:"skillsEnabled"`
+	MCPEnabled    bool           `json:"mcpEnabled"`
+	MCPServers   []MCPServerIn `json:"mcpServers"`
+}
+type MCPServerIn struct {
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+}
 ```
-with `ToolStatus`/`ToolConfigIn` mirroring §4.6 payloads (skills `{enabled, available:[{name,description}]}`, mcp `{enabled, servers:[{name,status,command,tools:[{name,description}]}]}`). Add `New(... , provider ToolConfigProvider)` and routes:
+
+**`httpapi.New` signature change — variadic `Option` (backward-compatible):** the current `New` takes 7 positional args (`server.go:37`). Adding a required 8th arg breaks every existing `httpapi.New(...)` call site (`app.go:83`, `harness.go`, any tests) until they're all updated, which violates the chunk-compiles-green invariant. Use the functional-options pattern instead:
+```go
+// Option configures an httpapi.Server. Existing 7-arg New(...) calls stay
+// valid; opt in to the tools API via WithToolConfigProvider(...).
+type Option func(*serverOptions)
+type serverOptions struct {
+	tools ToolConfigProvider
+}
+func WithToolConfigProvider(p ToolConfigProvider) Option {
+	return func(o *serverOptions) { o.tools = p }
+}
+
+// New is unchanged in its 7 positional args + optional trailing Options:
+func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.EventRepo,
+	settings *store.SettingsRepo, runs *service.RunService, sessions *service.SessionService,
+	opts ...Option) *Server {
+	o := serverOptions{}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	s := &Server{ /* …existing fields… */ tools: o.tools }
+	s.routes()
+	return s
+}
+```
+
+Routes (add inside `routes()`; the tool handlers are no-ops that return a structured 501 when no provider was configured, so they don't break a bare 7-arg `New` call):
 ```go
 s.mux.HandleFunc("GET /api/v1/settings/tools", s.handleGetTools)
 s.mux.HandleFunc("PUT /api/v1/settings/tools", s.handleUpdateTools)
 ```
-Handlers call the provider; `handleUpdateTools` persists + `SaveTools` triggers reconcile (App impl, Task 12).
+- `handleGetTools`: if `s.tools == nil` → 501 `{"error":"tools not configured"}`; else call `s.tools.GetToolsStatus(r.Context())` → 200 `ToolStatus`.
+- `handleUpdateTools`: if `s.tools == nil` → 501; else decode `ToolConfigIn`, call `s.tools.SaveTools(r.Context(), in)` → 200 `{}`.
 
-- [ ] **Step 1: Write failing test** — a stub provider; `GET /settings/tools` returns the stub's `ToolStatus`; `PUT /settings/tools` calls `SaveTools` and returns 200; 404/shape checks.
-- [ ] **Step 2: Run fail** — route not found / `provider` param missing.
-- [ ] **Step 3: Implement** — the interface + types + `New` param + `Server` field + 2 routes + 2 handlers.
+Handlers call the provider; `SaveTools` persists + triggers reconcile (implemented by the App, Task 12).
+
+- [ ] **Step 1: Write failing test** — `backend/internal/api/http/server_tools_test.go`: build a `Server` via the 7-arg `New` **with** `WithToolConfigProvider(stub)` where `stub.GetToolsStatus` returns a fixed `ToolStatus` and `stub.SaveTools` records the `ToolConfigIn`. Assert: `GET /api/v1/settings/tools` → 200 + the fixed `ToolStatus`; `PUT /api/v1/settings/tools` → 200 + the stub saw the payload. Also assert a bare 7-arg `New` (no option) → `GET` returns 501.
+- [ ] **Step 2: Run to verify fail** — `cd backend && go test ./internal/api/http/ -run TestTools -v` → route 404 / `undefined: WithToolConfigProvider`.
+- [ ] **Step 3: Implement** — the `ToolConfigProvider` interface + `ToolStatus`/`ToolConfigIn` types + `Option`/`WithToolConfigProvider` + the variadic `New` (backward-compatible) + `Server.tools` field + the two routes + two handlers (501 when `tools == nil`).
 - [ ] **Step 4: Run pass** — `go test ./internal/api/http/ -run TestTools -v`.
 - [ ] **Step 5: Commit** — `git commit -m "feat(api): /settings/tools routes + ToolConfigProvider (decoupled from mcp/skill)"`.
 
@@ -548,16 +1290,152 @@ Handlers call the provider; `handleUpdateTools` persists + `SaveTools` triggers 
 - Modify: `backend/internal/app/app.go` (`Start` ~`:41-92`, `Stop` ~`:99`)
 - Create: `backend/internal/app/toolconfig.go` (provider impl)
 
-- [ ] **Step 1: Implement** `Start`:
-  - `loader := skill.NewLoader(cfg.SkillsDir)`; **keep the loader** (remove the discarded `_ = …Refresh()` at `app.go:79`); `loader.Refresh()`.
-  - `manager := mcp.NewManager(...)`; read current tool config via `mcp.ReadToolConfig(ctx, settings)`; `manager.SpawnAll(servers)`; `registry.Replace("mcp__", mcp.MCPDefinitions(manager.Status(), manager))`.
-  - if `skillsEnabled`: `registry.Register(skill.InvokeSkill(loader, 32*1024))`; build available-skill listing and `runner.SetSkillInstructions(listing)`.
-  - build a `toolConfigProvider` (implements `httpapi.ToolConfigProvider`: `GetToolsStatus` reads settings + `manager.Status()` + `loader.List()`; `SaveTools` persists the 3 keys, then `manager.Reconcile(...)` + `registry.Replace("mcp__", ...)` and, on skills toggle, `registry.Register`/`registry.Remove("invoke_skill")` + `runner.SetSkillInstructions`).
-  - pass the provider into `httpapi.New(...)`.
-- [ ] **Step 2: Implement** `Stop`: `manager.StopAll(ctx)` before/with `a.srv.Shutdown`.
-- [ ] **Step 3: Build + run** — `cd backend && go build ./... && go vet ./internal/app/ ./internal/api/http/`.
-- [ ] **Step 4: Smoke test** — `make run`, then `curl localhost:8080/api/v1/settings/tools` (expect skills/mcp shape with mcp status empty or the fake/real servers), and `PUT` a `mcp.servers` value to see reconcile.
-- [ ] **Step 5: Commit** — `git commit -m "feat(app): wire MCP Manager + skill Loader + ToolConfigProvider + StopAll"`.
+- [ ] **Step 1: Implement** `toolconfig.go` (the `httpapi.ToolConfigProvider` impl — complete code):
+```go
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+
+	"rivus-agent-backend/internal/api/http/httpapi"
+	"rivus-agent-backend/internal/mcp"
+	"rivus-agent-backend/internal/skill"
+	"rivus-agent-backend/internal/store"
+	"rivus-agent-backend/internal/tool"
+)
+
+// toolConfigProvider implements httpapi.ToolConfigProvider. App owns the
+// SettingsRepo, the mcp.Manager, and the skill.Loader, so it bridges them to
+// the HTTP layer without the HTTP layer importing mcp/skill.
+type toolConfigProvider struct {
+	mu       sync.Mutex
+	settings *store.SettingsRepo
+	manager  *mcp.Manager
+	loader   *skill.Loader
+	registry *tool.Registry
+	runner   runnerInstr // the guarded skill-instruction setter (§6 delta a)
+}
+
+type runnerInstr interface {
+	SetSkillInstructions(listing string)
+}
+
+func newToolConfigProvider(settings *store.SettingsRepo, manager *mcp.Manager,
+	loader *skill.Loader, registry *tool.Registry, runner runnerInstr) *toolConfigProvider {
+	return &toolConfigProvider{settings: settings, manager: manager, loader: loader,
+		registry: registry, runner: runner}
+}
+
+func (p *toolConfigProvider) GetToolsStatus(ctx context.Context) (httpapi.ToolStatus, error) {
+	tc, err := mcp.ReadToolConfig(ctx, p.settings)
+	if err != nil {
+		return httpapi.ToolStatus{}, err
+	}
+	var st httpapi.ToolStatus
+	st.Skills.Enabled = tc.SkillsEnabled
+	for _, m := range p.loader.List() {
+		st.Skills.Available = append(st.Skills.Available, httpapi.SkillInfo{Name: m.Name, Description: m.Description})
+	}
+	st.MCP.Enabled = tc.MCPEnabled
+	for _, e := range p.manager.Status() {
+		infos := make([]httpapi.ToolInfo, 0, len(e.Tools))
+		for _, tl := range e.Tools {
+			infos = append(infos, httpapi.ToolInfo{Name: tl.Name, Description: tl.Description})
+		}
+		st.MCP.Servers = append(st.MCP.Servers, httpapi.MCPServerInfo{
+			Name: e.Name, Status: e.Status, Command: e.Command, Tools: infos,
+		})
+	}
+	return st, nil
+}
+
+func (p *toolConfigProvider) SaveTools(ctx context.Context, in httpapi.ToolConfigIn) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// 1) Persist the three settings keys.
+	if err := p.settings.Set(ctx, mcp.KeySkillsEnabled, boolStr(in.SkillsEnabled)); err != nil {
+		return err
+	}
+	if err := p.settings.Set(ctx, mcp.KeyMCPEnabled, boolStr(in.MCPEnabled)); err != nil {
+		return err
+	}
+	servers, err := mcpServersFromIn(in)
+	if err != nil {
+		return err
+	}
+	if err := p.settings.Set(ctx, mcp.KeyMCP_servers, marshalJSON(servers)); err != nil {
+		return err
+	}
+
+	// 2) Reconcile MCP connections, then refresh the shared registry's mcp__
+	//    family (in-place; the runner holds the *Registry pointer).
+	if err := p.manager.Reconcile(ctx, servers); err != nil {
+		return err
+	}
+	if err := p.registry.Replace("mcp__", mcp.MCPDefinitions(p.manager.Status(), p.manager)); err != nil {
+		return err
+	}
+
+	// 3) Toggle invoke_skill + refresh the skill instruction listing.
+	if in.SkillsEnabled {
+		_ = p.registry.Remove("invoke_skill")
+		if err := p.registry.Register(skill.InvokeSkill(p.loader, 32*1024)); err != nil {
+			return err
+		}
+		p.runner.SetSkillInstructions(skillListing(p.loader))
+	} else {
+		_ = p.registry.Remove("invoke_skill")
+		p.runner.SetSkillInstructions("")
+	}
+	return nil
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+func mcpServersFromIn(in httpapi.ToolConfigIn) ([]mcp.ServerSpec, error) {
+	out := make([]mcp.ServerSpec, 0, len(in.MCPServers))
+	for _, s := range in.MCPServers {
+		out = append(out, mcp.ServerSpec{Name: s.Name, Command: s.Command, Args: s.Args})
+	}
+	return out, nil
+}
+
+func marshalJSON(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+func skillListing(l *skill.Loader) string {
+	out := ""
+	for _, m := range l.List() {
+		out += fmt.Sprintf("- %s: %s\n", m.Name, m.Description)
+	}
+	return out
+}
+```
+(Import the exact `httpapi` path as it is laid out in this repo — `internal/api/http` is imported elsewhere as `httpapi "rivus-agent-backend/internal/api/http"`; confirm the module path prefix from `go.mod`.)
+
+- [ ] **Step 2: Wire `Start`** (`app.go`, replacing the discarded loader `Refresh()` at `app.go:79`):
+  1. `loader := skill.NewLoader(cfg.SkillsDir)`; keep the value; `_ = loader.Refresh()`.
+  2. `manager := mcp.NewManager(mcp.NewStdioTransportFactory())`.
+  3. `tc, _ := mcp.ReadToolConfig(ctx, settings)`; `manager.SpawnAll(ctx, tc.Servers)`; `registry.Replace("mcp__", mcp.MCPDefinitions(manager.Status(), manager))`.
+  4. If `tc.SkillsEnabled`: `registry.Register(skill.InvokeSkill(loader, 32*1024))` + `runner.SetSkillInstructions(skillListing(loader))`.
+  5. `provider := newToolConfigProvider(settings, manager, loader, registry, runner)`.
+  6. Pass the option into the server: `srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions, httpapi.WithToolConfigProvider(provider))`.
+- [ ] **Step 3: Wire `Stop`** — `manager.StopAll()` before/with `a.srv.Shutdown(ctx)`.
+- [ ] **Step 4: Sync note** — the registry mutation and `SetSkillInstructions` here can race an in-flight `EinoRunner.drain` that reads `registry.List()` live. Two guards are already in place from earlier tasks: registry mutations are `Registry.mu`-guarded (`registry.go:50`), and `SetSkillInstructions` is `EinoRunner.mu`-guarded (§6 delta a). A run in flight keeps the agent snapshot it built at start; reconcile only affects **new** agent builds. No extra lock is needed; document this invariant in `toolconfig.go`.
+- [ ] **Step 5: Build + vet** — `cd backend && go build ./... && go vet ./internal/app/ ./internal/api/http/`.
+- [ ] **Step 6: Smoke test** — `make run`, then `curl localhost:8080/api/v1/settings/tools` (expect the shape from §4.6, mcp `servers` empty or reflecting configured servers); `PUT` a `mcp.servers` value and confirm reconcile in the logs.
+- [ ] **Step 7: Commit** — `git add backend/internal/app/app.go backend/internal/app/toolconfig.go && git commit -m "feat(app): wire MCP Manager + skill Loader + ToolConfigProvider + StopAll"`.
 
 ---
 
@@ -579,15 +1457,17 @@ Handlers call the provider; `handleUpdateTools` persists + `SaveTools` triggers 
 ### Task 14: integration tests (harness)
 
 **Files:**
-- Modify: `backend/tests/testutil/harness.go` (register `invoke_skill` + a fake MCP server + provider)
+- Modify: `backend/tests/testutil/harness.go` (register `invoke_skill` + one canned `mcp__` tool def + `httpapi.WithToolConfigProvider`)
 - Create: `backend/tests/integration/toolconfig_test.go`
 
-- [ ] **Step 1: Wire harness** — register `invoke_skill`; add one fake MCP server (reuse the `internal/mcp` fake via a testable seam, or a canned stdio subprocess) so runs can call `mcp__<srv>__<tool>`; expose a `ToolConfigProvider` stub.
-- [ ] **Step 2: Write tests**
-  - a run whose model calls a read-only MCP tool → `tool.completed` event + child-free parent succeeds.
-  - a run whose model calls an `external/always` MCP tool → `waiting_approval` → `decide` → `resume` (mirror `approval_test.go`).
+The `tests/integration` package **cannot** import the `internal/mcp` `FakeTransport` unless the fake is exported — that's why Task 4 placed it in a **non-test `fake.go`** (`mcp.FakeTransport`/`mcp.NewFakeTransportFactory` are importable). For the integration harness, prefer the lightest path: register a **canned `mcp__` `tool.Definition`** directly (a stub `Handler` that returns a fixed string) so runs can call `mcp__fake__echo` without a live MCP process. If you want a *real* bridge end-to-end, use `mcp.NewManager(mcp.NewFakeTransportFactory())` + `mcp.MCPDefinitions` + `registry.Replace("mcp__", defs)` — same seam as Task 12.
+
+- [ ] **Step 1: Wire harness** — in `harness.New`: register `skill.InvokeSkill(loader, 32*1024)` (point `loader` at a fixture `SKILL.md` dir); register a canned `mcp__fake__echo` def (`Risk=external, Approval=always`, `RequiredScopes` empty, stub handler); construct a minimal `ToolConfigProvider` stub and pass `httpapi.New(..., httpapi.WithToolConfigProvider(stub))` (the variadic option — existing 7-arg calls keep compiling).
+- [ ] **Step 2: Write tests** — `backend/tests/integration/toolconfig_test.go`:
+  - a run whose model calls the read-only-shaped MCP tool → `tool.completed` event + parent succeeds.
+  - a run whose model calls the `external/always` MCP tool → `waiting_approval` → `decide` (approve) → `resume` (mirror `approval_test.go`'s pattern).
   - `invoke_skill` returns the SKILL.md body as tool output.
-  - `GET /settings/tools` shape; `PUT` persists + reconciles.
+  - `GET /settings/tools` shape; `PUT` persists + reconciles (assert the stub recorded the payload).
 - [ ] **Step 3: Run** — `cd backend && go test ./tests/integration/ -run 'TestMCP|TestInvokeSkill|TestTools' -v`.
 - [ ] **Step 4: Commit** — `git commit -m "test(integration): MCP tool call + approval + invoke_skill + /settings/tools"`.
 
