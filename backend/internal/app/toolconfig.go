@@ -58,6 +58,12 @@ func (p *toolConfigProvider) GetToolsStatus(ctx context.Context) (httpapi.ToolSt
 	return st, nil
 }
 
+// SaveTools persists a tools-config change and reconciles the live MCP
+// connections + the shared registry's mcp__ family + the invoke_skill tool.
+// Invariant (spec §4.1 + §6 step 4): an in-flight EinoRunner.drain keeps the
+// agent snapshot it built at start; this reconcile only affects NEW agent
+// builds. No extra lock is needed — registry mutations are Registry.mu-guarded
+// and SetSkillInstructions is EinoRunner.mu-guarded (both from earlier tasks).
 func (p *toolConfigProvider) SaveTools(ctx context.Context, in httpapi.ToolConfigIn) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -78,8 +84,14 @@ func (p *toolConfigProvider) SaveTools(ctx context.Context, in httpapi.ToolConfi
 	}
 
 	// 2) Reconcile MCP connections, then refresh the shared registry's mcp__
-	//    family (in-place; the runner holds the *Registry pointer).
-	if err := p.manager.Reconcile(ctx, servers); err != nil {
+	//    family (in-place; the runner holds the *Registry pointer). Spec §4.3:
+	//    when mcp.enabled is off, reconcile to no servers so all mcp__ tools
+	//    are stopped + removed from the registry.
+	liveServers := servers
+	if !in.MCPEnabled {
+		liveServers = nil
+	}
+	if err := p.manager.Reconcile(ctx, liveServers); err != nil {
 		return err
 	}
 	if err := p.registry.Replace("mcp__", mcp.MCPDefinitions(p.manager.Status(), p.manager)); err != nil {

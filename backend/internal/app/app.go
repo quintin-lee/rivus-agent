@@ -82,9 +82,15 @@ func (a *App) Start(ctx context.Context) error {
 	a.skillLoader = skill.NewLoader(cfg.SkillsDir)
 	_ = a.skillLoader.Refresh()
 	a.manager = mcp.NewManager(mcp.NewStdioTransportFactory())
-	tc, _ := mcp.ReadToolConfig(ctx, settings)
-	_ = a.manager.SpawnAll(ctx, tc.Servers)
-	_ = registry.Replace("mcp__", mcp.MCPDefinitions(a.manager.Status(), a.manager))
+	tc, err := mcp.ReadToolConfig(ctx, settings)
+	if err != nil {
+		a.log.Warn("tools config read failed; MCP/skill startup wiring skipped", "err", err)
+	}
+	// Spec §4.3: MCP servers are only spawned + exposed when mcp.enabled.
+	if tc.MCPEnabled {
+		_ = a.manager.SpawnAll(ctx, tc.Servers)
+		_ = registry.Replace("mcp__", mcp.MCPDefinitions(a.manager.Status(), a.manager))
+	}
 	if tc.SkillsEnabled {
 		_ = registry.Remove("invoke_skill")
 		if err := registry.Register(skill.InvokeSkill(a.skillLoader, 32*1024)); err != nil {
