@@ -11,7 +11,7 @@ import (
 type StatusEntry struct {
 	Name    string `json:"name"`
 	Command string `json:"command"`
-	Status  string `json:"status"` // "up" | "down" | "error"
+	Status  string `json:"status"` // "up" | "error"
 	Err     string `json:"err,omitempty"`
 	Tools   []Tool `json:"tools"` // cached tools/list result
 }
@@ -30,7 +30,8 @@ func NewManager(factory TransportFactory) *Manager {
 }
 
 // SpawnAll connects to every server in specs; a failed initialize marks it "error"
-// (logged, others continue). Idempotent for servers already connected.
+// (others continue). Idempotent for servers already connected. Per-server
+// failures are reflected in Status(), not the return value; this always returns nil.
 func (m *Manager) SpawnAll(ctx context.Context, specs []ServerSpec) error {
 	for _, s := range specs {
 		if _, ok := m.clientFor(s.Name); ok {
@@ -42,21 +43,32 @@ func (m *Manager) SpawnAll(ctx context.Context, specs []ServerSpec) error {
 }
 
 // Reconcile stops servers not in specs and spawns new ones. It does NOT mutate
-// the tool registry (Task 12 is that call site).
+// the tool registry (Task 12 is that call site). Per-server failures are
+// reflected in Status(), not the return value; this always returns nil.
 func (m *Manager) Reconcile(ctx context.Context, specs []ServerSpec) error {
 	keep := map[string]bool{}
 	for _, s := range specs {
 		keep[s.Name] = true
 	}
 	m.mu.Lock()
-	for name := range m.clis {
+	var toStop []Transport
+	for name, c := range m.clis {
 		if !keep[name] {
-			_ = m.clis[name].transport.Stop()
+			toStop = append(toStop, c.transport)
 			delete(m.clis, name)
+		}
+	}
+	// Drop stale status entries (e.g. connect failures) whose server is no
+	// longer in the spec set and has no live client.
+	for name := range m.status {
+		if !keep[name] {
 			delete(m.status, name)
 		}
 	}
 	m.mu.Unlock()
+	for _, tt := range toStop {
+		_ = tt.Stop() // teardown outside the lock: Stop can block on child reap
+	}
 	for _, s := range specs {
 		if _, ok := m.clientFor(s.Name); !ok {
 			m.connect(ctx, s)
@@ -75,11 +87,13 @@ func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 	ictx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := c.Initialize(ictx); err != nil {
+		_ = tt.Stop() // best-effort teardown of the spawned child
 		m.setStatus(s.Name, s.Command, "error", "initialize: "+err.Error())
 		return
 	}
 	tools, err := c.ListTools(ictx)
 	if err != nil {
+		_ = tt.Stop() // best-effort teardown of the spawned child
 		m.setStatus(s.Name, s.Command, "error", "tools/list: "+err.Error())
 		return
 	}
@@ -89,7 +103,8 @@ func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 	m.mu.Unlock()
 }
 
-// Call invokes tools/call on a server. A dead connection returns a "disconnected" error.
+// Call invokes tools/call on a server. A dead or missing connection returns a
+// "disconnected" error; the wrapped client error keeps transport-read framing.
 func (m *Manager) Call(ctx context.Context, server, tool string, args map[string]any) (string, error) {
 	c, ok := m.clientFor(server)
 	if !ok {
@@ -97,7 +112,7 @@ func (m *Manager) Call(ctx context.Context, server, tool string, args map[string
 	}
 	out, err := c.Call(ctx, tool, args)
 	if err != nil {
-		return "", fmt.Errorf("mcp server %s disconnected: %w", server, err)
+		return "", fmt.Errorf("mcp server %s: %w", server, err)
 	}
 	return out, nil
 }
@@ -109,7 +124,9 @@ func (m *Manager) clientFor(name string) (*Client, bool) {
 	return c, ok
 }
 
-// Status returns a snapshot of every configured server's state.
+// Status returns a snapshot of every configured server's state. The returned
+// entries share backing arrays with the manager (Tools slices and their InputSchema
+// maps); callers must not mutate them in place.
 func (m *Manager) Status() []StatusEntry {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -131,14 +148,16 @@ func (m *Manager) setStatus(name, command, status, errMsg string) {
 	m.status[name] = e
 }
 
-// StopAll stops every connection and clears all status.
+// StopAll stops every connection and clears all status. Per-server failures are
+// reflected in Status(), not the return value; this always returns nil.
 func (m *Manager) StopAll() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, c := range m.clis {
-		_ = c.transport.Stop()
-	}
+	snapshot := m.clis
 	m.clis = map[string]*Client{}
 	m.status = map[string]StatusEntry{}
+	m.mu.Unlock()
+	for _, c := range snapshot {
+		_ = c.transport.Stop() // teardown outside the lock: Stop can block on child reap
+	}
 	return nil
 }
