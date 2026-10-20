@@ -24,7 +24,9 @@ func TestMCPPreApprovedToolRunsInline(t *testing.T) {
 	h.Model.EnqueueToolCall("tc1", "mcp__fake__echo", rawArgs)
 	h.Model.EnqueueText("done")
 
-	ch, err := h.Runner.Run(context.Background(), runtime.RunRequest{
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ch, err := h.Runner.Run(ctx, runtime.RunRequest{
 		RunID:         "mcp_pre1",
 		Goal:          "use the echo tool",
 		ApprovedTools: map[string]bool{"mcp__fake__echo:" + tool.ArgsHash(json.RawMessage(rawArgs)): true},
@@ -88,6 +90,11 @@ func TestMCPToolApprovalRoundTrip(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("decide: %d %s", code, body)
 	}
+	// The approval record must have flipped to approved (the decide path ran).
+	recs, err := h.Approvals.ListByRun(context.Background(), id)
+	if err != nil || len(recs) != 1 || recs[0].Status != domain.ApprovalApproved {
+		t.Fatalf("want 1 approval record approved, got %+v err=%v", recs, err)
+	}
 	run := h.WaitTerminal(id, 30*time.Second)
 	if run.Status != domain.RunSucceeded {
 		t.Fatalf("want succeeded after approval, got %s (%s)", run.Status, run.ErrorSummary)
@@ -109,7 +116,9 @@ func TestInvokeSkillToolCompleted(t *testing.T) {
 	h.Model.EnqueueToolCall("tc1", "invoke_skill", `{"name":"demo"}`)
 	h.Model.EnqueueText("done")
 
-	ch, err := h.Runner.Run(context.Background(), runtime.RunRequest{
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ch, err := h.Runner.Run(ctx, runtime.RunRequest{
 		RunID: "skill1",
 		Goal:  "invoke the demo skill",
 	})
