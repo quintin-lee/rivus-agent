@@ -77,6 +77,34 @@ make run               # 本地启动（需先 export 模型三件套）
 make clean             # 清理构建产物
 ```
 
+## 工具配置（Skills + MCP）
+
+`server_settings` 全局三键（key/value，无迁移）：
+
+| 键 | 取值 | 说明 |
+|---|---|---|
+| `skills.enabled` | `"true"/"false"` | 是否注册 `invoke_skill` 工具 |
+| `mcp.enabled` | `"true"/"false"` | 是否启动 MCP 服务器 + 暴露 `mcp__` 工具 |
+| `mcp.servers` | JSON 数组 | stdio MCP 服务器列表（见下） |
+
+`mcp.servers` 示例（stdio；子进程独立进程组，`StopAll` 时整组回收）：
+
+```json
+[{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}]
+```
+
+API：`GET /api/v1/settings/tools`（读配置 + 各服务器实时状态与已发现工具）；
+`PUT /api/v1/settings/tools`（持久化三键 + 触发 `Manager.Reconcile` + 就地刷新共享
+`Registry` 的 `mcp__` 家族，运行中的 Agent 快照不受影响，仅新 Run 生效）。
+
+**安全不变量（§4.3）**：`mcp__` 与 `invoke_skill` 的 `tool.Definition` 一律
+`RequiredScopes` 留空（网关按 nil 作用域传参，`CheckPolicy` 对任何非空 scope 直接硬拒绝）。
+MCP 工具默认 **高风险 external + 始终需审批 always**（同 `workspace_write`，走
+`waiting_approval` 卡片）；`invoke_skill` 为 **只读 read + 免审批 never**，把
+SKILL.md 正文作为上下文交给模型。
+
+v1 非目标：自动重连、非致命工具调用、HTTP/SSE 传输、按会话/按技能开关、密钥展开、按工具超时。
+
 ## 测试布局
 
 ```text
