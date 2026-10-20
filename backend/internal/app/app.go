@@ -13,22 +13,25 @@ import (
 	einomodel "github.com/cloudwego/eino/components/model"
 	httpapi "rivus-agent-backend/internal/api/http"
 	"rivus-agent-backend/internal/config"
+	mcp "rivus-agent-backend/internal/mcp"
 	"rivus-agent-backend/internal/model"
 	"rivus-agent-backend/internal/observability"
 	"rivus-agent-backend/internal/runtime"
-	"rivus-agent-backend/internal/subagent"
 	"rivus-agent-backend/internal/service"
 	"rivus-agent-backend/internal/skill"
 	"rivus-agent-backend/internal/store"
+	"rivus-agent-backend/internal/subagent"
 	"rivus-agent-backend/internal/tool"
 	"rivus-agent-backend/internal/tool/builtin"
 )
 
 type App struct {
-	cfg config.Config
-	log *slog.Logger
-	srv *http.Server
-	db  *sql.DB
+	cfg         config.Config
+	log         *slog.Logger
+	srv         *http.Server
+	db          *sql.DB
+	manager     *mcp.Manager
+	skillLoader *skill.Loader
 }
 
 func New(cfgPath string) (*App, error) {
@@ -76,11 +79,24 @@ func (a *App) Start(ctx context.Context) error {
 	if _, err := runtime.RecoverOrphans(ctx, tasks, events); err != nil {
 		a.log.Warn("orphan recovery failed", "err", err)
 	}
-	_ = skill.NewLoader(cfg.SkillsDir).Refresh()
+	a.skillLoader = skill.NewLoader(cfg.SkillsDir)
+	_ = a.skillLoader.Refresh()
+	a.manager = mcp.NewManager(mcp.NewStdioTransportFactory())
+	tc, _ := mcp.ReadToolConfig(ctx, settings)
+	_ = a.manager.SpawnAll(ctx, tc.Servers)
+	_ = registry.Replace("mcp__", mcp.MCPDefinitions(a.manager.Status(), a.manager))
+	if tc.SkillsEnabled {
+		_ = registry.Remove("invoke_skill")
+		if err := registry.Register(skill.InvokeSkill(a.skillLoader, 32*1024)); err != nil {
+			return err
+		}
+		runner.SetSkillInstructions(skillListing(a.skillLoader))
+	}
+	provider := newToolConfigProvider(settings, a.manager, a.skillLoader, registry, runner)
 
 	runs := service.NewRunService(cfg, tasks, events, approvals, rt, runner)
 	sessions := service.NewSessionService(tasks)
-	srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions)
+	srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions, httpapi.WithToolConfigProvider(provider))
 
 	httpSrv := &http.Server{
 		Addr: cfg.Addr, Handler: srv.Handler(),
@@ -97,6 +113,9 @@ func (a *App) Start(ctx context.Context) error {
 }
 
 func (a *App) Stop(ctx context.Context) error {
+	if a.manager != nil {
+		_ = a.manager.StopAll()
+	}
 	if a.srv != nil {
 		_ = a.srv.Shutdown(ctx)
 	}
