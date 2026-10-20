@@ -492,7 +492,7 @@ func (s *Server) handleGetTools(w http.ResponseWriter, r *http.Request) {
 	}
 	st, err := s.tools.GetToolsStatus(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "tools_status_failed", err.Error(), false)
+		writeErr(w, http.StatusInternalServerError, "internal", "tools status failed", true)
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -506,12 +506,12 @@ func (s *Server) handleUpdateTools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in ToolConfigIn
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		writeErr(w, http.StatusBadRequest, "bad_request", err.Error(), false)
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid body", false)
 		return
 	}
 	if err := s.tools.SaveTools(r.Context(), in); err != nil {
-		writeErr(w, http.StatusInternalServerError, "tools_save_failed", err.Error(), false)
+		writeErr(w, http.StatusInternalServerError, "internal", "tools save failed", true)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{})

@@ -1,11 +1,12 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"reflect"
 	"testing"
 
 	"rivus-agent-backend/internal/config"
@@ -23,10 +24,6 @@ func (s *stubToolsProvider) GetToolsStatus(ctx context.Context) (ToolStatus, err
 func (s *stubToolsProvider) SaveTools(ctx context.Context, in ToolConfigIn) error {
 	s.saved = append(s.saved, in)
 	return nil
-}
-
-func jsonReader(b []byte) *strings.Reader {
-	return strings.NewReader(string(b))
 }
 
 func TestToolsEndpoints(t *testing.T) {
@@ -55,13 +52,13 @@ func TestToolsEndpoints(t *testing.T) {
 	in := ToolConfigIn{SkillsEnabled: false, MCPEnabled: true, MCPServers: []MCPServerIn{{Name: "git", Command: "git-mcp", Args: []string{"stdio"}}}}
 	b, _ := json.Marshal(in)
 	rec2 := httptest.NewRecorder()
-	req2, _ := http.NewRequest(http.MethodPut, "http://x/api/v1/settings/tools", jsonReader(b))
+	req2, _ := http.NewRequest(http.MethodPut, "http://x/api/v1/settings/tools", bytes.NewReader(b))
 	srv.Handler().ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusOK {
 		t.Fatalf("PUT tools status = %d, want 200: %s", rec2.Code, rec2.Body.String())
 	}
-	if len(stub.saved) != 1 || stub.saved[0].MCPEnabled != true || len(stub.saved[0].MCPServers) != 1 {
-		t.Fatalf("PUT payload not recorded as expected: %+v", stub.saved)
+	if len(stub.saved) != 1 || !reflect.DeepEqual(stub.saved[0], in) {
+		t.Fatalf("PUT payload not recorded as expected: got %+v want %+v", stub.saved[0], in)
 	}
 }
 
