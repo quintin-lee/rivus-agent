@@ -48,14 +48,15 @@ type AgentRunner interface {
 }
 
 type EinoRunner struct {
-	modelFactory   func() (model.ToolCallingChatModel, error)
-	registry       *itool.Registry
-	executor       *itool.Executor
-	checkpoints    adk.CheckPointStore
-	instruction    string
-	cancels        *cancelRegistry
-	onEvent        func(ev RuntimeEvent)
-	onNeedApproval func(runID, toolCallID, toolName string, args json.RawMessage)
+	modelFactory    func() (model.ToolCallingChatModel, error)
+	registry        *itool.Registry
+	executor        *itool.Executor
+	checkpoints     adk.CheckPointStore
+	instruction     string
+	baseInstruction string
+	cancels         *cancelRegistry
+	onEvent         func(ev RuntimeEvent)
+	onNeedApproval  func(runID, toolCallID, toolName string, args json.RawMessage)
 
 	mu                sync.RWMutex
 	needApprovalByRun map[string]func(runID, toolCallID, toolName string, args json.RawMessage)
@@ -73,9 +74,23 @@ func NewEinoRunner(
 		executor:          executor,
 		checkpoints:       checkpoints,
 		instruction:       "你是 Rivus Agent。用中文回答。必须基于工具返回的真实证据行动，禁止编造成功。需要多工具协作时分步调用并观察结果。",
+		baseInstruction:   "你是 Rivus Agent。用中文回答。必须基于工具返回的真实证据行动，禁止编造成功。需要多工具协作时分步调用并观察结果。",
 		cancels:           newCancelRegistry(),
 		needApprovalByRun: map[string]func(runID, toolCallID, toolName string, args json.RawMessage){},
 	}
+}
+
+// SetSkillInstructions rebuilds the instruction as base + optional skills
+// section, so repeated enables don't accumulate and an empty listing removes
+// the section. Idempotent: safe to call on every enable-save.
+func (r *EinoRunner) SetSkillInstructions(listing string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if listing == "" {
+		r.instruction = r.baseInstruction
+		return
+	}
+	r.instruction = r.baseInstruction + "\n\n可用技能：\n" + listing
 }
 
 func (r *EinoRunner) OnEvent(fn func(ev RuntimeEvent)) { r.onEvent = fn }

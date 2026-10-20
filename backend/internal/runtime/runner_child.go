@@ -101,8 +101,11 @@ func (r *EinoRunner) buildAgentFiltered(ctx context.Context, runID string, budge
 	if maxIter <= 0 {
 		maxIter = 12
 	}
+	r.mu.RLock()
+	instr := r.instruction
+	r.mu.RUnlock()
 	cfg := &adk.ChatModelAgentConfig{Name: "rivus", Description: "general purpose agent",
-		Instruction: r.instruction, Model: withTools, MaxIterations: maxIter}
+		Instruction: instr, Model: withTools, MaxIterations: maxIter}
 	cfg.ToolsConfig.Tools = tools
 	return adk.NewChatModelAgent(ctx, cfg)
 }
