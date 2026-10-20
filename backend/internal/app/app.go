@@ -84,7 +84,7 @@ func (a *App) Start(ctx context.Context) error {
 	a.manager = mcp.NewManager(mcp.NewStdioTransportFactory())
 	tc, err := mcp.ReadToolConfig(ctx, settings)
 	if err != nil {
-		a.log.Warn("tools config read failed; MCP/skill startup wiring skipped", "err", err)
+		a.log.Warn("tools config read: mcp.servers decode failed; starting with empty server list", "err", err)
 	}
 	// Spec §4.3: MCP servers are only spawned + exposed when mcp.enabled.
 	if tc.MCPEnabled {
