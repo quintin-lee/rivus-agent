@@ -81,7 +81,7 @@ func (m *Manager) Reconcile(ctx context.Context, specs []ServerSpec) error {
 func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 	tt, err := m.factory.New(ctx, s)
 	if err != nil {
-		m.setStatus(s.Name, s.Command, "error", err.Error())
+		m.setStatus(s.Name, s.Command, s.Args, "error", err.Error())
 		return
 	}
 	c := NewClient(tt)
@@ -89,13 +89,13 @@ func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 	defer cancel()
 	if err := c.Initialize(ictx); err != nil {
 		_ = tt.Stop() // best-effort teardown of the spawned child
-		m.setStatus(s.Name, s.Command, "error", "initialize: "+err.Error())
+		m.setStatus(s.Name, s.Command, s.Args, "error", "initialize: "+err.Error())
 		return
 	}
 	tools, err := c.ListTools(ictx)
 	if err != nil {
 		_ = tt.Stop() // best-effort teardown of the spawned child
-		m.setStatus(s.Name, s.Command, "error", "tools/list: "+err.Error())
+		m.setStatus(s.Name, s.Command, s.Args, "error", "tools/list: "+err.Error())
 		return
 	}
 	m.mu.Lock()
@@ -139,10 +139,10 @@ func (m *Manager) Status() []StatusEntry {
 }
 
 // setStatus records one server's live state; used for error paths in connect.
-func (m *Manager) setStatus(name, command, status, errMsg string) {
+func (m *Manager) setStatus(name, command string, args []string, status, errMsg string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	e := StatusEntry{Name: name, Command: command, Status: status}
+	e := StatusEntry{Name: name, Command: command, Args: args, Status: status}
 	if errMsg != "" {
 		e.Err = errMsg
 	}

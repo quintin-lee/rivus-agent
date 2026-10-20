@@ -14,7 +14,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Separator } from '@/components/ui/separator'
 import { ToolsPanel } from './ToolsPanel'
 
 export function SettingsDialog() {
@@ -124,7 +123,6 @@ export function SettingsDialog() {
           </label>
           {error && <div className="text-xs text-red-400">{error}</div>}
           {saved && <div className="text-xs text-emerald-400">已保存，新提交的 Run 生效</div>}
-          <Separator />
           <ToolsPanel />
         </div>
         <DialogFooter>
