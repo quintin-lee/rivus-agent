@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -19,9 +21,10 @@ import (
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/runtime"
-	"rivus-agent-backend/internal/subagent"
 	"rivus-agent-backend/internal/service"
+	"rivus-agent-backend/internal/skill"
 	"rivus-agent-backend/internal/store"
+	"rivus-agent-backend/internal/subagent"
 	"rivus-agent-backend/internal/tool"
 	"rivus-agent-backend/internal/tool/builtin"
 )
@@ -108,6 +111,7 @@ func (m *ScriptedModel) Stream(ctx context.Context, input []*schema.Message, opt
 type TB interface {
 	Helper()
 	Cleanup(func())
+	TempDir() string
 	Fatal(args ...any)
 	Fatalf(format string, args ...any)
 }
@@ -119,12 +123,63 @@ type Harness struct {
 	Events    *store.EventRepo
 	Approvals *store.ApprovalRepo
 	Model     *ScriptedModel
-	Runner    *runtime.EinoRunner
 	Server    *httptest.Server
+	Runner    *runtime.EinoRunner
 	Client    *http.Client
+	// savedToolConfigs records /settings/tools PUT payloads received by the
+	// stub provider (NewToolConfigHarness only; nil for New).
+	savedToolConfigs []httpapi.ToolConfigIn
 }
 
+// SavedToolConfigs returns the /settings/tools PUT payloads the stub provider
+// recorded (NewToolConfigHarness only; nil for New).
+func (h *Harness) SavedToolConfigs() []httpapi.ToolConfigIn { return h.savedToolConfigs }
+
 func New(t TB, extraTools ...tool.Definition) *Harness {
+	return buildHarness(t, extraTools, nil, false)
+}
+
+// NewToolConfigHarness builds a Harness with the /settings/tools API surface
+// wired to a stub provider that records every SaveTools payload, plus the
+// extensible-tooling registry surface: a real skill invoke_skill (backed by
+// a temp-dir demo skill) and a canned mcp__fake__echo definition (stub
+// handler, external/always, no live MCP process).
+func NewToolConfigHarness(t TB) *Harness {
+	t.Helper()
+	var h *Harness
+	stub := &stubToolProvider{
+		status: httpapi.ToolStatus{
+			Skills: httpapi.SkillsStatus{Enabled: true,
+				Available: []httpapi.SkillInfo{{Name: "demo", Description: "demo skill"}}},
+			MCP: httpapi.MCPStatus{Enabled: true,
+				Servers: []httpapi.MCPServerInfo{{Name: "fs", Status: "up", Command: "npx"}}},
+		},
+		save: func(in httpapi.ToolConfigIn) {
+			h.savedToolConfigs = append(h.savedToolConfigs, in)
+		},
+	}
+	h = buildHarness(t, nil, stub, true)
+	h.savedToolConfigs = []httpapi.ToolConfigIn{}
+	return h
+}
+
+// stubToolProvider implements httpapi.ToolConfigProvider for tests: a fixed
+// status and a SaveTools that records payloads; no real reconcile.
+type stubToolProvider struct {
+	status httpapi.ToolStatus
+	save   func(httpapi.ToolConfigIn)
+}
+
+func (p *stubToolProvider) GetToolsStatus(context.Context) (httpapi.ToolStatus, error) {
+	return p.status, nil
+}
+
+func (p *stubToolProvider) SaveTools(_ context.Context, in httpapi.ToolConfigIn) error {
+	p.save(in)
+	return nil
+}
+
+func buildHarness(t TB, extraTools []tool.Definition, provider httpapi.ToolConfigProvider, registerToolConfigSurface bool) *Harness {
 	t.Helper()
 	db, err := store.Open(":memory:")
 	if err != nil {
@@ -144,6 +199,40 @@ func New(t TB, extraTools ...tool.Definition) *Harness {
 			t.Fatal(err)
 		}
 	}
+	if registerToolConfigSurface {
+		// Real invoke_skill tool backed by a temp-dir demo skill fixture.
+		skillDir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(skillDir, "demo"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "demo", "SKILL.md"),
+			[]byte("description: demo skill\nversion: v1\n\n# demo\nDEMO SKILL BODY\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		loader := skill.NewLoader(skillDir)
+		_ = loader.Refresh()
+		if err := registry.Register(skill.InvokeSkill(loader, 32*1024)); err != nil {
+			t.Fatal(err)
+		}
+		// Canned mcp__ tool: deterministic stub handler, no live MCP process.
+		// RequiredScopes MUST stay empty (§4.3 invariant); external + always
+		// routes it to the approval gate.
+		if err := registry.Register(tool.Definition{
+			Name:           "mcp__fake__echo",
+			Description:    "fake MCP echo tool (canned test stub)",
+			Version:        "v1",
+			InputSchema:    `{"type":"object","properties":{"msg":{"type":"string"}},"required":["msg"]}`,
+			Risk:           tool.RiskExternal,
+			Approval:       tool.ApprovalAlways,
+			TimeoutMs:      5000,
+			MaxResultBytes: 4096,
+			Handler: func(context.Context, json.RawMessage) (string, error) {
+				return "\"echoed\"", nil
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	executor := tool.NewExecutor(registry)
 	model := NewScriptedModel()
 	runner := runtime.NewEinoRunner(func() (einomodel.ToolCallingChatModel, error) {
@@ -160,7 +249,12 @@ func New(t TB, extraTools ...tool.Definition) *Harness {
 	runs := service.NewRunService(cfg, tasks, events, approvals, rt, runner)
 	sessions := service.NewSessionService(tasks)
 	settings := store.NewSettingsRepo(db)
-	srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions)
+	var srv *httpapi.Server
+	if provider != nil {
+		srv = httpapi.New(cfg, db, tasks, events, settings, runs, sessions, httpapi.WithToolConfigProvider(provider))
+	} else {
+		srv = httpapi.New(cfg, db, tasks, events, settings, runs, sessions)
+	}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
