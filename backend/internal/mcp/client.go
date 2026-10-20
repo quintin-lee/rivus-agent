@@ -3,7 +3,10 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"sync"
 	"sync/atomic"
 )
 
@@ -14,10 +17,15 @@ type Tool struct {
 	InputSchema map[string]any `json:"inputSchema,omitempty"`
 }
 
-// Client drives one MCP server over a Transport (initialize → tools/list → tools/call).
+// Client drives one MCP server over a Transport (initialize → tools/list →
+// tools/call). A Client is goroutine-safe: the write→read RPC pair is
+// serialized by mu, so concurrent calls on one client (e.g. several subagents
+// sharing a server) never interleave request/response lines.
 type Client struct {
 	transport Transport
 	id        int32
+
+	mu sync.Mutex // serializes the one-in-flight write→read pair
 }
 
 func NewClient(t Transport) *Client { return &Client{transport: t} }
@@ -31,12 +39,17 @@ func (c *Client) rpc(ctx context.Context, method string, params any) (json.RawMe
 	if err != nil {
 		return nil, err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.transport.WriteLine(req); err != nil {
 		return nil, fmt.Errorf("mcp write %s: %w", method, err)
 	}
-	line, err := c.transport.ReadLine()
-	if err != nil {
-		return nil, fmt.Errorf("mcp server disconnected reading %s: %w", method, err)
+	// ReadLine may return the last response line together with io.EOF when
+	// the server closes the stream; that data is still a valid response, so
+	// only error when there is no data at all.
+	line, readErr := c.transport.ReadLine()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return nil, fmt.Errorf("mcp server disconnected reading %s: %w", method, readErr)
 	}
 	var resp struct {
 		ID  int `json:"id"`
@@ -50,6 +63,9 @@ func (c *Client) rpc(ctx context.Context, method string, params any) (json.RawMe
 	}
 	if resp.Err != nil {
 		return nil, fmt.Errorf("mcp %s: %s", method, resp.Err.Message)
+	}
+	if resp.ID != id {
+		return nil, fmt.Errorf("mcp %s: response id %d does not match request id %d", method, resp.ID, id)
 	}
 	return resp.Result, nil
 }
@@ -79,7 +95,11 @@ func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
 // Call invokes tools/call and maps the content blocks to a joined string.
 // A result with isError=true is returned as a Go error.
 func (c *Client) Call(ctx context.Context, name string, arguments map[string]any) (string, error) {
-	res, err := c.rpc(ctx, "tools/call", map[string]any{"name": name, "arguments": arguments})
+	params := map[string]any{"name": name}
+	if arguments != nil {
+		params["arguments"] = arguments
+	}
+	res, err := c.rpc(ctx, "tools/call", params)
 	if err != nil {
 		return "", err
 	}

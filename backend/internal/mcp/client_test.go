@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -31,4 +32,25 @@ func TestClientListAndCall(t *testing.T) {
 	if _, err := c.Call(context.Background(), "echo", nil); err == nil || !strings.Contains(err.Error(), "mcp") {
 		t.Fatalf("isError must map to error, got %v", err)
 	}
+}
+
+// TestClientConcurrent verifies a single Client is safe for concurrent use:
+// several goroutines share one Client + FakeTransport and the write→read pair
+// is serialized by Client.mu (clean under `go test -race`).
+func TestClientConcurrent(t *testing.T) {
+	ft := &FakeTransport{Tools: []string{"echo"}, CallResult: "ok"}
+	c := NewClient(ft)
+	const n = 50
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			out, err := c.Call(context.Background(), "echo", map[string]any{"i": idx})
+			if err != nil || out != "ok" {
+				t.Errorf("concurrent call i=%d: out=%q err=%v", idx, out, err)
+			}
+		}(i)
+	}
+	wg.Wait()
 }
