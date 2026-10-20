@@ -31,3 +31,23 @@ func TestMCPDefinitions(t *testing.T) {
 		t.Fatalf("TimeoutMs = %d, want 30000 (default)", d.TimeoutMs)
 	}
 }
+
+// TestMCPDefinitionsSkipsNonUp pins the §4.3 dead-server guard:
+// only StatusEntry.Status == "up" servers expose tools. A non-up entry that
+// nonetheless carries cached Tools (e.g. a stale snapshot of a now-crashed
+// server) must NOT leak those tools into the model's list.
+func TestMCPDefinitionsSkipsNonUp(t *testing.T) {
+	m := NewManager(NewFakeTransportFactory())
+	status := []StatusEntry{
+		{Name: "fs", Command: "npx", Status: "up", Tools: []Tool{{Name: "read"}}},
+		// Simulate a stale snapshot: an error server that still carries cached tools.
+		{Name: "git", Command: "git-mcp", Status: "error", Tools: []Tool{{Name: "status"}}},
+	}
+	defs := MCPDefinitions(status, m)
+	if len(defs) != 1 {
+		t.Fatalf("want only the up-server tool, got %d defs: %+v", len(defs), defs)
+	}
+	if defs[0].Name != "mcp__fs__read" {
+		t.Fatalf("name = %q, want mcp__fs__read", defs[0].Name)
+	}
+}
