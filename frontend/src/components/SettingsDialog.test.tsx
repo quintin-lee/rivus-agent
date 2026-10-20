@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { SettingsDialog } from './SettingsDialog'
 
-const { getModelSettings, updateModelSettings } = vi.hoisted(() => ({
+const { getModelSettings, updateModelSettings, getTools } = vi.hoisted(() => ({
   getModelSettings: vi.fn().mockResolvedValue({
     provider: 'openai_compat',
     base_url: 'https://api.openai.com/v1',
@@ -10,9 +10,16 @@ const { getModelSettings, updateModelSettings } = vi.hoisted(() => ({
     api_key_set: true,
   }),
   updateModelSettings: vi.fn().mockResolvedValue(undefined),
+  getTools: vi.fn().mockResolvedValue({
+    skills: { enabled: false, available: [] },
+    mcp: { enabled: false, servers: [] },
+  }),
 }))
 
-vi.mock('@/lib/api', () => ({ api: { getModelSettings, updateModelSettings }, ApiError: class extends Error {} }))
+vi.mock('@/lib/api', () => ({
+  api: { getModelSettings, updateModelSettings, getTools },
+  ApiError: class extends Error {},
+}))
 
 describe('SettingsDialog', () => {
   beforeEach(() => {

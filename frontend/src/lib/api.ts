@@ -6,6 +6,8 @@ import type {
   Run,
   Session,
   Step,
+  ToolStatus,
+  ToolConfigIn,
 } from './types'
 
 export class ApiError extends Error {
@@ -167,6 +169,14 @@ class ApiClient {
 
   async getModelSettings(): Promise<ModelSettings> {
     return this.request<ModelSettings>('GET', '/api/v1/settings/model')
+  }
+
+  async getTools(): Promise<ToolStatus> {
+    return this.request<ToolStatus>('GET', '/api/v1/settings/tools')
+  }
+
+  async saveTools(cfg: ToolConfigIn): Promise<void> {
+    await this.request('PUT', '/api/v1/settings/tools', cfg)
   }
 
   async updateModelSettings(patch: {

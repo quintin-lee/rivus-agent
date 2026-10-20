@@ -143,6 +143,40 @@ export interface ModelSettings {
   updated_at?: number
 }
 
+export interface SkillInfo {
+  name: string
+  description: string
+}
+
+export interface ToolInfo {
+  name: string
+  description: string
+}
+
+export interface MCPServerInfo {
+  name: string
+  status: string
+  command: string
+  tools: ToolInfo[]
+}
+
+export interface ToolStatus {
+  skills: { enabled: boolean; available: SkillInfo[] }
+  mcp: { enabled: boolean; servers: MCPServerInfo[] }
+}
+
+export interface MCPServerIn {
+  name: string
+  command: string
+  args?: string[]
+}
+
+export interface ToolConfigIn {
+  skillsEnabled: boolean
+  mcpEnabled: boolean
+  mcpServers: MCPServerIn[]
+}
+
 export interface PendingGoal {
   id: string
   goal: string
