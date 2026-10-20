@@ -13,12 +13,13 @@ import (
 // body (truncated to maxBytes) as the tool result for a known skill name.
 func InvokeSkill(l *Loader, maxBytes int) tool.Definition {
 	return tool.Definition{
-		Name:        "invoke_skill",
-		Description: "Load a skill's instructions as context. Args: {\"name\":\"<skill>\"}.",
-		Version:     "v1",
-		InputSchema: "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}",
-		Risk:        tool.RiskRead,
-		Approval:    tool.ApprovalNever,
+		Name:           "invoke_skill",
+		Description:    "Load a skill's instructions as context. Args: {\"name\":\"<skill>\"}.",
+		Version:        "v1",
+		InputSchema:    "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}",
+		Risk:           tool.RiskRead,
+		Approval:       tool.ApprovalNever,
+		MaxResultBytes: 64 * 1024, // matches the mcp bridge cap; 0 would make the executor wipe non-empty results
 		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var in struct {
 				Name string `json:"name"`
