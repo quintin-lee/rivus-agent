@@ -245,6 +245,7 @@ func (r *EinoRunner) executeResume(ctx context.Context, req ResumeRequest) (<-ch
 
 func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string, iter *adk.AsyncIterator[*adk.AgentEvent], out chan<- RuntimeEvent) {
 	var lastText string
+	var lastTool string
 	for {
 		select {
 		case <-ctx.Done():
@@ -264,6 +265,10 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string, iter
 				r.emit(out, runID, domain.EvtApprovalRequested, ev.Err.Error(), "", "")
 				return
 			}
+			var ce *domain.CodedError
+			if errors.As(ev.Err, &ce) && ce.Code == "tool_failed" {
+				r.emit(out, runID, domain.EvtToolFailed, ev.Err.Error(), lastTool, "")
+			}
 			r.emit(out, runID, domain.EvtModelFailed, ev.Err.Error(), "", "")
 			r.emit(out, runID, domain.EvtRunFailed, ev.Err.Error(), "", "")
 			return
@@ -282,6 +287,7 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string, iter
 				r.emit(out, runID, domain.EvtModelCompleted, text, "", "")
 			}
 			if mo.ToolName != "" {
+				lastTool = mo.ToolName
 				r.emit(out, runID, domain.EvtToolCompleted, mo.ToolName, mo.ToolName, "")
 			}
 		}
