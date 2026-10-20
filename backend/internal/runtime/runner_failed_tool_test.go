@@ -81,6 +81,11 @@ func TestDrainToolFailedEmitsEvtToolFailed(t *testing.T) {
 	if !(modelFailedIdx < runFailedIdx) {
 		t.Fatalf("EvtModelFailed (idx %d) must precede EvtRunFailed (idx %d): %+v", modelFailedIdx, runFailedIdx, got)
 	}
+	// Spec §Task10: EvtToolFailed is emitted BEFORE the existing run-fail
+	// events (EvtModelFailed + EvtRunFailed) in the same drain branch.
+	if toolFailedIdx >= modelFailedIdx {
+		t.Fatalf("EvtToolFailed (idx %d) must precede EvtModelFailed (idx %d): %+v", toolFailedIdx, modelFailedIdx, got)
+	}
 
 	tf := got[toolFailedIdx]
 	if tf.ToolName != "file_read" {
