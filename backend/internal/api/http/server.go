@@ -24,18 +24,89 @@ var (
 	followMaxDuration    = 5 * time.Minute
 )
 
-type Server struct {	cfg      config.Config
+type Server struct {
+	cfg      config.Config
 	db       *sql.DB
 	tasks    *store.TaskRepo
 	events   *store.EventRepo
 	settings *store.SettingsRepo
 	runs     *service.RunService
 	sessions *service.SessionService
+	tools    ToolConfigProvider
 	mux      *http.ServeMux
 }
 
-func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.EventRepo, settings *store.SettingsRepo, runs *service.RunService, sessions *service.SessionService) *Server {
-	s := &Server{cfg: cfg, db: db, tasks: tasks, events: events, settings: settings, runs: runs, sessions: sessions, mux: http.NewServeMux()}
+// ToolConfigProvider backs the /settings/tools endpoints. The httpapi layer
+// does not import internal/mcp or internal/skill — the App supplies this impl.
+type ToolConfigProvider interface {
+	GetToolsStatus(ctx context.Context) (ToolStatus, error)
+	SaveTools(ctx context.Context, in ToolConfigIn) error
+}
+
+// ToolStatus is the GET /settings/tools payload (per-server shape mirrors
+// mcp.StatusEntry, but httpapi defines its own type to stay decoupled).
+type ToolStatus struct {
+	Skills SkillsStatus `json:"skills"`
+	MCP    MCPStatus    `json:"mcp"`
+}
+
+type SkillsStatus struct {
+	Enabled   bool        `json:"enabled"`
+	Available []SkillInfo `json:"available"`
+}
+
+type SkillInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type MCPStatus struct {
+	Enabled bool            `json:"enabled"`
+	Servers []MCPServerInfo `json:"servers"`
+}
+
+type MCPServerInfo struct {
+	Name    string     `json:"name"`
+	Status  string     `json:"status"` // "up" | "down" | "error"
+	Command string     `json:"command"`
+	Tools   []ToolInfo `json:"tools"`
+}
+
+type ToolInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// ToolConfigIn is the PUT /settings/tools payload.
+type ToolConfigIn struct {
+	SkillsEnabled bool          `json:"skillsEnabled"`
+	MCPEnabled    bool          `json:"mcpEnabled"`
+	MCPServers    []MCPServerIn `json:"mcpServers"`
+}
+
+type MCPServerIn struct {
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+}
+
+// Option configures an httpapi.Server. Existing 7-arg New(...) calls stay
+// valid; opt in to the tools API via WithToolConfigProvider(...).
+type Option func(*serverOptions)
+
+type serverOptions struct {
+	tools ToolConfigProvider
+}
+
+func WithToolConfigProvider(p ToolConfigProvider) Option {
+	return func(o *serverOptions) { o.tools = p }
+}
+func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.EventRepo, settings *store.SettingsRepo, runs *service.RunService, sessions *service.SessionService, opts ...Option) *Server {
+	o := serverOptions{}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	s := &Server{cfg: cfg, db: db, tasks: tasks, events: events, settings: settings, runs: runs, sessions: sessions, tools: o.tools, mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
@@ -56,6 +127,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/runs/{id}/cancel", s.handleCancel)
 	s.mux.HandleFunc("POST /api/v1/runs/{id}/resume", s.handleResume)
 	s.mux.HandleFunc("POST /api/v1/runs/{id}/approvals/{approval_id}", s.handleApproval)
+	s.mux.HandleFunc("GET /api/v1/settings/tools", s.handleGetTools)
+	s.mux.HandleFunc("PUT /api/v1/settings/tools", s.handleUpdateTools)
 	s.mux.HandleFunc("GET /api/v1/runs/{id}/approvals", s.handleListApprovals)
 	s.mux.HandleFunc("GET /api/v1/settings/model", s.handleGetModelSettings)
 	s.mux.HandleFunc("PUT /api/v1/settings/model", s.handleUpdateModelSettings)
@@ -408,6 +481,40 @@ func (s *Server) handleGetModelSettings(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, 200, map[string]any{
 		"provider": provider, "base_url": baseURL, "model": name, "api_key_set": keySet,
 	})
+}
+
+// handleGetTools returns the current tools status, or 501 if no provider was
+// configured (a bare 7-arg New call).
+func (s *Server) handleGetTools(w http.ResponseWriter, r *http.Request) {
+	if s.tools == nil {
+		writeErr(w, http.StatusNotImplemented, "tools_not_configured", "tools provider not set on this server", false)
+		return
+	}
+	st, err := s.tools.GetToolsStatus(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "tools_status_failed", err.Error(), false)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+// handleUpdateTools persists a tools config change and triggers reconcile via
+// the provider (implemented by the App, Task 12). 501 if no provider.
+func (s *Server) handleUpdateTools(w http.ResponseWriter, r *http.Request) {
+	if s.tools == nil {
+		writeErr(w, http.StatusNotImplemented, "tools_not_configured", "tools provider not set on this server", false)
+		return
+	}
+	var in ToolConfigIn
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", err.Error(), false)
+		return
+	}
+	if err := s.tools.SaveTools(r.Context(), in); err != nil {
+		writeErr(w, http.StatusInternalServerError, "tools_save_failed", err.Error(), false)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{})
 }
 
 type updateModelSettingsReq struct {
