@@ -22,7 +22,7 @@ export function ToolsPanel() {
     setStatus(st)
     setSkillsEnabled(st.skills.enabled)
     setMcpEnabled(st.mcp.enabled)
-    setServers(st.mcp.servers.map((s) => ({ name: s.name, command: s.command })))
+    setServers(st.mcp.servers.map((s) => ({ name: s.name, command: s.command, args: s.args })))
   }
 
   useEffect(() => {

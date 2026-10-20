@@ -157,6 +157,7 @@ export interface MCPServerInfo {
   name: string
   status: string
   command: string
+  args?: string[]
   tools: ToolInfo[]
 }
 

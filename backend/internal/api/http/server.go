@@ -69,6 +69,7 @@ type MCPServerInfo struct {
 	Name    string     `json:"name"`
 	Status  string     `json:"status"` // "up" | "down" | "error"
 	Command string     `json:"command"`
+	Args    []string   `json:"args,omitempty"`
 	Tools   []ToolInfo `json:"tools"`
 }
 

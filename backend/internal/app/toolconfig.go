@@ -52,7 +52,7 @@ func (p *toolConfigProvider) GetToolsStatus(ctx context.Context) (httpapi.ToolSt
 			infos = append(infos, httpapi.ToolInfo{Name: tl.Name, Description: tl.Description})
 		}
 		st.MCP.Servers = append(st.MCP.Servers, httpapi.MCPServerInfo{
-			Name: e.Name, Status: e.Status, Command: e.Command, Tools: infos,
+			Name: e.Name, Status: e.Status, Command: e.Command, Args: e.Args, Tools: infos,
 		})
 	}
 	return st, nil

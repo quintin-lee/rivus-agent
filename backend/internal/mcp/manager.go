@@ -9,11 +9,12 @@ import (
 
 // StatusEntry is one configured MCP server's live state (feeds GET /settings/tools).
 type StatusEntry struct {
-	Name    string `json:"name"`
-	Command string `json:"command"`
-	Status  string `json:"status"` // "up" | "error"
-	Err     string `json:"err,omitempty"`
-	Tools   []Tool `json:"tools"` // cached tools/list result
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+	Status  string   `json:"status"` // "up" | "error"
+	Err     string   `json:"err,omitempty"`
+	Tools   []Tool   `json:"tools"` // cached tools/list result
 }
 
 // Manager owns all live MCP server connections.
@@ -99,7 +100,7 @@ func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 	}
 	m.mu.Lock()
 	m.clis[s.Name] = c
-	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Status: "up", Tools: tools}
+	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Status: "up", Tools: tools}
 	m.mu.Unlock()
 }
 
