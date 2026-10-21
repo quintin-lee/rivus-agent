@@ -1,5 +1,5 @@
 import type { AgentEvent, Budget, PendingGoal, Run, Step } from './types'
-import { TERMINAL_RUN_STATUSES, isActiveRunStatus } from './status'
+import { TERMINAL_RUN_STATUSES, isActiveRunStatus, eventPayload } from './status'
 
 export type ChatMessage =
   | {
@@ -29,6 +29,7 @@ export type ChatMessage =
       steps: Step[]
       budget: Budget
       progress?: { toolCalls: number; modelCalls: number; seconds: number }
+      partialText?: string // live streaming partial from the latest model.token
       error?: { code: string; summary?: string }
     }
   | {
@@ -108,8 +109,8 @@ function emitRun(
     status: 'sent',
   }
   messages.push(userMsg)
-
   let progress: { toolCalls: number; modelCalls: number; seconds: number } | undefined
+  let partialText: string | undefined
   if (isActiveRunStatus(run.status)) {
     const evs = eventsByRun[run.id] ?? []
     const toolCalls = evs.filter((e) => e.event_type === 'tool.completed').length
@@ -117,6 +118,19 @@ function emitRun(
     const startMs = run.started_at ?? run.created_at
     const seconds = startMs > 0 ? Math.max(0, Math.round((now - startMs) / 1000)) : 0
     progress = { toolCalls, modelCalls, seconds }
+
+    // Live partial from the latest model.token. SSE (run-store appendEvent)
+    // lands ALL model.token rows into eventsByRun (groupEventsByRun buckets
+    // by run_id, no event_type filter). payload_json is a string → parse via
+    // eventPayload; the persistence bridge stores {"text": "...", "tool": ""}.
+    // Take the LAST model.token → its text IS the current partial
+    // (full-so-far, idempotent). On terminal, the isActiveRunStatus guard is
+    // false → partialText stays undefined.
+    const tokens = evs.filter((e) => e.event_type === 'model.token')
+    if (tokens.length > 0) {
+      const text = eventPayload(tokens[tokens.length - 1]).text
+      partialText = typeof text === 'string' ? text : undefined
+    }
   }
 
   const statusMsg: ChatMessage = {
@@ -133,6 +147,7 @@ function emitRun(
       ? { code: run.error_code, summary: run.error_summary }
       : undefined,
     progress,
+    partialText,
   }
   messages.push(statusMsg)
 

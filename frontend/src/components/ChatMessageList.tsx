@@ -72,6 +72,7 @@ function Bubble({
           run={message.run}
           steps={message.steps}
           progress={message.progress}
+          partialText={message.partialText}
           onRetryRun={onRetry}
         />
       )
