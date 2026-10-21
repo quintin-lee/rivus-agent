@@ -18,7 +18,7 @@
 
 两个已锁定的微决策（spec review 可再翻）：
 1. **payload = full-so-far**（非 raw diff）：每个 `model.token` 携带"到目前为止的整段 assistant 文本"。幂等 + 重连回放安全——客户端取**最新**一条 `model.token` 即当前 partial，丢/乱序 chunk 不会 desync。
-2. **parent-only gate = 显式 `stream bool` 参数加在 `drain`**（`executeNew`/`executeResume` 传 `true`，`RunChild` 传 `false`）。比从 `TaskContext` 推断 depth 更明确、可单测。
+2. **parent-only gate = 显式 `stream bool` 参数加在 `drain`**（父 run `executeNew`/`executeResume` 传 `true`；`RunChild` + 测试桩 `driveDrain` 传 `false`）。比从 `TaskContext` 推断 depth 更明确、可单测。
 
 **已知 v1 天花板**：`handleEvents` 以 **1s** ticker（`followPollInterval`，`server.go:22`）轮询 `ListAfter`，所以 delta 按 ~1s 粒度逐出，非 sub-100ms 平滑。v1 可接受（仍远优于"什么都不出到结束"）；平滑推送 = 需专门 push 通道，列 follow-up。
 
@@ -43,9 +43,10 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string,
     iter *adk.AsyncIterator[*adk.AgentEvent], out chan<- RuntimeEvent, stream bool) {
 ```
 
-- 生产调用点共 3 处传 `true`（父 run 流式）：`executeNew`（`runner_eino.go:217`）+ `executeResume`（`runner_eino.go:241`）。
+- 传 `true`（父 run 流式）共 2 处：`executeNew`（`runner_eino.go:217`）+ `executeResume`（`runner_eino.go:241`）。
 - 传 `false`（不流式）：`RunChild`（`runner_child.go:124`，子 agent 输出维持折叠成一条 tool 结果）+ 测试桩 `driveDrain`（`runner_failed_tool_test.go:24`，被 3 个 `EvtToolFailed` 测试共用，是 `drain` 的**第 4 个调用点**——改签名后必须补 `false` 否则编译失败；该 helper 不涉及流式）。
 - 改 `drain` 签名后，`go build ./...` 会暴露任何漏掉的调用点；上表已枚举全部 4 个（2 父 + 1 子 + 1 测试桩）。
+**(b) `drainStream` 改成增量 + 回调**（`runner_eino.go:304-319`，保留 200000-char 上限）：
 ```go
 // drainStream 消费流；onDelta 在每 ~200ms 窗口携带"到目前为止全文"flush 一次。
 // 仍返回完整字符串（保证 EvtModelCompleted + lastText 不变）。onDelta 可为 nil。
@@ -60,7 +61,7 @@ func drainStream(sr *schema.StreamReader[*schema.Message], onDelta func(textSoFa
 		}
 		if chunk != nil {
 			sb.WriteString(chunk.Content)
-			if onDelta != nil && time.Since(lastFlush) >= 200*time.Millisecond {
+			if onDelta != nil && time.Since(lastFlush) >= tokenFlushInterval {
 				onDelta(sb.String()) // full-so-far
 				lastFlush = time.Now()
 			}
