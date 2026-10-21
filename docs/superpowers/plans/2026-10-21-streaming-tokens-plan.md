@@ -747,7 +747,8 @@ git commit -m "test(frontend): partialText derivation (latest model.token) + Sys
 
 Run:
 ```bash
-cd backend && go test ./... 2>&1 | tail -20
+# -o pipefail: make a failing test/build actually fail the command (tail masks exit status otherwise)
+cd backend && set -o pipefail && go test ./... 2>&1 | tail -20
 ```
 Expected: all PASS.
 
@@ -755,7 +756,7 @@ Expected: all PASS.
 
 Run:
 ```bash
-cd frontend && npx vitest run 2>&1 | tail -10
+cd frontend && set -o pipefail && npx vitest run 2>&1 | tail -10
 ```
 Expected: all PASS.
 
@@ -763,7 +764,7 @@ Expected: all PASS.
 
 Run:
 ```bash
-cd backend && go build ./... && cd ../frontend && npx tsc --noEmit && npm run build 2>&1 | tail -5
+cd backend && set -o pipefail && go build ./... && cd ../frontend && npx tsc --noEmit && npm run build 2>&1 | tail -5
 ```
 Expected: both succeed.
 
@@ -772,7 +773,8 @@ Expected: both succeed.
 Run (two terminals):
 ```bash
 # 1) backend (needs the model 3-tuple exported; see README "make run"):
-cd backend && export MODEL_BASE_URL=... MODEL_API_KEY=... MODEL_NAME=... && make run
+# `make run` uses $AGENT_CONFIG (default configs/config.example.yaml) — point it at your real config:
+cd backend && export MODEL_BASE_URL=... MODEL_API_KEY=... MODEL_NAME=... AGENT_CONFIG=configs/your-config.yaml && make run
 # 2) frontend dev server (Vite, proxies to backend):
 cd frontend && npm run dev
 ```
