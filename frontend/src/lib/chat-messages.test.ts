@@ -293,3 +293,29 @@ describe('deriveMessages', () => {
     expect(status?.progress).toMatchObject({ toolCalls: 1, seconds: 5 })
   })
 })
+
+describe('partialText derivation', () => {
+  it('sets partialText to latest model.token text for an active running run', () => {
+    const run = mkRun('r1', 'running', { started_at: 1 })
+    const evs = [mkEv(1, 'model.token', JSON.stringify({ text: 'hello world', tool: '' }))]
+    const out = deriveMessages({ runHistory: [], activeRun: run, activeSteps: [], eventsByRun: { r1: evs }, pendingGoals: [], now: 10 })
+    const status = out.find((m) => m.kind === 'system-status') as ChatMessage | undefined
+    expect((status as { partialText?: string } | undefined)?.partialText).toBe('hello world')
+  })
+
+  it('leaves partialText undefined when there are no model.token events', () => {
+    const run = mkRun('r1', 'running', { started_at: 1 })
+    const evs = [mkEv(1, 'tool.completed', JSON.stringify({ tool: 'file_read' }))]
+    const out = deriveMessages({ runHistory: [], activeRun: run, activeSteps: [], eventsByRun: { r1: evs }, pendingGoals: [], now: 10 })
+    const status = out.find((m) => m.kind === 'system-status') as ChatMessage | undefined
+    expect((status as { partialText?: string } | undefined)?.partialText).toBeUndefined()
+  })
+
+  it('leaves partialText undefined for a terminal run even if model.token exists', () => {
+    const run = mkRun('r1', 'succeeded')
+    const evs = [mkEv(1, 'model.token', JSON.stringify({ text: 'hello', tool: '' }))]
+    const out = deriveMessages({ runHistory: [run], activeRun: null, activeSteps: [], eventsByRun: { r1: evs }, pendingGoals: [], now: 10 })
+    const status = out.find((m) => m.kind === 'system-status') as ChatMessage | undefined
+    expect((status as { partialText?: string } | undefined)?.partialText).toBeUndefined()
+  })
+})

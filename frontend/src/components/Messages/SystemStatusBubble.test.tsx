@@ -85,8 +85,25 @@ describe('SystemStatusBubble', () => {
     expect(screen.getByText(/2s/)).toBeTruthy()
   })
 
+
   it('renders no progress row when progress is absent (terminal)', () => {
     render(<SystemStatusBubble run={run('succeeded')} onRetryRun={vi.fn()} />)
     expect(screen.queryByText(/工具 \d+\/\d+/)).toBeNull()
   })
+
+  it('renders partial text row when active and partialText is provided', () => {
+    render(<SystemStatusBubble run={run('running')} onRetryRun={vi.fn()} partialText="hello world" />)
+    expect(screen.getByText('hello world')).toBeTruthy()
+  })
+
+  it('does not render partial text row for a terminal run even if partialText is set', () => {
+    render(<SystemStatusBubble run={run('succeeded')} onRetryRun={vi.fn()} partialText="hello world" />)
+    expect(screen.queryByText('hello world')).toBeNull()
+  })
+
+  it('does not render partial text row when partialText is absent on an active run', () => {
+    render(<SystemStatusBubble run={run('running')} onRetryRun={vi.fn()} />)
+    expect(screen.queryByText(/hello/)).toBeNull()
+  })
 })
+
