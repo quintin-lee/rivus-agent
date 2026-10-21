@@ -113,7 +113,7 @@ import (
 )
 ```
 
-Then add the injectable window constant near the other package-level vars in the file (below `var lastToolHint = newLastToolHint()`, around `:33-35`):
+Then add the injectable window constant right after the import block (the import `)` closes at `runner_eino.go:18`; insert between the import block and `type RuntimeEvent struct` at `:20`). `import "time"` must already be present from the step above (or add it to the stdlib group if not). Note: there is no existing `lastToolHint`-style var in this file — place it as the first declaration after imports:
 
 ```go
 // tokenFlushInterval: coalescing window for EvtModelToken emission.
@@ -769,10 +769,15 @@ Expected: both succeed.
 
 - [ ] **Step 4: Start the dev server and verify manually**
 
-Run:
+Run (two terminals):
 ```bash
-cd /data/home/quintin/workspace/source/go/rivus-agent && ./start.sh
+# 1) backend (needs the model 3-tuple exported; see README "make run"):
+cd backend && export MODEL_BASE_URL=... MODEL_API_KEY=... MODEL_NAME=... && make run
+# 2) frontend dev server (Vite, proxies to backend):
+cd frontend && npm run dev
 ```
+
+> **If no model is reachable** (the `.env` points at a local Ollama that may have no models pulled): the manual browser step is not runnable. In that case the **integration tests in `backend/tests/integration/` are the authoritative proof** — they exercise the drain → `model.token` → persistence → SSE replay path headlessly. Run those and skip the browser step.
 
 Then in a browser (or `playwright-cli`), open the app, send a chat prompt that triggers a streaming model call, and verify:
 - The running bubble (`SystemStatusBubble`) shows a **growing partial text** (the `model.token` full-so-far accumulation, typed out at ~1s granularity via the existing 1s `handleEvents` poll) before the run completes.
