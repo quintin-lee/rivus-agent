@@ -27,7 +27,8 @@ func TestDrainStreamCoalesces(t *testing.T) {
 
 	// Make the window tiny so the test is deterministic (no real sleeps).
 	// NOTE: tokenFlushInterval is a package global; these tests MUST stay
-	// sequential (no t.Parallel()) because they mutate it. Restore it after.
+	// sequential (no t.Parallel()) because they mutate it — including the
+	// large-window coalescing proof below. Restore it after.
 	orig := tokenFlushInterval
 	tokenFlushInterval = 1 * time.Millisecond
 	defer func() { tokenFlushInterval = orig }()
@@ -48,6 +49,36 @@ func TestDrainStreamCoalesces(t *testing.T) {
 	}
 	if !strings.HasPrefix(full, deltas[len(deltas)-1]) {
 		t.Fatalf("last delta %q is not a prefix of full %q", deltas[len(deltas)-1], full)
+	}
+
+	// Deterministic coalescing proof: with a window far larger than the gap
+	// between in-memory chunks, the 3 chunks collapse into exactly ONE
+	// onDelta call (the first, whose so-far text is "a"). Under a per-chunk
+	// flush regression this would fire 3 times. (The 1ms scenario above
+	// cannot prove this because in-memory pipe timing is non-deterministic.)
+	// NOTE: only the first chunk flushes — the tail chunks stay within the
+	// window and there is no final flush by design (see note below).
+	sr2, sw2 := schema.Pipe[*schema.Message](4)
+	go func() {
+		defer sw2.Close()
+		for _, word := range []string{"a", "b", "c"} {
+			sw2.Send(&schema.Message{Content: word}, nil)
+		}
+	}()
+	var coalesced []string
+	onDelta2 := func(textSoFar string) { coalesced = append(coalesced, textSoFar) }
+	big := tokenFlushInterval
+	tokenFlushInterval = time.Hour // window far larger than any inter-chunk gap
+	full2 := drainStream(sr2, onDelta2)
+	tokenFlushInterval = big // restore
+	if full2 != "abc" {
+		t.Fatalf("drainStream full = %q; want %q", full2, "abc")
+	}
+	if len(coalesced) != 1 {
+		t.Fatalf("expected exactly 1 coalesced onDelta call for 3 chunks under a huge window, got %d (%q)", len(coalesced), coalesced)
+	}
+	if coalesced[0] != "a" {
+		t.Fatalf("single coalesced delta = %q; want %q", coalesced[0], "a")
 	}
 	// NOTE: by design there is NO final flush of the last <window tail. The
 	// full text is delivered by EvtModelCompleted; do not "fix" a tail flush.
@@ -88,7 +119,7 @@ func TestDrainStreamGate(t *testing.T) {
 		},
 	}
 
-	gotParent := drainStreamed(t, r, []*adk.AgentEvent{evParent}, true)
+	gotParent := driveDrainWithStream(t, r, []*adk.AgentEvent{evParent}, true)
 	var hasToken, hasCompleted bool
 	for _, re := range gotParent {
 		switch re.Type {
@@ -105,7 +136,7 @@ func TestDrainStreamGate(t *testing.T) {
 		t.Error("stream=true: expected EvtModelCompleted terminal")
 	}
 
-	gotChild := drainStreamed(t, r, []*adk.AgentEvent{evChild}, false)
+	gotChild := driveDrainWithStream(t, r, []*adk.AgentEvent{evChild}, false)
 	for _, re := range gotChild {
 		if re.Type == domain.EvtModelToken {
 			t.Error("stream=false: did not expect EvtModelToken")
@@ -113,8 +144,8 @@ func TestDrainStreamGate(t *testing.T) {
 	}
 }
 
-// drainStreamed: like driveDrain (in runner_failed_tool_test.go) but parameterized on `stream`.
-func drainStreamed(t *testing.T, r *EinoRunner, events []*adk.AgentEvent, stream bool) []RuntimeEvent {
+// driveDrainWithStream: like driveDrain (in runner_failed_tool_test.go) but parameterized on `stream`.
+func driveDrainWithStream(t *testing.T, r *EinoRunner, events []*adk.AgentEvent, stream bool) []RuntimeEvent {
 	t.Helper()
 	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
 	for _, e := range events {
