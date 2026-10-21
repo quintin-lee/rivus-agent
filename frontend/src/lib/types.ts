@@ -30,6 +30,7 @@ export type EventType =
   | 'step.finished'
   | 'model.requested'
   | 'model.completed'
+  | 'model.token'      // coalesced full-so-far streaming text (parent runs)
   | 'model.failed'
   | 'tool.requested'
   | 'tool.authorized'

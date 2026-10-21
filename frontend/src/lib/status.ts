@@ -56,6 +56,7 @@ export function eventCategory(type: EventType): EventCategory {
       return 'run'
     case 'model.requested':
     case 'model.completed':
+    case 'model.token':    // NEW
     case 'model.failed':
       return 'model'
     case 'tool.requested':
@@ -147,6 +148,8 @@ export function eventSummary(e: AgentEvent): string {
       return 'model call started'
     case 'model.completed':
       return 'model call completed'
+    case 'model.token':    // NEW: quiet, non-terminal
+      return '…streaming'
     case 'model.failed':
       return 'model call failed'
     case 'step.started':
