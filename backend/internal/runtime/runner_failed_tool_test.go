@@ -21,7 +21,7 @@ func driveDrain(t *testing.T, r *EinoRunner, events []*adk.AgentEvent) []Runtime
 	gen.Close()
 
 	out := make(chan RuntimeEvent, 16)
-	r.drain(context.Background(), "run-1", "", iter, out)
+	r.drain(context.Background(), "run-1", "", iter, out, false)
 	close(out)
 
 	var got []RuntimeEvent

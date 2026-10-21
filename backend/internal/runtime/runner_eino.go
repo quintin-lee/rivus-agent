@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
@@ -16,6 +17,12 @@ import (
 	"rivus-agent-backend/internal/domain"
 	itool "rivus-agent-backend/internal/tool"
 )
+
+// tokenFlushInterval: coalescing window for EvtModelToken emission.
+// Each model call produces a small number of EvtModelToken events (one per
+// ~200ms window), not one per raw chunk. Injectable in tests (set to a tiny
+// value, e.g. 1 * time.Millisecond, to force deterministic flushing).
+var tokenFlushInterval = 200 * time.Millisecond
 
 type RuntimeEvent struct {
 	Type     domain.EventType `json:"type"`
@@ -214,7 +221,7 @@ func (r *EinoRunner) executeNew(ctx context.Context, req RunRequest) (<-chan Run
 		defer cancel()
 		r.emit(out, req.RunID, domain.EvtRunStarted, "run started", "", "")
 		iter := runner.Run(ctx, []*schema.Message{schema.UserMessage(req.Goal)})
-		r.drain(ctx, req.RunID, req.CheckpointID, iter, out)
+		r.drain(ctx, req.RunID, req.CheckpointID, iter, out, true)
 	}()
 	return out, nil
 }
@@ -238,12 +245,13 @@ func (r *EinoRunner) executeResume(ctx context.Context, req ResumeRequest) (<-ch
 			r.emit(out, req.RunID, domain.EvtRunFailed, err.Error(), "", "")
 			return
 		}
-		r.drain(ctx, req.RunID, req.CheckpointID, iter, out)
+		r.drain(ctx, req.RunID, req.CheckpointID, iter, out, true)
 	}()
 	return out, nil
 }
 
-func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string, iter *adk.AsyncIterator[*adk.AgentEvent], out chan<- RuntimeEvent) {
+func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string,
+	iter *adk.AsyncIterator[*adk.AgentEvent], out chan<- RuntimeEvent, stream bool) {
 	var lastText string
 	var lastTool string
 	for {
@@ -280,7 +288,11 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string, iter
 				text = mo.Message.Content
 			}
 			if text == "" && mo.MessageStream != nil {
-				text = drainStream(mo.MessageStream)
+				var onDelta func(textSoFar string)
+				if stream {
+					onDelta = func(txt string) { r.emit(out, runID, domain.EvtModelToken, txt, "", "") }
+				}
+				text = drainStream(mo.MessageStream, onDelta)
 			}
 			if text != "" {
 				lastText = text
@@ -301,9 +313,12 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string, iter
 	r.emit(out, runID, domain.EvtRunFinished, lastText, "", "")
 }
 
-func drainStream(sr *schema.StreamReader[*schema.Message]) string {
+// drainStream 消费流；onDelta 在每 ~200ms 窗口携带"到目前为止全文"flush 一次。
+// 仍返回完整字符串（保证 EvtModelCompleted + lastText 不变）。onDelta 可为 nil。
+func drainStream(sr *schema.StreamReader[*schema.Message], onDelta func(textSoFar string)) string {
 	defer sr.Close()
 	var sb strings.Builder
+	var lastFlush time.Time
 	for {
 		chunk, err := sr.Recv()
 		if err != nil {
@@ -311,6 +326,10 @@ func drainStream(sr *schema.StreamReader[*schema.Message]) string {
 		}
 		if chunk != nil {
 			sb.WriteString(chunk.Content)
+			if onDelta != nil && time.Since(lastFlush) >= tokenFlushInterval {
+				onDelta(sb.String()) // full-so-far
+				lastFlush = time.Now()
+			}
 			if len(sb.String()) > 200000 {
 				break
 			}

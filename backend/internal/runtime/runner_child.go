@@ -121,7 +121,7 @@ func (r *EinoRunner) RunChild(ctx context.Context, req ChildRequest) ChildOutcom
 	out := make(chan RuntimeEvent, 64)
 	r.emit(out, req.ChildRunID, domain.EvtRunStarted, "child run started", "", "") // 子事件含 run.started（经 OnEvent 免费落库）
 	iter := runner.Run(ctx, []*schema.Message{schema.UserMessage(req.Goal)})
-	go func() { defer close(out); r.drain(ctx, req.ChildRunID, req.CheckpointID, iter, out) }()
+	go func() { defer close(out); r.drain(ctx, req.ChildRunID, req.CheckpointID, iter, out, false) }()
 
 	var o ChildOutcome
 	for ev := range out {
