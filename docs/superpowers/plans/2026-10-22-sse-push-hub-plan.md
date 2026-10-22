@@ -748,11 +748,15 @@ func TestSSEPushGapBackfill(t *testing.T) {
 		t.Fatalf("decide approval: %d %s", code, body)
 	}
 
-	// 3) The gapped approval.decided arrives FAST via the push path (the 1s
-	//    ticker cannot deliver it that quickly). Assert both frames: the pushed
-	//    gapped event AND the DB-only gap.filled seq (proving no loss).
-	waitLine(t, lines, "event: approval.decided", 500*time.Millisecond)
-	waitLine(t, lines, "event: gap.filled", 5*time.Second)
+	// 3) The gapped batch arrives FAST via the push path's backfill: the
+	//    server writes the ListAfter gap batch in ascending seq order
+	//    (gap.filled first, then approval.decided) followed by the duplicate
+	//    pushed event (server.go:386-400). A 1s ticker cannot deliver either
+	//    that quickly. Assert both frames: gap.filled (DB-only, backfilled)
+	//    AND the pushed approval.decided (proving no loss). waitLine
+	//    drains forward-only, so the waits must follow wire order.
+	waitLine(t, lines, "event: gap.filled", 500*time.Millisecond)
+	waitLine(t, lines, "event: approval.decided", 5*time.Second)
 }
 ```
 
