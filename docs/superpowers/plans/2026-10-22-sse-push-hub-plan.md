@@ -121,8 +121,8 @@ done:
 	if len(got) != 3 || got[0] != 1 || got[1] != 2 || got[2] != -1 {
 		t.Fatalf("expected [1 2 dropped], got %v", got)
 	}
-	// A later publish after the reader drains still delivers (no stuck state).
-	_ = <-ch // drain nothing more; just ensure next publish works below
+	// After the drain loop the buffer is empty. A new publish must still reach
+	// the channel (no stuck/closed state) — assert via the non-blocking select.
 	h.Publish(mkEv(4, domain.EvtModelCompleted))
 	select {
 	case ev := <-ch:
@@ -652,11 +652,9 @@ Create `backend/tests/integration/sse_push_test.go` (package `integration`; reus
 package integration
 
 import (
-	"context"
 	"time"
 	"testing"
 
-	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/tests/testutil"
 )
 
@@ -709,45 +707,51 @@ func TestSSETickerNoHubRegression(t *testing.T) {
 // 3. Gap backfill: stall a run at the approval gate (block_tool), open the
 // stream, then write a synthetic event directly to the DB (bypassing the
 // hub so it is NOT pushed) followed by a hub-published event with a gap.
-// The push case's backfill (ev.Seq > lastSeq+1 → ListAfter) must deliver the
-// skipped seq before the gapped event.
+// The push case's backfill (ev.Seq > lastSeq+1 → ListAfter) must deliver a
+// skipped seq that was written to the DB but NOT pushed through the hub.
+//
+// Fixture: publishToolDef (ApprovalAlways) stalls the run at the approval
+// gate, so the stream stays open long enough to set up the gap.
 func TestSSEPushGapBackfill(t *testing.T) {
-	h := testutil.NewHubHarness(t, blockToolDef())
-	h.Model.EnqueueToolCall("tc1", "block_tool", `{}`) // run pauses at approval
+	h := testutil.NewHubHarness(t, publishToolDef())
+	h.Model.EnqueueToolCall("tc1", "publish_draft", `{"title":"hi"}`) // run stalls at approval
 	ses := h.CreateSession("s")
 	id, code, _ := h.CreateRun(ses, map[string]any{"goal": "pause"}, "push-gap-1")
 	if code != 201 {
 		t.Fatalf("create run: %d", code)
 	}
+	// Wait until the run is parked at the approval gate (gives the stream time
+	// to come up AND advances lastSeq past the pre-approval events).
+	// waitApproval (approval_test.go:30, same package) returns the pending record.
+	a := waitApproval(t, h, id)
+
 	cancel, _, lines := openStream(t, h, id)
 	defer cancel()
-	// Wait for the stream to be live (initial replay delivered run.created).
-	waitLine(t, lines, "event: run.created", 2*time.Second)
+	waitLine(t, lines, "event: run.created", 2*time.Second) // initial replay: stream live
 
-	// Write a synthetic event DIRECTLY to the DB (bypasses the hub → NOT
-	// pushed to the open stream; the ticker could pick it up in ≤1s, but we
-	// then immediately push a gapped event so the backfill path runs first).
-	gapSeq, err := h.Events.Append(context.Background(), id, domain.EventType("gap.filled"), `{"n":1}`, "")
-	if err != nil {
+	// 1) Write a "gap" event DIRECTLY to the DB, bypassing the hub (no
+	//    EventRepo.Append, so SetPublisher never fires → NOT pushed). This
+	//    creates a seq that no push will carry.
+	if _, err := h.DB.Exec(
+		`INSERT INTO agent_events(run_id, event_type, payload_json, sensitivity, created_at)
+			VALUES(?, 'gap.filled', '{"n":1}', 'normal', ?)`,
+		id, time.Now().UnixMilli(), // mirrors store.nowMs (task_repo.go:17)
+	); err != nil {
 		t.Fatal(err)
 	}
-	// Now publish a gapped event through the hub: its seq is > gapSeq, so the
-	// push case sees ev.Seq > lastSeq+1 and must ListAfter(lastSeq) to
-	// backfill the "gap.filled" seq before writing the gapped event.
-	// (We cannot call hub.Publish directly — the harness owns the hub — so we
-	// trigger a real persisted+published event via the approval decision,
-	// which appends approval.decided and publishes it.)
-	approveRun(t, h, id) // helper: GET pending approval, POST {"approve":true} to /runs/{id}/approvals/{aid}
-	// approval.decided can ONLY arrive fast via the push case (ticker is 1s,
-	// and we started the stream >1s ago); within ~500ms proves the push path
-	// executed — and its gap backfill (ev.Seq > lastSeq+1 → ListAfter) is what
-	// delivers the DB-only "gap.filled" row that the hub never pushed. The
-	// no-loss guarantee: gap.filled must appear, via backfill or the ticker.
-	approveRun(t, h, id)
-	_ = gapSeq
-	// Fast: the gapped event arrived via push, not the 1s ticker.
+
+	// 2) Now approve → run_service.DecideApproval → Events.Append(EvtApprovalDecided)
+	//    → hub.Publish. That published seq is > the gap row's seq, so the push
+	//    case sees ev.Seq > lastSeq+1 and MUST ListAfter(lastSeq) to backfill.
+	if code, body := h.Do("POST", "/api/v1/runs/"+id+"/approvals/"+a.ID,
+		map[string]any{"approve": true, "reason": "ok"}, nil); code != 200 {
+		t.Fatalf("decide approval: %d %s", code, body)
+	}
+
+	// 3) The gapped approval.decided arrives FAST via the push path (the 1s
+	//    ticker cannot deliver it that quickly). Assert both frames: the pushed
+	//    gapped event AND the DB-only gap.filled seq (proving no loss).
 	waitLine(t, lines, "event: approval.decided", 500*time.Millisecond)
-	// No loss: the DB-only gap.filled seq still reached the stream.
 	waitLine(t, lines, "event: gap.filled", 5*time.Second)
 }
 ```
@@ -755,9 +759,9 @@ func TestSSEPushGapBackfill(t *testing.T) {
 **Pre-running checklist (verify against real code, don't guess):**
 - `h.CreateRun` returns `(string, int, map[string]any)` (`harness.go:307`); `h.Model.EnqueueText` / `EnqueueToolCall` are the scripting methods (`harness.go:44,52`).
 - `openStream`/`waitLine` are package-level in `sse_follow_test.go:16-63` (same `integration` package) — directly usable.
-- `approveRun(t, h, id)` is a small helper you add to this test file: it fetches the run's pending approval via `GET /api/v1/runs/{id}/approvals` and POSTs `{"approve": true, "reason": "ok"}` to `/api/v1/runs/{id}/approvals/{approval_id}` (the route at `server.go:130`; payload shape confirmed in `approval_test.go:74-75`). It triggers `run_service.DecideApproval` → `Events.Append(approval.decided)` → `hub.Publish` (the gapped event).
-- `blockToolDef()` is defined in `api_test.go:107` (same package) — reuse it for the pause tool.
-- `domain` + `context` imports needed for `h.Events.Append` / `domain.EventType`.
+- Scenario 3 uses `publishToolDef` (`approval_test.go:16`, `RiskExternal`+`ApprovalAlways` → guarantees a pending approval; do NOT use `blockToolDef`, which is `ApprovalNever` and auto-runs with no approval record). `waitApproval` (`approval_test.go:30`, same package) returns the pending `domain.Approval`.
+- Approval decision is POST `{"approve": true, "reason": "ok"}` to `/api/v1/runs/{id}/approvals/{a.ID}` via `h.Do` (route at `server.go:130`; payload shape confirmed in `approval_test.go:74-75`) → `run_service.DecideApproval` → `Events.Append(approval.decided)` → `hub.Publish` (the gapped event).
+- The DB-only "gap.filled" row is inserted with `h.DB.Exec` (a raw `*sql.DB`, exposed at `harness.go:121`) so it bypasses `SetPublisher` and is NOT pushed; `created_at` mirrors `store.nowMs` via `time.Now().UnixMilli()`. No `context`/`domain` import is needed for the test file beyond what's already imported.
 - **Scenario 1 relies on a scripted-model `model.token` being emitted.** This is already proven by `TestModelTokenPersists` (`streaming_token_test.go`, merged in the streaming-tokens round). If it ever regresses, scenario 1 will fail loudly — that's the point.
 
 - [ ] **Step 2: Run the new tests**
