@@ -684,10 +684,10 @@ func TestSSEPushFastPath(t *testing.T) {
 }
 
 // 2. No-hub regression: with the hub NOT wired (testutil.New), events still
-// flow, but only on the 1s ticker. run.started (written at run creation,
-// before the stream opens) is the initial-replay path (not ticker), so we
-// wait on a LATER event — run.finished — which for a no-hub server can only
-// arrive via the 1s ticker poll. Generous deadline (~3s) covers 2-3 ticks.
+// flow. run.finished is delivered either via the INITIAL REPLAY path
+// (server.go:344 ListAfter(0), if the fast scripted run already terminated
+// before openStream) or the 1s ticker (if it terminates after) — either way
+// the test proves events flow WITHOUT a hub (zero-regression guarantee).
 func TestSSETickerNoHubRegression(t *testing.T) {
 	h := testutil.New(t) // no hub
 	h.Model.EnqueueText("done")
@@ -698,13 +698,13 @@ func TestSSETickerNoHubRegression(t *testing.T) {
 	}
 	cancel, _, lines := openStream(t, h, id)
 	defer cancel()
-	// run.finished only persists after the run completes; with no hub it can
-	// only be delivered by the 1s ticker. A ~3s deadline proves the ticker path
-	// works without the hub (zero-regression guarantee).
+	// With no hub, run.finished is delivered by the initial replay or the 1s
+	// ticker (path-independent) — a ~3s deadline covers both. The ticker-only
+	// path is additionally proven by the existing TestSSEFollowPushHeartbeatClose.
 	waitLine(t, lines, "event: run.finished", 3*time.Second)
 }
 
-// 3. Gap backfill: stall a run at the approval gate (block_tool), open the
+// 3. Gap backfill: stall a run at the approval gate (publishToolDef), open the
 // stream, then write a synthetic event directly to the DB (bypassing the
 // hub so it is NOT pushed) followed by a hub-published event with a gap.
 // The push case's backfill (ev.Seq > lastSeq+1 → ListAfter) must deliver a
