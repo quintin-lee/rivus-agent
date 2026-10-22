@@ -20,6 +20,7 @@ import (
 	httpapi "rivus-agent-backend/internal/api/http"
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/domain"
+	"rivus-agent-backend/internal/eventshub"
 	"rivus-agent-backend/internal/runtime"
 	"rivus-agent-backend/internal/service"
 	"rivus-agent-backend/internal/skill"
@@ -136,7 +137,15 @@ type Harness struct {
 func (h *Harness) SavedToolConfigs() []httpapi.ToolConfigIn { return h.savedToolConfigs }
 
 func New(t TB, extraTools ...tool.Definition) *Harness {
-	return buildHarness(t, extraTools, nil, false)
+	return buildHarness(t, extraTools, nil, false /*withHub*/, false)
+}
+
+// NewHubHarness builds a Harness with the eventshub wired into EventRepo
+// (SetPublisher) and httpapi (WithEventHub) — needed to exercise the SSE
+// push fast path. New() remains the no-hub (ticker-only) baseline.
+func NewHubHarness(t TB, extraTools ...tool.Definition) *Harness {
+	t.Helper()
+	return buildHarness(t, extraTools, nil, false /*withHub*/, true)
 }
 
 // NewToolConfigHarness builds a Harness with the /settings/tools API surface
@@ -158,7 +167,7 @@ func NewToolConfigHarness(t TB) *Harness {
 			h.savedToolConfigs = append(h.savedToolConfigs, in)
 		},
 	}
-	h = buildHarness(t, nil, stub, true)
+	h = buildHarness(t, nil, stub, true /*withHub*/, false)
 	h.savedToolConfigs = []httpapi.ToolConfigIn{}
 	return h
 }
@@ -179,7 +188,7 @@ func (p *stubToolProvider) SaveTools(_ context.Context, in httpapi.ToolConfigIn)
 	return nil
 }
 
-func buildHarness(t TB, extraTools []tool.Definition, provider httpapi.ToolConfigProvider, registerToolConfigSurface bool) *Harness {
+func buildHarness(t TB, extraTools []tool.Definition, provider httpapi.ToolConfigProvider, registerToolConfigSurface bool, withHub bool) *Harness {
 	t.Helper()
 	db, err := store.Open(":memory:")
 	if err != nil {
@@ -187,6 +196,11 @@ func buildHarness(t TB, extraTools []tool.Definition, provider httpapi.ToolConfi
 	}
 	tasks := store.NewTaskRepo(db)
 	events := store.NewEventRepo(db)
+	var hub *eventshub.Hub
+	if withHub {
+		hub = eventshub.New()
+		events.SetPublisher(hub.Publish)
+	}
 	approvals := store.NewApprovalRepo(db)
 	checkpoints := store.NewCheckpointStore(db)
 
@@ -249,12 +263,14 @@ func buildHarness(t TB, extraTools []tool.Definition, provider httpapi.ToolConfi
 	runs := service.NewRunService(cfg, tasks, events, approvals, rt, runner)
 	sessions := service.NewSessionService(tasks)
 	settings := store.NewSettingsRepo(db)
-	var srv *httpapi.Server
+	var opts []httpapi.Option
 	if provider != nil {
-		srv = httpapi.New(cfg, db, tasks, events, settings, runs, sessions, httpapi.WithToolConfigProvider(provider))
-	} else {
-		srv = httpapi.New(cfg, db, tasks, events, settings, runs, sessions)
+		opts = append(opts, httpapi.WithToolConfigProvider(provider))
 	}
+	if hub != nil {
+		opts = append(opts, httpapi.WithEventHub(hub))
+	}
+	srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions, opts...)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
