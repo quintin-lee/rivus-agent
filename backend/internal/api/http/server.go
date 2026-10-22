@@ -13,6 +13,7 @@ import (
 
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/domain"
+	"rivus-agent-backend/internal/eventshub"
 	"rivus-agent-backend/internal/service"
 	"rivus-agent-backend/internal/store"
 )
@@ -33,6 +34,7 @@ type Server struct {
 	runs     *service.RunService
 	sessions *service.SessionService
 	tools    ToolConfigProvider
+	hub      *eventshub.Hub
 	mux      *http.ServeMux
 }
 
@@ -97,17 +99,22 @@ type Option func(*serverOptions)
 
 type serverOptions struct {
 	tools ToolConfigProvider
+	hub   *eventshub.Hub
 }
 
 func WithToolConfigProvider(p ToolConfigProvider) Option {
 	return func(o *serverOptions) { o.tools = p }
 }
+func WithEventHub(hub *eventshub.Hub) Option {
+	return func(o *serverOptions) { o.hub = hub }
+}
+
 func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.EventRepo, settings *store.SettingsRepo, runs *service.RunService, sessions *service.SessionService, opts ...Option) *Server {
 	o := serverOptions{}
 	for _, opt := range opts {
 		opt(&o)
 	}
-	s := &Server{cfg: cfg, db: db, tasks: tasks, events: events, settings: settings, runs: runs, sessions: sessions, tools: o.tools, mux: http.NewServeMux()}
+	s := &Server{cfg: cfg, db: db, tasks: tasks, events: events, settings: settings, runs: runs, sessions: sessions, tools: o.tools, hub: o.hub, mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
@@ -356,6 +363,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	defer poll.Stop()
 	beat := time.NewTicker(followHeartbeatEvery)
 	defer beat.Stop()
+
+	var pushCh <-chan domain.AgentEvent
+	if s.hub != nil {
+		var unsub func()
+		pushCh, unsub = s.hub.Subscribe(id, 64)
+		defer unsub()
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -365,6 +379,25 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			flusher.Flush()
+		case ev, ok := <-pushCh:
+			if !ok {
+				continue // defensive: unsub only via defer at handler exit; won't fire mid-loop
+			}
+			if ev.Seq > lastSeq {
+				if ev.Seq > lastSeq+1 {
+					// gap backfill：push 可能丢了中间 seq（订阅缓冲满 drop）。
+					// 先 ListAfter(lastSeq) 把 gap 补回，再写 ev（幂等去重）。
+					if gap, err := s.events.ListAfter(ctx, id, lastSeq, 500); err == nil {
+						if !writeEvents(gap) {
+							return
+						}
+					}
+				}
+				// ev 可能已包含在 gap 里 → 重复投递有意的、幂等（前端按 (seq,event_type) 去重）
+				if !writeEvents([]domain.AgentEvent{ev}) {
+					return
+				}
+			}
 		case <-poll.C:
 			if time.Now().After(deadline) {
 				return
