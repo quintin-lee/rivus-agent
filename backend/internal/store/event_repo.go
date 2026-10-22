@@ -9,9 +9,17 @@ import (
 )
 
 // EventRepo 追加写入事件，SSE 通过 seq 支持 after 恢复读取。
-type EventRepo struct{ db *sql.DB }
+type EventRepo struct {
+	db        *sql.DB
+	publisher func(domain.AgentEvent) // nil-safe：未装配时为 no-op
+}
 
 func NewEventRepo(db *sql.DB) *EventRepo { return &EventRepo{db: db} }
+
+// SetPublisher 挂发布钩子（app 装配 eventshub.Hub.Publish）。nil 则 Append 纯写库，行为同今天。
+func (r *EventRepo) SetPublisher(fn func(domain.AgentEvent)) {
+	r.publisher = fn
+}
 
 func newID(prefix string) string { return prefix + "_" + uuid.NewString() }
 
@@ -20,12 +28,21 @@ func (r *EventRepo) Append(ctx context.Context, runID string, typ domain.EventTy
 	if sensitivity == "" {
 		sensitivity = "normal"
 	}
+	ts := nowMs()
 	res, err := r.db.ExecContext(ctx, `INSERT INTO agent_events(run_id, event_type, payload_json, sensitivity, created_at)
-		VALUES(?, ?, ?, ?, ?)`, runID, string(typ), payloadJSON, sensitivity, nowMs())
+		VALUES(?, ?, ?, ?, ?)`, runID, string(typ), payloadJSON, sensitivity, ts)
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	seq, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if r.publisher != nil {
+		r.publisher(domain.AgentEvent{Seq: seq, RunID: runID, Type: typ,
+			PayloadJSON: payloadJSON, Sensitivity: sensitivity, CreatedAt: ts})
+	}
+	return seq, nil
 }
 
 // ListAfter 按 seq 增序返回事件，支持 SSE 断连恢复。

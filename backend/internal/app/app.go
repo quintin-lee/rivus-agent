@@ -13,6 +13,7 @@ import (
 	einomodel "github.com/cloudwego/eino/components/model"
 	httpapi "rivus-agent-backend/internal/api/http"
 	"rivus-agent-backend/internal/config"
+	"rivus-agent-backend/internal/eventshub"
 	mcp "rivus-agent-backend/internal/mcp"
 	"rivus-agent-backend/internal/model"
 	"rivus-agent-backend/internal/observability"
@@ -52,6 +53,8 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	tasks := store.NewTaskRepo(db)
 	events := store.NewEventRepo(db)
+	hub := eventshub.New()
+	events.SetPublisher(hub.Publish)
 	approvals := store.NewApprovalRepo(db)
 	checkpoints := store.NewCheckpointStore(db)
 
@@ -102,7 +105,8 @@ func (a *App) Start(ctx context.Context) error {
 
 	runs := service.NewRunService(cfg, tasks, events, approvals, rt, runner)
 	sessions := service.NewSessionService(tasks)
-	srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions, httpapi.WithToolConfigProvider(provider))
+	srv := httpapi.New(cfg, db, tasks, events, settings, runs, sessions,
+		httpapi.WithToolConfigProvider(provider), httpapi.WithEventHub(hub))
 
 	httpSrv := &http.Server{
 		Addr: cfg.Addr, Handler: srv.Handler(),
