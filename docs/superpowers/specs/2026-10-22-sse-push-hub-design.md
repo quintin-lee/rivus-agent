@@ -21,7 +21,7 @@
 
 两个已锁定的微决策（spec review 可再翻）：
 1. **发布点 = `EventRepo.Append` 单一钩子**：所有事件写入（`runtime.go:37,186,196` + `run_service.go:76,108,175`）都经 `EventRepo.Append`，一处挂 `SetPublisher` 即覆盖全部，测试构造无需改。`store` 只认 `func(domain.AgentEvent)`，**不 import eventshub**（解耦）。
-2. **push 是优化、1s ticker 是正确性兜底**：订阅者缓冲（64）满时该订阅 drop，ticker 的 `ListAfter` 补回漏掉的 seq——**无丢失、无 desync**，与今天的边界语义一致（full-so-far 幂等）。
+2. **push 是优化、ticker 是兜底，gap backfill 保证不丢**：订阅者缓冲（64）满时该订阅 drop 事件；`handleEvents` push case 的 **gap backfill**（`ev.Seq > lastSeq+1` 先 `ListAfter` 补回缺口，§3）+ 1s ticker 兜底 → **无丢失、无 desync**，与今天的边界语义一致（full-so-far 幂等 + 前端去重）。
 
 ## 改动
 
@@ -60,18 +60,27 @@ type EventRepo struct {
 func (r *EventRepo) SetPublisher(fn func(domain.AgentEvent))
 ```
 
-`Append` 尾部（拿到 `seq` 后）：
+`Append` 的 diff（现状 `event_repo.go:19-29`：`INSERT` 内联 `nowMs()`，尾部直接 `return res.LastInsertId()`；改后把 `ts := nowMs()` 提到 INSERT 之前复用，尾部构造事件再回调）：
 
 ```go
-ev := domain.AgentEvent{Seq: seq, RunID: runID, Type: typ,
-    PayloadJSON: payloadJSON, Sensitivity: sensitivity, CreatedAt: nowMs()}
-if r.publisher != nil {
-    r.publisher(ev)
-}
-return seq, nil
+	ts := nowMs()
+	res, err := r.db.ExecContext(ctx, `INSERT INTO agent_events(run_id, event_type, payload_json, sensitivity, created_at)
+		VALUES(?, ?, ?, ?, ?)`, runID, string(typ), payloadJSON, sensitivity, ts)
+	if err != nil {
+		return 0, err
+	}
+	seq, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if r.publisher != nil {
+		r.publisher(domain.AgentEvent{Seq: seq, RunID: runID, Type: typ,
+			PayloadJSON: payloadJSON, Sensitivity: sensitivity, CreatedAt: ts})
+	}
+	return seq, nil
 ```
 
-> 注意：`CreatedAt` 用与 insert 同一个 `nowMs()` 值（保持 DB 行与发布事件一致）。`store` 不 import `eventshub`——只暴露 `func(domain.AgentEvent)`。
+> 注意：DB 行与发布事件共用同一个 `ts`（`created_at` 一致，不差 1ms）。`store` 不 import `eventshub`——只暴露 `func(domain.AgentEvent)`。另：现状 `res.LastInsertId()` 是裸双值返回（`event_repo.go:28`），本身已传播 error；snippet 里显式 `seq, err :=` 只是可读性等价，**不是**行为变更。
 
 ### 3. `backend/internal/api/http/server.go` — `handleEvents` 加 push case
 
@@ -89,13 +98,21 @@ return seq, nil
   ```go
   case ev, ok := <-pushCh:
       if !ok {
-          continue
+          continue // 防御性：unsub 只经 defer 在 handler 退出时跑，循环内实际不会触发
       }
-      if ev.Seq <= lastSeq {
-          continue // 幂等：ticker 可能已写过的 seq 跳过
-      }
-      if !writeEvents([]domain.AgentEvent{ev}) {
-          return
+      if ev.Seq > lastSeq {
+          if ev.Seq > lastSeq+1 {
+              // gap backfill：push 可能丢了中间 seq（订阅缓冲满 drop）。
+              // 先 ListAfter(lastSeq) 把 gap 补回，再写 ev（幂等去重）。
+              if gap, err := s.events.ListAfter(ctx, id, lastSeq, 500); err == nil {
+                  if !writeEvents(gap) {
+                      return
+                  }
+              }
+          }
+          if !writeEvents([]domain.AgentEvent{ev}) {
+              return
+          }
       }
   ```
 - **1s ticker 保留不动**（`server.go:355,368`）——它现在是兜底（补 hub 未覆盖的写路径 / drop 的 seq）+ 终态检查（`GetRun` → `Terminal()` close）。`followPollInterval` 维持 1s。
@@ -130,7 +147,7 @@ handleEvents 订阅者：
 
 | 场景 | 行为 |
 |---|---|
-| 订阅缓冲满（客户端太慢） | `Publish` drop 该订阅该事件；1s ticker 补回 → "延迟但不丢"，同今天轮询语义 |
+| 订阅缓冲满（客户端太慢） | `Publish` drop 该订阅该事件；**push case 的 gap backfill**（`ev.Seq > lastSeq+1` → 先 `ListAfter(lastSeq)` 补回缺口）保证 drop 的 seq 不会因 `lastSeq` 被推过而永久漏掉 → "延迟但不丢"，同今天轮询语义（仅最坏情形下短暂落后一个窗口） |
 | 无订阅者（全部断连） | `Publish` 对空 map 扇出为 no-op；`Append` 常见路径成本不变 |
 | hub 未装配（测试 / `run_service` 独立路径） | `EventRepo.publisher` nil → no-op；`handleEvents` 退回纯 ticker（**与今天完全一致**） |
 | 终态 run | 终态事件是最后一次 push；1s ticker 的 `GetRun` 终态检查随后 close（现有路径不变） |
@@ -139,16 +156,18 @@ handleEvents 订阅者：
 ## 测试
 
 - **`eventshub`（Go 单测，新包）**：publish→subscribe round-trip；**每订阅者隔离**（A 溢出不影响 B）；drop-on-full 后通道仍可用（不死锁）；`unsub()` 解除阻塞 + 从 map 移除（断言 map 大小无泄漏）。
-- **`handleEvents`（Go 集成测，扩 `tests/integration/sse_follow_test.go` 模式，两个确定性场景）**：
+- **`handleEvents`（Go 集成测，扩 `tests/integration/sse_follow_test.go` 模式，三个场景）**：
   1. **push 快路径（hub 装配）**：stream 打开时 enqueue 一条 `model.token`（经 `Events.Append` → `hub.Publish`），断言该帧**在 < 100ms 内**到达（短 deadline，纯 1s-poll 的同类测试会失败 → 证明快路径生效）。
   2. **ticker 兜底（hub 未装配）**：用一个**未接 hub 的 harness 实例**（`SetPublisher` 未调，`handleEvents` 走 `s.hub == nil` 分支 = 纯 ticker），断言事件仍被 1s 轮询逐出（~1s 内到达）且终态 close —— 证明「hub 缺席 = 行为同今天」的零回归保证。
-  （两条都复用现有 `waitLine` + `openStream`。）
+  3. **gap backfill**：订阅缓冲打满（或人为 drop 中间 seq 后 push 一个 `ev.Seq > lastSeq+1` 的事件）→ 断言缺口 seq 仍被逐出（backfill 生效）。
+  （场景 1 前置：`testutil` 需加一个 **hub 装配的 harness 变体**（如 `NewHubHarness`：`eventshub.New()` + `events.SetPublisher(hub.Publish)` + `httpapi.WithEventHub(hub)`）——现有 `New` 不接 hub，场景 1 在其上不可构建。场景 2/3 的断言路径不受影响。）
+  （三条都复用现有 `waitLine` + `openStream`。）
 - **前端：无改动、无测试。**
 
 ## 验收
 
 - 父 run 运行中，SSE 客户端收到 `model.token` 的**延迟 < 100ms**（vs 今天 ≤1s）；partial 平滑逐出。
-- 客户端过慢 / 断开 / hub 未装配 场景**零回归**（ticker 兜底 → 行为同今天）。
+- 客户端过慢 / 断开 / hub 未装配 场景**零回归**（drop 由 gap backfill + ticker 兜底 → 无丢失；hub 缺席 = 行为同今天）。
 - 审批 / 终态 / `run_service` 写入路径**仍可达**（单钩子覆盖 + ticker 兜底双保险）。
 - 无第二传输、无 DB schema 变更、无新 route；前端 `git diff` 为空。
 
