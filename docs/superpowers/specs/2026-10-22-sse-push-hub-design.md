@@ -110,6 +110,7 @@ func (r *EventRepo) SetPublisher(fn func(domain.AgentEvent))
                   }
               }
           }
+          // ev 可能已包含在 gap 里（backfill 覆盖到 ev）→ 重复投递有意的、幂等（前端按 (seq,event_type) 去重）
           if !writeEvents([]domain.AgentEvent{ev}) {
               return
           }
