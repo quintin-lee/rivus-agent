@@ -137,7 +137,7 @@ type Harness struct {
 func (h *Harness) SavedToolConfigs() []httpapi.ToolConfigIn { return h.savedToolConfigs }
 
 func New(t TB, extraTools ...tool.Definition) *Harness {
-	return buildHarness(t, extraTools, nil, false /*withHub*/, false)
+	return buildHarness(t, extraTools, nil, false, false /*withHub*/)
 }
 
 // NewHubHarness builds a Harness with the eventshub wired into EventRepo
@@ -145,7 +145,7 @@ func New(t TB, extraTools ...tool.Definition) *Harness {
 // push fast path. New() remains the no-hub (ticker-only) baseline.
 func NewHubHarness(t TB, extraTools ...tool.Definition) *Harness {
 	t.Helper()
-	return buildHarness(t, extraTools, nil, false /*withHub*/, true)
+	return buildHarness(t, extraTools, nil, false, true /*withHub*/)
 }
 
 // NewToolConfigHarness builds a Harness with the /settings/tools API surface
@@ -167,7 +167,7 @@ func NewToolConfigHarness(t TB) *Harness {
 			h.savedToolConfigs = append(h.savedToolConfigs, in)
 		},
 	}
-	h = buildHarness(t, nil, stub, true /*withHub*/, false)
+	h = buildHarness(t, nil, stub, true, false /*withHub*/)
 	h.savedToolConfigs = []httpapi.ToolConfigIn{}
 	return h
 }
