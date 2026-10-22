@@ -11,7 +11,7 @@
 
 本 spec 补上后端权威计数:
 
-- **后端**:在 `runtime.go` 的 `run()` 事件循环里,已按类型聚合(`toolEvidence++` 数 tool、`finalText` 取模型文本)。新增 `modelCalls`(数 `model.completed`)。每个 tool/model 边界,`append(EvtBudgetConsumed, 累计 snapshot)`,payload `{"model_calls":N,"tool_calls":N,"duration_seconds":N}`。零新管道——复用现成 `r.append`(自动持久化 + 经 `eventshub` 实时推送)。
+- **后端**:在 `runtime.go` 的 `run()` 事件循环里,已按类型聚合(`toolEvidence` 数 tool、`finalText` 取模型文本)。新增 `modelCalls`(数 `model.completed`)。每个 tool/model 边界,调 `Events.Append(EvtBudgetConsumed, 累计 snapshot)`,payload `{"model_calls":N,"tool_calls":N,"duration_seconds":N}`。零新管道——`Events.Append` 即持久化 + `eventshub` 实时推送(与 `r.append` 内部同一写路径,只是 payload 为结构化 JSON 而非 text-only 的 `append` 助手)。
 - **前端**:`chat-messages.ts` 的 `emitRun`,`isActiveRunStatus` 分支取 `eventsByRun[run.id]` 里**最后一条** `budget.consumed`(存在则 `eventPayload` 解析)→ 用其 `model_calls`/`tool_calls`(精确、截断免疫);**无**该事件时回退现有 `.completed` 计数(旧 run / 特征上线前的数据)。
 - **截断免疫原理**:`MAX_EVENTS` 丢最旧,`budget.consumed` 每次自增发**最新一条**,累计值单调递增 → 截断后存活的是"最新那条",其 payload 即当前精确累计。
 - **语义对齐**:gauge 数 `model.completed`(模型回合完成,不含纯 tool-call 无文本轮次),与现有前端 gauge 口径一致;子运行走独立 `runID`,`eventsByRun` 按 `run_id` 分桶,父 gauge 天然只数顶层,与"子运行保持折叠"策略一致。
@@ -76,7 +76,7 @@ for ev := range ch {
 }
 ```
 
-新增辅助(贴 `append` 旁):
+新增辅助(贴 `append` 旁;payload 为结构化 JSON,故直接走 `Events.Append`,不复用 text-only 的 `append` 助手——二者持久化路径相同,差别仅 payload 形态):
 
 ```go
 // appendBudget 在步骤边界发 budget.consumed,累计 model_calls/tool_calls/duration。
@@ -93,6 +93,23 @@ func (r *Runtime) appendBudget(ctx context.Context, runID string, modelCalls, to
 `time` 已在 `runtime.go` import;`json` 已在 import。零新 import。
 
 > 说明:`append` 用 `context.Background()` 兜底(见 `runtime.go:144-149` 注释:deadline 死 ctx 时写会静默 no-op)。`appendBudget` 在循环内用 `ctx`(run 正常进行,ctx 活着);循环在 ctx 死亡前已被 `iter.Next()` 的 `<-ctx.Done()` 分支收尾,故边界发射用的是活 ctx,安全。
+
+### 2b. `frontend/src/lib/types.ts` + `frontend/src/lib/status.ts` — 事件类型与摘要
+
+`EventType` union(:19-45)加:
+
+```ts
+| 'budget.consumed'  // cumulative usage at step boundary (backend authoritative)
+```
+
+(不加则 §3 的 `e.event_type === 'budget.consumed'` 过滤在 `tsc --noEmit` 下 TS2367 报错——`EventType` 是字面量 union,`filter` 的字面量比较必须属于 union。`sse-client.ts:31` / `api.ts:213` 的 `as AgentEvent['event_type']` 动态 cast 随之自动覆盖,无需改。)
+
+`eventSummary`(`status.ts:132`)加 case(贴 `model.token` 的"安静"风格,避免折叠事件列表渲染成 "Unknown event budget.consumed"):
+
+```ts
+case 'budget.consumed':
+  return p.tool_calls != null ? `用量 工具 ${String(p.tool_calls)}/模型 ${String(p.model_calls ?? 0)}` : '用量更新'
+```
 
 ### 3. `frontend/src/lib/chat-messages.ts` — 派生优先取精确值
 
@@ -152,8 +169,9 @@ runtime.run() 事件循环: 每个 tool/model 边界 → appendBudget → Events
 
 ```go
 func TestBudgetConsumedEmit(t *testing.T) {
-    h := testutil.NewHubHarness(t)
-    h.Model.EnqueueToolCall("tc1", "publish_draft", `{"title":"hi"}`) // tool+model 边界
+    h := testutil.NewHubHarness(t, publishToolDef()) // publish_draft: RiskExternal+ApprovalAlways → 可 park
+    h.Model.EnqueueToolCall("tc1", "publish_draft", `{"title":"hi"}`) // run park 于审批门
+    // 注:默认注册表下的 knowledge_search 是只读 ApprovalNever,也合法;但 publish_draft 需经 publishToolDef() 注册并 approve 才产生 tool.completed —— 故用 publishToolDef()+approve 路径,避免未注册工具产生 tool.failed(使终值断言变 0==0 空真)。
     // 或 EnqueueText 走纯 model 边界;按需构造至少 1 model + 1 tool
     ses := h.CreateSession("s")
     id, code, _ := h.CreateRun(ses, map[string]any{"goal": "g"}, "bc-1")
@@ -172,7 +190,7 @@ func TestBudgetConsumedEmit(t *testing.T) {
 - 最后一条的 `tool_calls` == `count(event_type='tool.completed' AND run_id=id)`;
 - payload 含 `model_calls`/`tool_calls`/`duration_seconds` 三键。
 
-(若需 park 保证事件稳定,复用 `publishToolDef`+`waitApproval`+approve 模式;但断言基于 DB,非 SSE 时序,故不必 `waitLine`。)
+(断言基于 DB,非 SSE 时序,故不必 `waitLine`;park 时用 `publishToolDef`+`waitApproval`+`POST /approvals/{id}` approve,使 tool 真正完成、产生 `tool.completed`。)
 
 ### 前端 `frontend/src/lib/chat-messages.test.ts`(扩展现有 `deriveMessages` 用例)
 
@@ -184,7 +202,7 @@ func TestBudgetConsumedEmit(t *testing.T) {
 
 - 全量 `cd backend && go build ./... && go vet ./... && go test ./... -count=1` 绿(无 FAIL)。
 - 全量 `cd frontend && npx tsc --noEmit && npx vitest run` 绿。
-- `git diff master` 含且仅含:`backend/internal/domain/event.go`、`backend/internal/runtime/runtime.go`、`backend/tests/integration/budget_consumed_test.go`、`frontend/src/lib/chat-messages.ts`(+ `chat-messages.test.ts`)。**不含** `SystemStatusBubble`(渲染层不变)、不含其它文件。
+- `git diff master` 含且仅含:`backend/internal/domain/event.go`、`backend/internal/runtime/runtime.go`、`backend/tests/integration/budget_consumed_test.go`、`frontend/src/lib/types.ts`、`frontend/src/lib/status.ts`、`frontend/src/lib/chat-messages.ts`(+ 对应测试 `chat-messages.test.ts`)。**不含** `SystemStatusBubble`(渲染层不变)、不含其它文件。
 
 ## 明确不做(YAGNI)
 
