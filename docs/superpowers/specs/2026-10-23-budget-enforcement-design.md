@@ -140,6 +140,7 @@ func (r *Runtime) appendBudget(ctx context.Context, runID string, tracker *Budge
 ```
 
 **(d) 循环后映射终态**：在 `if waitApproval || needApproval.Load() {...}` 块之后、`if errors.Is(ctx.Err(), context.DeadlineExceeded) {...}` 之前，插：
+```go
 
 	if budgetCode != "" {
 		// 与 timed_out 分支同理：若外层 deadline 恰在同一窗口到期，ctx 可能已死，
@@ -153,7 +154,7 @@ func (r *Runtime) appendBudget(ctx context.Context, runID string, tracker *Budge
 	}
 ```
 
-**(e) 下游读值改 tracker**：`modelFailed && toolEvidence == 0`（约 :155）→ `modelFailed && tracker.Snapshot().ToolCalls == 0`；`Verify(run.SuccessCriteria, finalText, toolEvidence)`（约 :162）→ `Verify(run.SuccessCriteria, finalText, tracker.Snapshot().ToolCalls)`。
+**(e) 下游读值改 tracker**：本地计数器 `toolEvidence`/`modelCalls` 已删，三处读值点全改 `tracker.Snapshot().ToolCalls`（循环内删 `toolEvidence := 0`/`modelCalls := 0` 声明）：`modelFailed && toolEvidence == 0`（:160）→ `modelFailed && tracker.Snapshot().ToolCalls == 0`；`Verify(run.SuccessCriteria, finalText, toolEvidence)`（:167）→ `Verify(..., tracker.Snapshot().ToolCalls)`；空结果检查 `report.Passed && len(run.SuccessCriteria) == 0 && toolEvidence == 0 && finalText == ""`（:168）→ `... && tracker.Snapshot().ToolCalls == 0 && ...`。（删局部变量后 :168 不编译，编译器会强制把三处全改到，自洽。）
 
 ## 数据流
 
