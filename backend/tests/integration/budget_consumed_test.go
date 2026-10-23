@@ -59,27 +59,30 @@ func TestBudgetConsumedEmit(t *testing.T) {
 		t.Fatalf("budget.consumed count = %d, want %d", len(consumed), len(modelCompleted)+len(toolCompleted))
 	}
 
-	// 单调不减 + 终值 == DB 总计数 + payload 三键齐全
-	var lastMC, lastTC int
+	// 钉死序列:工具轮 model.completed → (1,0);tool.completed → (1,1);文本轮
+	// model.completed → (2,1)。逐行三键齐全 + 终值 == DB 总计数。
+	want := [][2]int{{1, 0}, {1, 1}, {2, 1}}
 	for i, ev := range consumed {
-		var p struct {
-			ModelCalls      int `json:"model_calls"`
-			ToolCalls       int `json:"tool_calls"`
-			DurationSeconds int `json:"duration_seconds"`
-		}
-		if err := json.Unmarshal([]byte(ev.PayloadJSON), &p); err != nil {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(ev.PayloadJSON), &m); err != nil {
 			t.Fatalf("row %d: unmarshal: %v", i, err)
 		}
-		if p.DurationSeconds < 0 {
-			t.Fatalf("row %d: duration_seconds negative: %d", i, p.DurationSeconds)
+		for _, k := range []string{"model_calls", "tool_calls", "duration_seconds"} {
+			if _, ok := m[k]; !ok {
+				t.Fatalf("row %d: payload missing key %q: %s", i, k, ev.PayloadJSON)
+			}
 		}
-		if p.ModelCalls < lastMC || p.ToolCalls < lastTC {
-			t.Fatalf("row %d: non-monotone (%d,%d) < prev (%d,%d)", i, p.ModelCalls, p.ToolCalls, lastMC, lastTC)
+		if v, ok := m["duration_seconds"].(float64); !ok || v < 0 {
+			t.Fatalf("row %d: duration_seconds invalid: %s", i, ev.PayloadJSON)
 		}
-		lastMC, lastTC = p.ModelCalls, p.ToolCalls
+		mc, _ := m["model_calls"].(float64)
+		tc, _ := m["tool_calls"].(float64)
+		if int(mc) != want[i][0] || int(tc) != want[i][1] {
+			t.Fatalf("row %d: (model,tool) = (%d,%d), want (%d,%d)", i, int(mc), int(tc), want[i][0], want[i][1])
+		}
 	}
-	if lastMC != len(modelCompleted) || lastTC != len(toolCompleted) {
-		t.Fatalf("final budget.consumed = (%d,%d), want (%d,%d)", lastMC, lastTC, len(modelCompleted), len(toolCompleted))
+	if want[len(want)-1][0] != len(modelCompleted) || want[len(want)-1][1] != len(toolCompleted) {
+		t.Fatalf("final budget.consumed mismatch: want final (%d,%d) == db (%d,%d)", want[len(want)-1][0], want[len(want)-1][1], len(modelCompleted), len(toolCompleted))
 	}
 }
 
@@ -109,14 +112,18 @@ func TestBudgetConsumedTextOnlyRun(t *testing.T) {
 	if len(consumed) != 1 {
 		t.Fatalf("budget.consumed count = %d, want 1", len(consumed))
 	}
-	var p struct {
-		ModelCalls int `json:"model_calls"`
-		ToolCalls  int `json:"tool_calls"`
-	}
-	if err := json.Unmarshal([]byte(consumed[0].PayloadJSON), &p); err != nil {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(consumed[0].PayloadJSON), &m); err != nil {
 		t.Fatal(err)
 	}
-	if p.ModelCalls != 1 || p.ToolCalls != 0 {
-		t.Fatalf("payload = (%d,%d), want (1,0)", p.ModelCalls, p.ToolCalls)
+	for _, k := range []string{"model_calls", "tool_calls", "duration_seconds"} {
+		if _, ok := m[k]; !ok {
+			t.Fatalf("payload missing key %q: %s", k, consumed[0].PayloadJSON)
+		}
+	}
+	mc, _ := m["model_calls"].(float64)
+	tc, _ := m["tool_calls"].(float64)
+	if int(mc) != 1 || int(tc) != 0 {
+		t.Fatalf("payload = (%d,%d), want (1,0)", int(mc), int(tc))
 	}
 }
