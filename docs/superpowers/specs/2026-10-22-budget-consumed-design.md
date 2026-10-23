@@ -165,32 +165,40 @@ runtime.run() 事件循环: 每个 tool/model 边界 → appendBudget → Events
 
 ## 测试
 
-### 后端集成 `backend/tests/integration/budget_consumed_test.go`(新,package `integration`,复用 `testutil` + `sse_follow_test.go` 的 `openStream`/`waitLine`)
+### 后端集成 `backend/tests/integration/budget_consumed_test.go`(新,package `integration`,复用 `testutil`;断言走 DB 而非 SSE 时序,故不用 `openStream`/`waitLine`)
 
 ```go
 func TestBudgetConsumedEmit(t *testing.T) {
-    h := testutil.NewHubHarness(t, publishToolDef()) // publish_draft: RiskExternal+ApprovalAlways → 可 park
-    h.Model.EnqueueToolCall("tc1", "publish_draft", `{"title":"hi"}`) // run park 于审批门
-    // 注:默认注册表下的 knowledge_search 是只读 ApprovalNever,也合法;但 publish_draft 需经 publishToolDef() 注册并 approve 才产生 tool.completed —— 故用 publishToolDef()+approve 路径,避免未注册工具产生 tool.failed(使终值断言变 0==0 空真)。
-    // 或 EnqueueText 走纯 model 边界;按需构造至少 1 model + 1 tool
+    // 单 attempt 夹具:knowledge_search(内置只读 ApprovalNever,api_test.go:69 同款)
+    // 让整条 run 在一个 run() 内完成 —— 计数器单 attempt 内才单调。
+    // 不要改用 park/approve(publishToolDef)夹具:approve 后的 Resume 是第二个
+    // run() 调用,计数器从 0 重起,跨 attempt 序列会破坏 spec 的"单调 + 终值==DB总计数"不变量。
+    h := testutil.New(t)
+    h.Model.EnqueueToolCall("tc1", "knowledge_search", `{"query":"重构","top_k":3}`)
+    h.Model.EnqueueText("输出风险列表:N+1 查询(证据:knowledge_search 结果)。")
     ses := h.CreateSession("s")
-    id, code, _ := h.CreateRun(ses, map[string]any{"goal": "g"}, "bc-1")
+    id, code, _ := h.CreateRun(ses, fixturePayload(t, ses), "bc-1")
     if code != 201 { t.Fatalf("create run: %d", code) }
-    // 等 run 到终态(或 park),再断言 agent_events:
-    //   budget.consumed 序列 model_calls/tool_calls 单调不减,
-    //   终值 == 该 run 的 model.completed / tool.completed 条数,
-    //   payload 三键齐全(duration_seconds >= 0)。
-    ...
+    run := h.WaitTerminal(id, 30*time.Second)
+    if run.Status != domain.RunSucceeded {
+        t.Fatalf("want succeeded, got %s (%s)", run.Status, run.ErrorSummary)
+    }
+    // 断言 agent_events(经 h.Events.ListAfter 全量读):
+    //   - model.completed 计数 == 2(每个模型调用轮各 1 条:工具调用轮 + 文本轮;探针实测 model_calls=2),tool.completed 计数 == 1
+    //   - budget.consumed 行序: model_calls/tool_calls 单调不减, 恰好 3 条
+    //     (tool 边界 1 条 + model 边界 2 条),
+    //     终值 == DB 总计数 (2, 1);每行 payload 三键齐全且 duration_seconds >= 0
 }
 ```
 
 断言走 `h.Events`/直接查 `agent_events`(比 SSE 更确定):
-- 每条 `budget.consumed` 的 `tool_calls` ≥ 前一条(单调),`model_calls` 同;
-- 最后一条的 `model_calls` == `count(event_type='model.completed' AND run_id=id)`;
-- 最后一条的 `tool_calls` == `count(event_type='tool.completed' AND run_id=id)`;
-- payload 含 `model_calls`/`tool_calls`/`duration_seconds` 三键。
+- `budget.consumed` 行数 == model.completed 数 + tool.completed 数(每条 completed 恰发一行);序列内 `model_calls`/`tool_calls` 单调不减;
+- 最后一行的 `model_calls` == `count(event_type='model.completed' AND run_id=id)`;`tool_calls` 同理(本夹具应为 2 / 1);
+- 每行 payload 含 `model_calls`/`tool_calls`/`duration_seconds` 三键,且 `duration_seconds >= 0`。
 
-(断言基于 DB,非 SSE 时序,故不必 `waitLine`;park 时用 `publishToolDef`+`waitApproval`+`POST /approvals/{id}` approve,使 tool 真正完成、产生 `tool.completed`。)
+(可选扩展用例,同文件:纯文本 run —— 只 `EnqueueText`,断言 `model.completed`=1、`budget.consumed` 恰 1 行(1,0)、无 `tool_calls` 键缺失;与"无边界→回退"边界表行对应。)
+
+(注:`fixturePayload`/`knowledge_search` 组合与 `api_test.go` `TestRunSuccessE2E`(`:65-84`)同款,已验证成功路径;`success_criteria` 由 fixture 提供。)
 
 ### 前端 `frontend/src/lib/chat-messages.test.ts`(扩展现有 `deriveMessages` 用例)
 
