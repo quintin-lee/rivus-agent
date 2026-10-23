@@ -292,6 +292,49 @@ describe('deriveMessages', () => {
     const status = out.find((m) => m.kind === 'system-status') as Extract<ChatMessage, { kind: 'system-status' }> | undefined
     expect(status?.progress).toMatchObject({ toolCalls: 1, seconds: 5 })
   })
+
+  it('prefers the last budget.consumed for progress over .completed counts', () => {
+    const startMs = 1_000_000
+    const now = startMs + 2000
+    const run = mkRun('r1', 'running', { started_at: startMs })
+    // .completed 计数被造得少于 budget.consumed 的精确值(模拟 MAX_EVENTS 截断低估)
+    const evs = [
+      mkEv(1, 'tool.completed'),
+      mkEv(2, 'model.completed'),
+      mkEv(3, 'budget.consumed', '{"model_calls":5,"tool_calls":4,"duration_seconds":19}'),
+    ]
+    const out = deriveMessages({ runHistory: [], activeRun: run, activeSteps: [], eventsByRun: { r1: evs }, pendingGoals: [], now })
+    const status = out.find((m) => m.kind === 'system-status')
+    expect(status).toMatchObject({ progress: { toolCalls: 4, modelCalls: 5, seconds: 2 } })
+  })
+
+  it('falls back to .completed counts when no budget.consumed (legacy data)', () => {
+    const startMs = 1_000_000
+    const now = startMs + 2000
+    const run = mkRun('r1', 'running', { started_at: startMs })
+    const evs = [
+      mkEv(1, 'tool.completed'),
+      mkEv(2, 'tool.completed'),
+      mkEv(3, 'model.completed'),
+    ]
+    const out = deriveMessages({ runHistory: [], activeRun: run, activeSteps: [], eventsByRun: { r1: evs }, pendingGoals: [], now })
+    const status = out.find((m) => m.kind === 'system-status')
+    expect(status).toMatchObject({ progress: { toolCalls: 2, modelCalls: 1, seconds: 2 } })
+  })
+
+  it('applies budget.consumed partial payload (missing tool_calls keeps fallback)', () => {
+    const startMs = 1_000_000
+    const now = startMs + 2000
+    const run = mkRun('r1', 'running', { started_at: startMs })
+    const evs = [
+      mkEv(1, 'tool.completed'),
+      mkEv(2, 'tool.completed'),
+      mkEv(3, 'budget.consumed', '{"model_calls":7,"duration_seconds":19}'), // 缺 tool_calls
+    ]
+    const out = deriveMessages({ runHistory: [], activeRun: run, activeSteps: [], eventsByRun: { r1: evs }, pendingGoals: [], now })
+    const status = out.find((m) => m.kind === 'system-status')
+    expect(status).toMatchObject({ progress: { toolCalls: 2, modelCalls: 7, seconds: 2 } })
+  })
 })
 
 describe('partialText derivation', () => {
