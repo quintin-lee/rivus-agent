@@ -51,7 +51,7 @@ func (b *BudgetTracker) OverBudget() (code string, hit bool) {
 }
 ```
 
-（`Add*Call` 现已在循环里被调用；`Snapshot` 供 `appendBudget` 读值。`Check*`/`Iterations` 仍保持——Eino 管 iteration，不在本 spec 内强制。）
+（改后 `Add*Call` 在循环里被调用；`Snapshot` 供 `appendBudget` 读值。`Check*`/`Iterations` 仍保持——Eino 管 iteration，不在本 spec 内强制。）
 
 ### 2. `backend/internal/runtime/runtime.go` — 接线
 
@@ -123,7 +123,7 @@ func (b *BudgetTracker) OverBudget() (code string, hit bool) {
 **要点**：
 - `appendBudget` 改签名读 tracker snapshot（见 (c)）——发出的 `budget.consumed` 值/行序/三键**与已合版本逐字节一致**（`tracker.Snapshot().ModelCalls`==原 `modelCalls`，`.ToolCalls`==原 `toolEvidence`），已合的 `TestBudgetConsumed*` 集成测试保持绿。
 - 闸门在 switch 后统一查（而非各 case 内重复）：DRY；`OverBudget` 幂等，首次命中后置 `budgetFired` 且 `Cancel` 后 channel 关闭、循环自然终止，不会二次取消。
-- `Cancel` 用的是 EinoRunner 内层 ctx（`cancels.track` 包装的那层），**外层** `ctx`（deadline+taskctx）仍活 → 循环后 DB 写用普通 `ctx` 即可（区别于 timed_out 分支必须用 `bgCtx`）。
+- `Cancel` 用的是 EinoRunner 内层 ctx（`cancels.track` 包装的那层），外层 `ctx`（deadline+taskctx）通常仍活；但为避免"外层 deadline 恰在同一窗口到期"导致 database/sql 静默 no-op（与 timed_out 分支同理），循环后预算分支的 **DB 写全部用 `context.Background()`**（见 §2(d)）。
 
 **(c) `appendBudget` 读 snapshot**：现状 `:198-205` 改为：
 
@@ -141,12 +141,14 @@ func (r *Runtime) appendBudget(ctx context.Context, runID string, tracker *Budge
 
 **(d) 循环后映射终态**：在 `if waitApproval || needApproval.Load() {...}` 块之后、`if errors.Is(ctx.Err(), context.DeadlineExceeded) {...}` 之前，插：
 
-```go
 	if budgetCode != "" {
-		_ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunFailed, budgetCode, budgetMsg)
-		r.append(ctx, run.ID, domain.EvtRunFailed, budgetMsg)
+		// 与 timed_out 分支同理：若外层 deadline 恰在同一窗口到期，ctx 可能已死，
+		// database/sql 会静默 no-op 这些写、run 永远停在 running —— 故 DB 写全部用 context.Background()。
+		bgCtx := context.Background()
+		_ = r.deps.Tasks.UpdateStatus(bgCtx, ownerID, run.ID, domain.RunFailed, budgetCode, budgetMsg)
+		r.append(bgCtx, run.ID, domain.EvtRunFailed, budgetMsg)
 		observability.IncrRunFinished(false)
-		r.deps.Runner.DeleteCheckpointsByRun(ctx, run.ID)
+		r.deps.Runner.DeleteCheckpointsByRun(bgCtx, run.ID)
 		return
 	}
 ```
@@ -171,7 +173,7 @@ run() 循环后: budgetCode != "" → UpdateStatus(RunFailed, error_code=budgetC
 | 两维度同时满 | 首次命中的那个（tool 先查）决定 `error_code`；取消后循环终止，不会同时被报 |
 | 取消后 drain 发 `run.cancelled` | 保留（§3=a 决策）：它是 Stop 机制 byproduct，SSE 收尾照常；`run.cancelled`/`run.failed` 均已在前端 `TERMINAL_EVENTS`，无副作用 |
 | `Cancel` 对已自然结束的 run | `cancels.cancel` 找不到已 unregister 的 run → 返回 error，被 `_ =` 吞掉，无副作用 |
-| 外层 ctx deadline 同时到 | 预算分支在 deadline 分支之前判断；若同时，`budgetCode` 先命中（本 spec 用普通 `ctx` 写，外层此刻仍活） |
+| 外层 ctx deadline 同时到 | 预算分支在 deadline 分支之前判断；若同时，`budgetCode` 先命中。预算分支 DB 写用 `context.Background()`（§2d），外层 ctx 死活都照写，不会静默 no-op 卡死在 running |
 | 子运行（RunChild） | 不走 `run()` 循环 → 不受本 spec 影响（YAGNI，见下） |
 | 与 budget.consumed 事件 | 计数源改 tracker，但快照值/行序/三键不变 → 已合集成测试保持绿 |
 
