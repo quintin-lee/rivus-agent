@@ -118,6 +118,8 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 		return
 	}
 	toolEvidence := 0
+	modelCalls := 0
+	started := time.Now()
 	finalText := ""
 	waitApproval := false
 	modelFailed := false
@@ -125,10 +127,13 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 		switch ev.Type {
 		case domain.EvtToolCompleted:
 			toolEvidence++
+			r.appendBudget(ctx, run.ID, modelCalls, toolEvidence, started)
 		case domain.EvtApprovalRequested:
 			waitApproval = true
 		case domain.EvtModelCompleted:
 			finalText = ev.Text
+			modelCalls++
+			r.appendBudget(ctx, run.ID, modelCalls, toolEvidence, started)
 		case domain.EvtModelFailed:
 			modelFailed = true
 		case domain.EvtRunFailed:
@@ -184,6 +189,19 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 func (r *Runtime) append(ctx context.Context, runID string, typ domain.EventType, text string) {
 	payload, _ := json.Marshal(map[string]string{"text": text})
 	_, _ = r.deps.Events.Append(ctx, runID, typ, string(payload), "normal")
+}
+
+// appendBudget 在 tool/model 步骤边界发 budget.consumed(累计
+// model_calls/tool_calls/duration_seconds)。payload 为结构化 JSON,故直接走
+// Events.Append(与 append 同一持久化 + eventshub 推送路径)。单 attempt 内
+// 计数从 0 单调递增;跨 attempt(Resume/Retry)重起(有意,见 spec)。
+func (r *Runtime) appendBudget(ctx context.Context, runID string, modelCalls, toolCalls int, started time.Time) {
+	payload, _ := json.Marshal(map[string]int{
+		"model_calls":      modelCalls,
+		"tool_calls":       toolCalls,
+		"duration_seconds": int(time.Since(started).Seconds()),
+	})
+	_, _ = r.deps.Events.Append(ctx, runID, domain.EvtBudgetConsumed, string(payload), "normal")
 }
 
 // appendApproval 发带 approval_id + tool_name 的 approval.requested 事件。
