@@ -150,6 +150,10 @@ export function eventSummary(e: AgentEvent): string {
       return 'model call completed'
     case 'model.token':    // NEW: quiet, non-terminal
       return '…streaming'
+    case 'budget.consumed':
+      return p.tool_calls != null
+        ? `用量 工具 ${String(p.tool_calls)}/模型 ${String(p.model_calls ?? 0)}`
+        : '用量更新'
     case 'model.failed':
       return 'model call failed'
     case 'step.started':

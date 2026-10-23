@@ -16,7 +16,8 @@ const (
 	EvtStepFinished      EventType = "step.finished"
 	EvtModelRequested    EventType = "model.requested"
 	EvtModelCompleted    EventType = "model.completed"
-	EvtModelToken        EventType = "model.token"   // coalesced full-so-far streaming text (parent runs)
+	EvtModelToken        EventType = "model.token"     // coalesced full-so-far streaming text (parent runs)
+	EvtBudgetConsumed    EventType = "budget.consumed" // cumulative usage at step boundary (exact)
 	EvtModelFailed       EventType = "model.failed"
 	EvtToolRequested     EventType = "tool.requested"
 	EvtToolAuthorized    EventType = "tool.authorized"

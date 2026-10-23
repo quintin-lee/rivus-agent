@@ -113,12 +113,21 @@ function emitRun(
   let partialText: string | undefined
   if (isActiveRunStatus(run.status)) {
     const evs = eventsByRun[run.id] ?? []
-    const toolCalls = evs.filter((e) => e.event_type === 'tool.completed').length
-    const modelCalls = evs.filter((e) => e.event_type === 'model.completed').length
+    let toolCalls = evs.filter((e) => e.event_type === 'tool.completed').length
+    let modelCalls = evs.filter((e) => e.event_type === 'model.completed').length
     const startMs = run.started_at ?? run.created_at
     const seconds = startMs > 0 ? Math.max(0, Math.round((now - startMs) / 1000)) : 0
+    // 优先:最新一条 budget.consumed(后端单-attempt 权威累计)。MAX_EVENTS 头部
+    // 截断丢最旧,最新那条恒存活 → 截断免疫;缺失(旧数据)则保持 .completed 回退。
+    const consumed = evs.filter((e) => e.event_type === 'budget.consumed')
+    if (consumed.length > 0) {
+      const p = eventPayload(consumed[consumed.length - 1])
+      const mc = Number(p.model_calls)
+      const tc = Number(p.tool_calls)
+      if (Number.isFinite(mc)) modelCalls = mc
+      if (Number.isFinite(tc)) toolCalls = tc
+    }
     progress = { toolCalls, modelCalls, seconds }
-
     // Live partial from the latest model.token. SSE (run-store appendEvent)
     // lands ALL model.token rows into eventsByRun (groupEventsByRun buckets
     // by run_id, no event_type filter). payload_json is a string → parse via

@@ -34,6 +34,14 @@ describe('eventSummary', () => {
     expect(eventSummary(ev('weird.new.event' as EventType))).toBe('Unknown event weird.new.event')
   })
 
+  it('summarizes budget.consumed with usage counts', () => {
+    expect(eventSummary(ev('budget.consumed', { model_calls: 3, tool_calls: 2 }))).toBe('用量 工具 2/模型 3')
+  })
+
+  it('falls back to 用量更新 when tool_calls absent on budget.consumed', () => {
+    expect(eventSummary(ev('budget.consumed', { model_calls: 3 }))).toBe('用量更新')
+  })
+
   it('summarizes run.timed_out', () => {
     expect(eventSummary(ev('run.timed_out'))).toBe('run timed out')
   })
