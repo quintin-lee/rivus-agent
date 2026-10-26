@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -215,4 +216,78 @@ func clampChildBudget(parent domain.Budget, in taskIn) domain.Budget {
 	// 缺省(请求 0)则取 40%；请求值则收紧到 min(请求, 上限)
 	return domain.Budget{MaxModelCalls: mmc, MaxToolCalls: mtc, MaxIterations: mi,
 		MaxDurationSeconds: md, MaxOutputBytes: mo}
+}
+
+const tasksToolName = "tasks"
+
+const (
+	batchMaxChildren   = 5
+	batchDefaultConcur = 4
+	batchMaxConcur     = 8
+)
+
+// TasksTool 返回 tasks 工具：批量并行委派只读子 agent。
+// 并发上限默认 4、请求上限 8；批大小 1..5；结果按输入顺序返回；
+// 共享 wall-clock = executor 对本次调用的 120s 超时（父 cancel/deadline 经 ctx 级联）。
+func TasksTool(reg *itool.Registry, tasks *store.TaskRepo, runner runtime.ChildExecutor, cleaner runtime.CheckpointCleaner) itool.Definition {
+	h := NewTasksHandler(reg, tasks, runner, cleaner)
+	return itool.Definition{
+		Name: tasksToolName,
+		Description: "Delegate multiple read-only sub-goals to child agents in parallel; runs synchronously and returns results in input order. Args: {\"tasks\":[{\"goal\":\"...\",\"tools\":[...],\"max_model_calls\":N}],\"max_concurrency\":4}",
+		Version:     "v1",
+		InputSchema: `{"type":"object","properties":{"tasks":{"type":"array","maxItems":5,"items":{"type":"object","properties":{"goal":{"type":"string"},"tools":{"type":"array","items":{"type":"string"}},"max_model_calls":{"type":"integer"},"max_tool_calls":{"type":"integer"},"max_iterations":{"type":"integer"}},"required":["goal"]}},"max_concurrency":{"type":"integer"}},"required":["tasks"]}`,
+		Risk:        itool.RiskRead, Approval: itool.ApprovalNever, Idempotent: false, TimeoutMs: 120000, MaxResultBytes: 64 * 1024,
+		Handler: h,
+	}
+}
+
+type batchIn struct {
+	Tasks          []taskIn `json:"tasks"`
+	MaxConcurrency int      `json:"max_concurrency"`
+}
+
+// NewTasksHandler：tasks 工具入口。并发用 stdlib 信号量（buffered channel + WaitGroup），
+// 不引入 golang.org/x/sync（零新依赖约束）。
+func NewTasksHandler(reg *itool.Registry, tasks *store.TaskRepo, runner runtime.ChildExecutor, cleaner runtime.CheckpointCleaner) itool.Handler {
+	deps := childDeps{reg: reg, tasks: tasks, runner: runner, cleaner: cleaner}
+	return func(ctx context.Context, args json.RawMessage) (string, error) {
+		tc, ok := runtime.TaskContextFrom(ctx)
+		if !ok || tc.Depth >= 1 {
+			return errRes("tasks not available at this depth").String(), nil
+		}
+		var in batchIn
+		if err := json.Unmarshal(args, &in); err != nil {
+			return errRes("tasks: invalid input").String(), nil
+		}
+		if len(in.Tasks) == 0 || len(in.Tasks) > batchMaxChildren {
+			return errRes(fmt.Sprintf("tasks: batch size must be 1..%d, got %d", batchMaxChildren, len(in.Tasks))).String(), nil
+		}
+		for i := range in.Tasks {
+			if strings.TrimSpace(in.Tasks[i].Goal) == "" {
+				return errRes(fmt.Sprintf("tasks[%d]: empty goal", i)).String(), nil
+			}
+		}
+		limit := in.MaxConcurrency
+		if limit <= 0 {
+			limit = batchDefaultConcur
+		}
+		if limit > batchMaxConcur {
+			limit = batchMaxConcur
+		}
+		results := make([]taskResult, len(in.Tasks))
+		sem := make(chan struct{}, limit)
+		var wg sync.WaitGroup
+		for i := range in.Tasks {
+			wg.Add(1)
+			sem <- struct{}{} // 背压：超过 limit 的迭代阻塞在主 goroutine
+			go func(i int) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				results[i] = runOneChild(ctx, deps, tc, in.Tasks[i])
+			}(i)
+		}
+		wg.Wait()
+		b, _ := json.Marshal(results)
+		return string(b), nil
+	}
 }
