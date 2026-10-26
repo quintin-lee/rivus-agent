@@ -63,8 +63,9 @@ func filterToolNames(toolNames []string, depth int) []string {
 }
 
 // buildAgentFiltered：按 toolNames(+depth 守卫)过滤工具，构建子 agent。
+// memContext 追加到 instruction 之后（顶层 run 注入会话记忆用；子 agent 传 ""）。
 func (r *EinoRunner) buildAgentFiltered(ctx context.Context, runID string, budget domain.Budget,
-	approved map[string]bool, toolNames []string, depth int) (*adk.ChatModelAgent, error) {
+	approved map[string]bool, toolNames []string, depth int, memContext string) (*adk.ChatModelAgent, error) {
 	base, err := r.modelFactory()
 	if err != nil {
 		return nil, err
@@ -106,7 +107,7 @@ func (r *EinoRunner) buildAgentFiltered(ctx context.Context, runID string, budge
 		maxIter = 12
 	}
 	r.mu.RLock()
-	instr := r.instruction
+	instr := r.instruction + memContext
 	r.mu.RUnlock()
 	cfg := &adk.ChatModelAgentConfig{Name: "rivus", Description: "general purpose agent",
 		Instruction: instr, Model: withTools, MaxIterations: maxIter}
@@ -117,7 +118,7 @@ func (r *EinoRunner) buildAgentFiltered(ctx context.Context, runID string, budge
 // RunChild：同步驱动一个只读子 agent（复用父 ctx 做 cancel/deadline 级联；不碰 r.sem）。
 // 只做模型循环 + 分类，DB 终态化交给调用方（subagent handler）。
 func (r *EinoRunner) RunChild(ctx context.Context, req ChildRequest) ChildOutcome {
-	agent, err := r.buildAgentFiltered(ctx, req.ChildRunID, req.Budget, nil, req.ToolNames, req.Depth)
+	agent, err := r.buildAgentFiltered(ctx, req.ChildRunID, req.Budget, nil, req.ToolNames, req.Depth, "")
 	if err != nil {
 		return ChildOutcome{PreDrainErr: err}
 	}

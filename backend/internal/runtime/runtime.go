@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -21,7 +22,8 @@ type Deps struct {
 	Events    *store.EventRepo
 	Approvals *store.ApprovalRepo
 	Runner    *EinoRunner
-	Log       *slog.Logger // 可空：缺省 slog.Default()
+	Log       *slog.Logger      // 可空：缺省 slog.Default()
+	Memories  *store.MemoryRepo // 可空：nil 则顶层 run 不注入会话记忆
 }
 
 type Runtime struct {
@@ -117,6 +119,7 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 	ch, err := r.deps.Runner.Run(ctx, RunRequest{
 		RunID: run.ID, OwnerID: ownerID, Goal: run.Goal,
 		Mode: mode, Budget: budget, ApprovedTools: approved,
+		SessionID: run.SessionID, MemoryContext: r.memoryBlock(ctx, run.SessionID),
 		CheckpointID: fmt.Sprintf("ckpt_%s_%d", run.ID, time.Now().UnixNano()),
 	})
 	if err != nil {
@@ -262,4 +265,39 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+const (
+	memoryInjectMax     = 10       // 注入最近条数
+	memoryBlockMaxBytes = 8 * 1024 // 记忆块总字节上限
+)
+
+// memoryBlock 取会话最近记忆并格式化为指令块；无 repo / 无会话 / 无记忆 / 出错 → ""。
+func (r *Runtime) memoryBlock(ctx context.Context, sessionID string) string {
+	if r.deps.Memories == nil || sessionID == "" {
+		return ""
+	}
+	mems, err := r.deps.Memories.Latest(ctx, sessionID, memoryInjectMax)
+	if err != nil || len(mems) == 0 {
+		return ""
+	}
+	return composeMemoryBlock(mems)
+}
+
+func composeMemoryBlock(mems []domain.Memory) string {
+	if len(mems) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\n## 会话记忆（此前沉淀，供参考）\n")
+	total := 0
+	for _, m := range mems {
+		line := "- " + m.Content + "\n"
+		if total+len(line) > memoryBlockMaxBytes {
+			break
+		}
+		sb.WriteString(line)
+		total += len(line)
+	}
+	return sb.String()
 }

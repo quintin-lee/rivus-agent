@@ -40,6 +40,8 @@ type RunRequest struct {
 	Budget        domain.Budget
 	ApprovedTools map[string]bool
 	CheckpointID  string
+	SessionID     string // 顶层 run 的会话（子 agent 不经 RunRequest）
+	MemoryContext string // 预格式化的记忆块（""=无）；由 runtime.run 组装
 }
 
 type ResumeRequest struct {
@@ -205,8 +207,8 @@ func shortHash(h string) string {
 	return h
 }
 
-func (r *EinoRunner) buildAgent(ctx context.Context, runID string, budget domain.Budget, approved map[string]bool) (*adk.ChatModelAgent, error) {
-	return r.buildAgentFiltered(ctx, runID, budget, approved, nil, 0)
+func (r *EinoRunner) buildAgent(ctx context.Context, runID string, budget domain.Budget, approved map[string]bool, memContext string) (*adk.ChatModelAgent, error) {
+	return r.buildAgentFiltered(ctx, runID, budget, approved, nil, 0, memContext)
 }
 
 func collectInfos(tools []tool.BaseTool) []*schema.ToolInfo {
@@ -221,7 +223,7 @@ func collectInfos(tools []tool.BaseTool) []*schema.ToolInfo {
 }
 
 func (r *EinoRunner) executeNew(ctx context.Context, req RunRequest) (<-chan RuntimeEvent, error) {
-	agent, err := r.buildAgent(ctx, req.RunID, req.Budget, req.ApprovedTools)
+	agent, err := r.buildAgent(ctx, req.RunID, req.Budget, req.ApprovedTools, req.MemoryContext)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +243,7 @@ func (r *EinoRunner) executeNew(ctx context.Context, req RunRequest) (<-chan Run
 }
 
 func (r *EinoRunner) executeResume(ctx context.Context, req ResumeRequest) (<-chan RuntimeEvent, error) {
-	agent, err := r.buildAgent(ctx, req.RunID, resolveResumeBudget(req.Budget), req.ApprovedTools)
+	agent, err := r.buildAgent(ctx, req.RunID, resolveResumeBudget(req.Budget), req.ApprovedTools, "")
 	if err != nil {
 		return nil, err
 	}
