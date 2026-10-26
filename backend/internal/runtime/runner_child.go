@@ -44,14 +44,17 @@ type CheckpointCleaner interface {
 	DeleteCheckpointsByRun(ctx context.Context, runID string)
 }
 
-// filterToolNames：toolNames nil→**保持 nil**（全量由 buildAgentFiltered 处理）；否则只保留命中项；depth>=1 剔除 "task"。
+// isAgenticTool：父子委托入口工具名；depth>=1 一律从子工具面剔除。
+func isAgenticTool(name string) bool { return name == "task" || name == "tasks" }
+
+// filterToolNames：toolNames nil→**保持 nil**（全量由 buildAgentFiltered 处理）；否则只保留命中项；depth>=1 剔除 task/tasks。
 func filterToolNames(toolNames []string, depth int) []string {
 	if toolNames == nil {
 		return nil
 	}
 	out := make([]string, 0, len(toolNames))
 	for _, n := range toolNames {
-		if depth >= 1 && n == "task" {
+		if depth >= 1 && isAgenticTool(n) {
 			continue
 		}
 		out = append(out, n)
@@ -77,11 +80,11 @@ func (r *EinoRunner) buildAgentFiltered(ctx context.Context, runID string, budge
 			}
 		}
 	}
-	// 关键：depth>=1 时，全量分支也要剔除 task（父选的 nil 不应让子拿到 task）。用新切片，避免 in-place alias。
+	// 关键：depth>=1 时，全量分支也要剔除 task/tasks（父选的 nil 不应让子拿到）。用新切片，避免 in-place alias。
 	if depth >= 1 {
 		kept := make([]itool.Definition, 0, len(defs))
 		for _, d := range defs {
-			if d.Name != "task" {
+			if !isAgenticTool(d.Name) {
 				kept = append(kept, d)
 			}
 		}
