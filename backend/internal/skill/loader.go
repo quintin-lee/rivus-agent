@@ -11,6 +11,8 @@ type Meta struct {
 	Name        string
 	Description string
 	Version     string
+	WhenToUse   string
+	Tools       []string
 	Path        string
 }
 
@@ -58,18 +60,34 @@ func (l *Loader) Refresh() error {
 func parseMeta(name, body string) Meta {
 	m := Meta{Name: name}
 	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			break // frontmatter 区结束（首个空行），防止正文假阳性
+		}
 		line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
 		lower := strings.ToLower(line)
-		if strings.HasPrefix(lower, "description:") {
+		switch {
+		case strings.HasPrefix(lower, "description:"):
 			m.Description = strings.TrimSpace(line[len("description:"):])
-		} else if strings.HasPrefix(lower, "version:") {
+		case strings.HasPrefix(lower, "version:"):
 			m.Version = strings.TrimSpace(line[len("version:"):])
-		}
-		if m.Description != "" && m.Version != "" {
-			break
+		case strings.HasPrefix(lower, "when_to_use:"):
+			m.WhenToUse = strings.TrimSpace(line[len("when_to_use:"):])
+		case strings.HasPrefix(lower, "tools:"):
+			m.Tools = splitCSV(line[len("tools:"):])
 		}
 	}
 	return m
+}
+
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (l *Loader) List() []Meta {
