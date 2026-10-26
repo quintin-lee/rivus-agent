@@ -58,3 +58,20 @@ func (b *BudgetTracker) Snapshot() Usage {
 	defer b.mu.Unlock()
 	return b.usage
 }
+
+// OverBudget 返回首个触限的预算维度错误码。检查顺序固定 tool > model > output；
+// limit<=0 的维度视为不限。usage >= limit 即触限（post-gate 语义，见 spec §A）。
+func (b *BudgetTracker) OverBudget() (string, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.limit.MaxToolCalls > 0 && b.usage.ToolCalls >= b.limit.MaxToolCalls {
+		return "tool_calls_budget_exceeded", true
+	}
+	if b.limit.MaxModelCalls > 0 && b.usage.ModelCalls >= b.limit.MaxModelCalls {
+		return "model_calls_budget_exceeded", true
+	}
+	if b.limit.MaxOutputBytes > 0 && b.usage.OutputBytes >= b.limit.MaxOutputBytes {
+		return "output_bytes_budget_exceeded", true
+	}
+	return "", false
+}
