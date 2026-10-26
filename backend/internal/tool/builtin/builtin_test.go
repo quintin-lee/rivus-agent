@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"rivus-agent-backend/internal/tool"
 )
 
 func TestSetDirsInjectsRoots(t *testing.T) {
@@ -201,5 +203,57 @@ func TestHTTPFetch(t *testing.T) {
 	// non-http scheme rejected
 	if _, err := httpFetch(context.Background(), json.RawMessage(`{"url":"ftp://127.0.0.1/x"}`)); err == nil {
 		t.Fatal("non-http scheme must be rejected")
+	}
+}
+
+func TestKnowledgeSearchReal(t *testing.T) {
+	kn := t.TempDir()
+	SetDirs(t.TempDir(), kn)
+	os.MkdirAll(filepath.Join(kn, "rfc"), 0o755)
+	os.WriteFile(filepath.Join(kn, "rfc/notes.md"), []byte("budget enforcement details\nunrelated line\n"), 0o644)
+	os.WriteFile(filepath.Join(kn, "intro.txt"), []byte("intro without keyword\n"), 0o644)
+
+	out, err := knowledgeSearch(context.Background(), json.RawMessage(`{"query":"budget"}`))
+	if err != nil {
+		t.Fatalf("knowledgeSearch: %v", err)
+	}
+	if !strings.Contains(out, "rfc/notes.md") || !strings.Contains(out, "budget enforcement") {
+		t.Fatalf("knowledgeSearch no real hits: %s", out)
+	}
+	if strings.Contains(out, "stub") {
+		t.Fatalf("knowledgeSearch still stub: %s", out)
+	}
+
+	// empty knowledge dir → no hits, no error
+	SetDirs(t.TempDir(), t.TempDir())
+	out, err = knowledgeSearch(context.Background(), json.RawMessage(`{"query":"budget"}`))
+	if err != nil || !strings.Contains(out, `"hits":[]`) {
+		t.Fatalf("empty knowledge dir: err=%v out=%s", err, out)
+	}
+}
+
+func TestWorkspaceWritePolicyWithNilScopes(t *testing.T) {
+	// 回归：gateway 从不传 scopes；workspace_write 此前带 RequiredScopes 必被
+	// CheckPolicy 以 missing scope 拒绝（潜在死锁）。修复后应为 NeedApproval。
+	reg := tool.NewRegistry()
+	if err := RegisterAll(reg); err != nil {
+		t.Fatal(err)
+	}
+	var def *tool.Definition
+	for _, d := range reg.List() {
+		if d.Name == "workspace_write" {
+			def = &d
+			break
+		}
+	}
+	if def == nil {
+		t.Fatal("workspace_write not found")
+	}
+	if len(def.RequiredScopes) != 0 {
+		t.Fatalf("workspace_write still has RequiredScopes: %v", def.RequiredScopes)
+	}
+	dec := tool.CheckPolicy(*def, nil, false)
+	if !dec.NeedApproval || dec.DenyReason != "" {
+		t.Fatalf("want NeedApproval with nil scopes, got %+v", dec)
 	}
 }

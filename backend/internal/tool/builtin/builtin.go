@@ -49,9 +49,11 @@ func RegisterAll(r *tool.Registry) error {
 		},
 		{
 			Name: "workspace_write", Description: "在工作区内创建受控草稿文件（受控写入，默认审批）", Version: "v1",
-			InputSchema:    `{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}`,
-			RequiredScopes: []string{"workspace:write"},
-			Risk:           tool.RiskWrite, Approval: tool.ApprovalConditional, Idempotent: false, TimeoutMs: 15000, MaxResultBytes: 4 * 1024,
+			InputSchema: `{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}`,
+			// 无 RequiredScopes：gateway 不传 scopes，任何 RequiredScopes 都会
+			// 被 CheckPolicy 以 missing scope 硬拒（历史 bug，2026-10-26 修复）。
+			// 风险控制由 RiskWrite + ApprovalConditional（默认审批）承担。
+			Risk: tool.RiskWrite, Approval: tool.ApprovalConditional, Idempotent: false, TimeoutMs: 15000, MaxResultBytes: 4 * 1024,
 			Handler: workspaceWrite,
 		},
 		{
@@ -96,7 +98,12 @@ func knowledgeSearch(_ context.Context, args json.RawMessage) (string, error) {
 	if err := json.Unmarshal(args, &in); err != nil || strings.TrimSpace(in.Query) == "" {
 		return "", fmt.Errorf("invalid query")
 	}
-	return fmt.Sprintf(`{"query":%q,"hits":[{"doc":"workspace handbook","snippet":"matched %q (stub, connect FTS later)"}]}`, in.Query, in.Query), nil
+	hits := searchDir(knowledgeRoot, in.Query, in.TopK)
+	if hits == nil {
+		hits = []searchHit{}
+	}
+	out, _ := json.Marshal(map[string]any{"query": in.Query, "hits": hits})
+	return string(out), nil
 }
 
 func cleanPath(p string) (string, error) {
