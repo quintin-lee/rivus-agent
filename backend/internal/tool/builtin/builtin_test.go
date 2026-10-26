@@ -107,3 +107,46 @@ func TestFileListAndFileSearch(t *testing.T) {
 		t.Fatal("fileSearch empty query not rejected")
 	}
 }
+
+func TestFileEdit(t *testing.T) {
+	ws := t.TempDir()
+	SetDirs(ws, t.TempDir())
+	os.WriteFile(filepath.Join(ws, "code.txt"), []byte("alpha\nbeta\ngamma\nbeta-end\n"), 0o644)
+
+	// unique occurrence → replace succeeds
+	out, err := fileEdit(context.Background(), json.RawMessage(`{"path":"code.txt","old_text":"beta\n","new_text":"BETA\n"}`))
+	if err != nil {
+		t.Fatalf("fileEdit: %v", err)
+	}
+	var res map[string]any
+	json.Unmarshal([]byte(out), &res)
+	if res["path"] != "code.txt" {
+		t.Fatalf("fileEdit out: %s", out)
+	}
+	b, _ := os.ReadFile(filepath.Join(ws, "code.txt"))
+	if string(b) != "alpha\nBETA\ngamma\nbeta-end\n" {
+		t.Fatalf("file after edit: %q", string(b))
+	}
+
+	// zero occurrences → error, file unchanged
+	if _, err := fileEdit(context.Background(), json.RawMessage(`{"path":"code.txt","old_text":"missing","new_text":"x"}`)); err == nil {
+		t.Fatal("zero-occurrence edit not rejected")
+	}
+	// two occurrences → error, file unchanged
+	os.WriteFile(filepath.Join(ws, "two.txt"), []byte("dup dup"), 0o644)
+	if _, err := fileEdit(context.Background(), json.RawMessage(`{"path":"two.txt","old_text":"dup","new_text":"x"}`)); err == nil {
+		t.Fatal("ambiguous edit not rejected")
+	}
+	b, _ = os.ReadFile(filepath.Join(ws, "two.txt"))
+	if string(b) != "dup dup" {
+		t.Fatalf("ambiguous edit mutated file: %q", string(b))
+	}
+	// missing file → error
+	if _, err := fileEdit(context.Background(), json.RawMessage(`{"path":"nope.txt","old_text":"a","new_text":"b"}`)); err == nil {
+		t.Fatal("missing-file edit not rejected")
+	}
+	// traversal rejected
+	if _, err := fileEdit(context.Background(), json.RawMessage(`{"path":"../x","old_text":"a","new_text":"b"}`)); err == nil {
+		t.Fatal("traversal not rejected")
+	}
+}

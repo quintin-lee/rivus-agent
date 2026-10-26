@@ -39,6 +39,12 @@ func RegisterAll(r *tool.Registry) error {
 			Handler: fileSearch,
 		},
 		{
+			Name: "file_edit", Description: "对工作区内文件做精确唯一替换（受控写入，默认审批）", Version: "v1",
+			InputSchema: `{"type":"object","properties":{"path":{"type":"string"},"old_text":{"type":"string"},"new_text":{"type":"string"}},"required":["path","old_text","new_text"]}`,
+			Risk:        tool.RiskWrite, Approval: tool.ApprovalConditional, Idempotent: false, TimeoutMs: 15000, MaxResultBytes: 4 * 1024,
+			Handler: fileEdit,
+		},
+		{
 			Name: "workspace_write", Description: "在工作区内创建受控草稿文件（受控写入，默认审批）", Version: "v1",
 			InputSchema:    `{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}`,
 			RequiredScopes: []string{"workspace:write"},
@@ -214,6 +220,35 @@ func fileSearch(_ context.Context, args json.RawMessage) (string, error) {
 		hits = []searchHit{}
 	}
 	out, _ := json.Marshal(map[string]any{"hits": hits})
+	return string(out), nil
+}
+
+func fileEdit(_ context.Context, args json.RawMessage) (string, error) {
+	var in struct {
+		Path    string `json:"path"`
+		OldText string `json:"old_text"`
+		NewText string `json:"new_text"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil || in.Path == "" {
+		return "", fmt.Errorf("invalid input")
+	}
+	fp, err := cleanPath(in.Path)
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(fp)
+	if err != nil {
+		return "", err
+	}
+	old := in.OldText
+	if n := strings.Count(string(b), old); n != 1 {
+		return "", fmt.Errorf("old_text must occur exactly once (got %d)", n)
+	}
+	updated := strings.Replace(string(b), old, in.NewText, 1)
+	if err := os.WriteFile(fp, []byte(updated), 0o644); err != nil {
+		return "", err
+	}
+	out, _ := json.Marshal(map[string]string{"path": in.Path, "bytes_changed": fmt.Sprint(len(updated) - len(b))})
 	return string(out), nil
 }
 
