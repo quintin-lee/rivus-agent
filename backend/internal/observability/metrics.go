@@ -12,6 +12,18 @@ var (
 	toolCalls     = expvar.NewMap("tool_calls_total")
 	toolErrors    = expvar.NewMap("tool_errors_total")
 
+	eventAppendFailed = expvar.NewInt("event_append_failed")
+
+	// latencyBuckets：5 个桶（<50/<100/<200/<500/≥500 ms），外部抓取 expvar
+	// 后可直方图分位数（P50/P95）。
+	latencyBuckets = []*expvar.Int{
+		expvar.NewInt("latency_ms_0_50"),
+		expvar.NewInt("latency_ms_50_100"),
+		expvar.NewInt("latency_ms_100_200"),
+		expvar.NewInt("latency_ms_200_500"),
+		expvar.NewInt("latency_ms_500_plus"),
+	}
+
 	mu       sync.Mutex
 	latSumMs = map[string]int64{}
 	latCount = map[string]int64{}
@@ -39,4 +51,25 @@ func ObserveTool(name string, ok bool, latencyMs int64) {
 	latSumMs[name] += latencyMs
 	latCount[name]++
 	mu.Unlock()
+	ObserveLatencyMs(latencyMs)
+}
+
+// IncrEventAppendFailed 记录事件落库失败（配合 runtime 侧 slog Warn）。
+func IncrEventAppendFailed() { eventAppendFailed.Add(1) }
+
+// ObserveLatencyMs 把时延计入 5 个桶（50/100/200/500/∞ ms），
+// 外部抓取 expvar 后可算直方图分位数。
+func ObserveLatencyMs(ms int64) {
+	switch {
+	case ms < 50:
+		latencyBuckets[0].Add(1)
+	case ms < 100:
+		latencyBuckets[1].Add(1)
+	case ms < 200:
+		latencyBuckets[2].Add(1)
+	case ms < 500:
+		latencyBuckets[3].Add(1)
+	default:
+		latencyBuckets[4].Add(1)
+	}
 }
