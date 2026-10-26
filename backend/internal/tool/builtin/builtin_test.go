@@ -25,8 +25,12 @@ func TestSetDirsInjectsRoots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fileRead: %v", err)
 	}
-	if want := `{"path":"a.txt","content":"hello"}`; rOut != want {
-		t.Fatalf("fileRead out = %s, want %s", rOut, want)
+	var got map[string]string
+	if err := json.Unmarshal([]byte(rOut), &got); err != nil {
+		t.Fatalf("fileRead out not JSON: %v (%s)", err, rOut)
+	}
+	if got["path"] != "a.txt" || got["content"] != "hello" {
+		t.Fatalf("fileRead out = %s, want path=a.txt content=hello", rOut)
 	}
 
 	// knowledgeRoot var is set by the hook
