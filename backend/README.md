@@ -80,6 +80,7 @@ make clean             # 清理构建产物
 ## 工具配置（Skills + MCP）
 
 内置工具（`tool/builtin/`，注册于启动时）：`knowledge_search`（知识目录检索，只读）、`file_read`（读工作区文件，只读）、`file_list`（列目录，只读）、`file_search`（工作区全文检索，只读）、`file_edit`（精确唯一替换，默认审批）、`workspace_write`（写草稿，默认审批）、`http_fetch`（白名单出网 GET，始终审批）。目录与白名单经 `AGENT_WORKSPACE_DIR` / `AGENT_KNOWLEDGE_DIR` / `AGENT_HTTP_FETCH_ALLOWLIST` 配置。
+子 agent 委派工具（`internal/subagent`，注册于启动时）：`task`（同步委派单个只读子 agent）、`tasks`（批量并行委派，默认并发 4 / 请求上限 8 / 批大小 1..5，结果按输入顺序返回，子预算=父 40% 再收紧）。
 
 `server_settings` 全局三键（key/value，无迁移）：
 
