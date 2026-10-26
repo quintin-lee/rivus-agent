@@ -241,10 +241,10 @@ Expected: 无 `BROKEN`。
 
 ```bash
 grep -cE 'HandleFunc|mux.Handle' backend/internal/api/http/server.go   # 19
-grep -rhoE '^## (GET|POST|PUT|DELETE) /' docs/api/*.md | sort -u | wc -l   # 19
-grep -rhoE '^## (GET|POST|PUT|DELETE) /' docs/en/api/*.md | sort -u | wc -l   # 19
+grep -rhE '^## (GET|POST|PUT|DELETE) /' docs/api/*.md | sort -u | wc -l   # 19
+grep -rhE '^## (GET|POST|PUT|DELETE) /' docs/en/api/*.md | sort -u | wc -l   # 19
 ```
-Expected: 19/19/19。
+Expected: 19/19/19。（执行期修正：原稿带 `-o` 会把标题截断成 `## GET /` 去重成 4；去掉 `-o` 按整行标题去重。）
 
 - [ ] **Step 9.3: 事件目录 28/28 对齐 event.go**
 
