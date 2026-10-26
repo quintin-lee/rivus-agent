@@ -77,7 +77,9 @@ func (a *App) Start(ctx context.Context) error {
 	if err := registry.Register(subagent.TaskTool(registry, tasks, runner, runner)); err != nil {
 		return err
 	}
-	rt := runtime.New(runtime.Deps{Tasks: tasks, Events: events, Approvals: approvals, Runner: runner}, cfg.WorkerConcurrency)
+	rt := runtime.New(runtime.Deps{
+		Tasks: tasks, Events: events, Approvals: approvals, Runner: runner, Log: a.log,
+	}, cfg.WorkerConcurrency)
 
 	if _, err := runtime.RecoverOrphans(ctx, tasks, events); err != nil {
 		a.log.Warn("orphan recovery failed", "err", err)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,7 @@ type Deps struct {
 	Events    *store.EventRepo
 	Approvals *store.ApprovalRepo
 	Runner    *EinoRunner
+	Log       *slog.Logger // 可空：缺省 slog.Default()
 }
 
 type Runtime struct {
@@ -31,10 +33,16 @@ func New(deps Deps, concurrency int) *Runtime {
 	if concurrency < 1 {
 		concurrency = 1
 	}
+	if deps.Log == nil {
+		deps.Log = slog.Default()
+	}
 	rt := &Runtime{deps: deps, sem: make(chan struct{}, concurrency)}
 	deps.Runner.OnEvent(func(ev RuntimeEvent) {
 		payload, _ := json.Marshal(map[string]string{"text": ev.Text, "tool": ev.ToolName})
-		_, _ = deps.Events.Append(context.Background(), ev.RunID, ev.Type, string(payload), "normal")
+		if _, err := deps.Events.Append(context.Background(), ev.RunID, ev.Type, string(payload), "normal"); err != nil {
+			deps.Log.Warn("event append failed", "run_id", ev.RunID, "type", ev.Type, "err", err)
+			observability.IncrEventAppendFailed()
+		}
 	})
 	deps.Runner.OnNeedApproval(func(runID, toolCallID, toolName string, args json.RawMessage) {
 		_ = runID
@@ -208,7 +216,10 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 
 func (r *Runtime) append(ctx context.Context, runID string, typ domain.EventType, text string) {
 	payload, _ := json.Marshal(map[string]string{"text": text})
-	_, _ = r.deps.Events.Append(ctx, runID, typ, string(payload), "normal")
+	if _, err := r.deps.Events.Append(ctx, runID, typ, string(payload), "normal"); err != nil {
+		r.deps.Log.Warn("event append failed", "run_id", runID, "type", typ, "err", err)
+		observability.IncrEventAppendFailed()
+	}
 }
 
 // appendBudget 在 tool/model 步骤边界发 budget.consumed(累计
@@ -222,7 +233,10 @@ func (r *Runtime) appendBudget(ctx context.Context, runID string, tracker *Budge
 		"tool_calls":       u.ToolCalls,
 		"duration_seconds": int(time.Since(started).Seconds()),
 	})
-	_, _ = r.deps.Events.Append(ctx, runID, domain.EvtBudgetConsumed, string(payload), "normal")
+	if _, err := r.deps.Events.Append(ctx, runID, domain.EvtBudgetConsumed, string(payload), "normal"); err != nil {
+		r.deps.Log.Warn("event append failed", "run_id", runID, "type", domain.EvtBudgetConsumed, "err", err)
+		observability.IncrEventAppendFailed()
+	}
 }
 
 // appendApproval 发带 approval_id + tool_name 的 approval.requested 事件。
@@ -232,7 +246,10 @@ func (r *Runtime) appendApproval(ctx context.Context, runID string, a *domain.Ap
 		"approval_id": a.ID,
 		"tool_name":   a.ToolName,
 	})
-	_, _ = r.deps.Events.Append(ctx, runID, domain.EvtApprovalRequested, string(payload), "normal")
+	if _, err := r.deps.Events.Append(ctx, runID, domain.EvtApprovalRequested, string(payload), "normal"); err != nil {
+		r.deps.Log.Warn("event append failed", "run_id", runID, "type", domain.EvtApprovalRequested, "err", err)
+		observability.IncrEventAppendFailed()
+	}
 }
 
 func itoa(n int) string {
