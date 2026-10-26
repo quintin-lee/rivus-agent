@@ -1,8 +1,10 @@
 package skill
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -101,4 +103,60 @@ func (l *Loader) Get(name string) (string, bool) {
 	defer l.mu.RUnlock()
 	b, ok := l.bodies[name]
 	return b, ok
+}
+
+// ListReferences 返回 skill 的 references/ 目录下的 .md 文件名（排序）。
+func (l *Loader) ListReferences(name string) ([]string, error) {
+	dir, err := l.referencesDir(name)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("skill %q has no references: %w", name, err)
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		out = append(out, e.Name())
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// ReadReference 读取 references/<ref>，ref 必须是目录内的普通文件名，内容上限 16KB。
+func (l *Loader) ReadReference(name, ref string) (string, error) {
+	dir, err := l.referencesDir(name)
+	if err != nil {
+		return "", err
+	}
+	if ref == "" || strings.ContainsAny(ref, `/\`) || filepath.IsAbs(ref) {
+		return "", fmt.Errorf("invalid reference name %q", ref)
+	}
+	full := filepath.Clean(filepath.Join(dir, ref))
+	if !strings.HasPrefix(full, dir+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid reference name %q", ref)
+	}
+	b, err := os.ReadFile(full)
+	if err != nil {
+		return "", fmt.Errorf("read reference %q: %w", ref, err)
+	}
+	const refCap = 16 * 1024
+	if len(b) > refCap {
+		b = b[:refCap]
+	}
+	return string(b), nil
+}
+
+func (l *Loader) referencesDir(name string) (string, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	for _, m := range l.metas {
+		if m.Name == name {
+			return filepath.Join(filepath.Dir(m.Path), "references"), nil
+		}
+	}
+	return "", fmt.Errorf("unknown or unavailable skill %q", name)
 }
