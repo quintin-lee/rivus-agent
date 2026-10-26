@@ -150,6 +150,9 @@ docker compose up -d
 | `WORKER_CONCURRENCY` | 并发 Worker 数，默认 1 |
 | `MODEL_PROVIDER` | 模型提供方标识，缺省走 OpenAI 兼容协议 |
 | `AGENT_SKILLS_DIR` | 本地 Skill 目录，缺省 `./skills` |
+| `AGENT_WORKSPACE_DIR` | 工具工作区根目录（file_list/file_search/file_edit/workspace_write 的读写范围），缺省 `./workspace` |
+| `AGENT_KNOWLEDGE_DIR` | 知识库目录（knowledge_search 检索范围），缺省 `./knowledge` |
+| `AGENT_HTTP_FETCH_ALLOWLIST` | http_fetch 域名白名单（逗号分隔，精确匹配；为空 = 完全禁用出网） |
 | `LOG_LEVEL` | 日志级别 `debug/info/warn/error`，默认 `info` |
 
 YAML 配置示例见 `backend/configs/config.example.yaml`。

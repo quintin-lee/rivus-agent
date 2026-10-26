@@ -79,6 +79,8 @@ make clean             # remove build artifacts
 
 ## Tool Configuration (Skills + MCP)
 
+Built-in tools (`tool/builtin/`, registered at startup): `knowledge_search` (search the knowledge directory, read-only), `file_read` (read workspace files, read-only), `file_list` (list directories, read-only), `file_search` (full-text search across the workspace, read-only), `file_edit` (exact-unique replacement, approval by default), `workspace_write` (write drafts, approval by default), `http_fetch` (allowlisted outbound GET, approval always). Directories and the allowlist are configured via `AGENT_WORKSPACE_DIR` / `AGENT_KNOWLEDGE_DIR` / `AGENT_HTTP_FETCH_ALLOWLIST`.
+
 Three global `server_settings` keys (key/value, no migrations):
 
 | Key | Value | Description |

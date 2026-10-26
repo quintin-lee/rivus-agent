@@ -151,6 +151,9 @@ docker compose up -d
 | `WORKER_CONCURRENCY` | Number of concurrent workers, default 1 |
 | `MODEL_PROVIDER` | Model provider identifier; defaults to the OpenAI-compatible protocol |
 | `AGENT_SKILLS_DIR` | Local Skill directory, default `./skills` |
+| `AGENT_WORKSPACE_DIR` | Tool workspace root (read/write scope of file_list/file_search/file_edit/workspace_write), default `./workspace` |
+| `AGENT_KNOWLEDGE_DIR` | Knowledge directory (search scope of knowledge_search), default `./knowledge` |
+| `AGENT_HTTP_FETCH_ALLOWLIST` | http_fetch domain allowlist (comma-separated, exact match; empty = outbound fetch fully disabled) |
 | `LOG_LEVEL` | Log level `debug/info/warn/error`, default `info` |
 
 See `backend/configs/config.example.yaml` for a YAML config example.
