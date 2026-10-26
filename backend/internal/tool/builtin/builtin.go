@@ -41,7 +41,24 @@ func RegisterAll(r *tool.Registry) error {
 	return nil
 }
 
-var workspaceRoot = "./workspace"
+var (
+	// workspaceRoot / knowledgeRoot 由 app 装配经 SetDirs 注入（配置化，
+	// 缺省 ./workspace、./knowledge）；httpAllowlist 同理（空 = http_fetch 全拒）。
+	workspaceRoot = "./workspace"
+	knowledgeRoot = "./knowledge"
+	httpAllowlist []string
+)
+
+// SetDirs 注入工作区与知识目录根路径。必须在 RegisterAll 之前调用。
+func SetDirs(workspace, knowledge string) {
+	workspaceRoot = workspace
+	knowledgeRoot = knowledge
+}
+
+// SetHTTPAllowlist 注入 http_fetch 域名白名单（精确 host 匹配；空 = 禁用）。
+func SetHTTPAllowlist(domains []string) {
+	httpAllowlist = domains
+}
 
 func knowledgeSearch(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
