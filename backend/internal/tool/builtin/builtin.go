@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,18 @@ func RegisterAll(r *tool.Registry) error {
 			InputSchema: `{"type":"object","properties":{"path":{"type":"string"},"max_bytes":{"type":"integer"}},"required":["path"]}`,
 			Risk:        tool.RiskRead, Approval: tool.ApprovalNever, Idempotent: true, TimeoutMs: 10000, MaxResultBytes: 32 * 1024,
 			Handler: fileRead,
+		},
+		{
+			Name: "file_list", Description: "列出工作区内目录条目（只读，可选 glob 递归匹配）", Version: "v1",
+			InputSchema: `{"type":"object","properties":{"path":{"type":"string"},"pattern":{"type":"string"}}}`,
+			Risk:        tool.RiskRead, Approval: tool.ApprovalNever, Idempotent: true, TimeoutMs: 10000, MaxResultBytes: 32 * 1024,
+			Handler: fileList,
+		},
+		{
+			Name: "file_search", Description: "在工作区文本文件中全文检索子串（只读，返回文件/行号/摘录）", Version: "v1",
+			InputSchema: `{"type":"object","properties":{"query":{"type":"string"},"path":{"type":"string"},"max_results":{"type":"integer"}},"required":["query"]}`,
+			Risk:        tool.RiskRead, Approval: tool.ApprovalNever, Idempotent: true, TimeoutMs: 10000, MaxResultBytes: 32 * 1024,
+			Handler: fileSearch,
 		},
 		{
 			Name: "workspace_write", Description: "在工作区内创建受控草稿文件（受控写入，默认审批）", Version: "v1",
@@ -107,6 +120,100 @@ func fileRead(_ context.Context, args json.RawMessage) (string, error) {
 		b = b[:n]
 	}
 	out, _ := json.Marshal(map[string]string{"path": in.Path, "content": string(b)})
+	return string(out), nil
+}
+
+func fileList(_ context.Context, args json.RawMessage) (string, error) {
+	var in struct {
+		Path    string `json:"path"`
+		Pattern string `json:"pattern"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return "", fmt.Errorf("invalid input")
+	}
+	rel := in.Path
+	if rel == "" {
+		rel = "."
+	}
+	root, err := cleanPath(rel)
+	if err != nil {
+		return "", err
+	}
+	type entry struct {
+		Name  string `json:"name"`
+		IsDir bool   `json:"is_dir"`
+		Size  int64  `json:"size"`
+	}
+	var entries []entry
+	appendEntry := func(path string, d fs.DirEntry) {
+		info, err := d.Info()
+		if err != nil {
+			return
+		}
+		relPath, err := filepath.Rel(root, path)
+		if err != nil || relPath == "." {
+			return
+		}
+		entries = append(entries, entry{Name: filepath.ToSlash(relPath), IsDir: d.IsDir(), Size: info.Size()})
+	}
+	if in.Pattern == "" {
+		// 单层目录列举（path 缺省 = 工作区根）
+		dirents, err := os.ReadDir(root)
+		if err != nil {
+			return "", err
+		}
+		for _, d := range dirents {
+			appendEntry(filepath.Join(root, d.Name()), d)
+		}
+	} else {
+		// 递归 + 按文件名 glob 匹配
+		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				if d.Name() == ".git" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			ok, err := filepath.Match(in.Pattern, d.Name())
+			if err != nil || !ok {
+				return nil
+			}
+			appendEntry(path, d)
+			return nil
+		})
+	}
+	if entries == nil {
+		entries = []entry{}
+	}
+	out, _ := json.Marshal(map[string]any{"entries": entries})
+	return string(out), nil
+}
+
+func fileSearch(_ context.Context, args json.RawMessage) (string, error) {
+	var in struct {
+		Query      string `json:"query"`
+		Path       string `json:"path"`
+		MaxResults int    `json:"max_results"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil || strings.TrimSpace(in.Query) == "" {
+		return "", fmt.Errorf("invalid query")
+	}
+	root := workspaceRoot
+	if in.Path != "" {
+		sub, err := cleanPath(in.Path)
+		if err != nil {
+			return "", err
+		}
+		root = sub
+	}
+	hits := searchDir(root, in.Query, in.MaxResults)
+	if hits == nil {
+		hits = []searchHit{}
+	}
+	out, _ := json.Marshal(map[string]any{"hits": hits})
 	return string(out), nil
 }
 

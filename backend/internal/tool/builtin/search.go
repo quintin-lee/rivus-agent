@@ -23,8 +23,11 @@ type searchHit struct {
 // 跳过：.git 目录、>512KB 文件、疑似二进制（首 8KB 含 NUL）。maxResults<=0 → 20。
 // root 不存在时返回空切片（容错，不报错）。
 func searchDir(root, query string, maxResults int) []searchHit {
-	if strings.TrimSpace(query) == "" || maxResults <= 0 {
+	if strings.TrimSpace(query) == "" {
 		return nil
+	}
+	if maxResults <= 0 {
+		maxResults = 20
 	}
 	if maxResults > 100 {
 		maxResults = 100
