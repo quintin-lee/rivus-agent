@@ -233,7 +233,7 @@ func (r *EinoRunner) executeNew(ctx context.Context, req RunRequest) (<-chan Run
 	go func() {
 		defer close(out)
 		defer cancel()
-		r.emit(out, req.RunID, domain.EvtRunStarted, "run started", "", "")
+		r.emit(ctx, out, req.RunID, domain.EvtRunStarted, "run started", "", "")
 		iter := runner.Run(ctx, []*schema.Message{schema.UserMessage(req.Goal)})
 		r.drain(ctx, req.RunID, req.CheckpointID, iter, out, true)
 	}()
@@ -253,10 +253,10 @@ func (r *EinoRunner) executeResume(ctx context.Context, req ResumeRequest) (<-ch
 	go func() {
 		defer close(out)
 		defer cancel()
-		r.emit(out, req.RunID, domain.EvtRunResumed, "run resumed", "", "")
+		r.emit(ctx, out, req.RunID, domain.EvtRunResumed, "run resumed", "", "")
 		iter, err := runner.Resume(ctx, req.CheckpointID)
 		if err != nil {
-			r.emit(out, req.RunID, domain.EvtRunFailed, err.Error(), "", "")
+			r.emit(ctx, out, req.RunID, domain.EvtRunFailed, err.Error(), "", "")
 			return
 		}
 		r.drain(ctx, req.RunID, req.CheckpointID, iter, out, true)
@@ -271,7 +271,7 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string,
 	for {
 		select {
 		case <-ctx.Done():
-			r.emit(out, runID, domain.EvtRunCancelled, ctx.Err().Error(), "", "")
+			r.emit(ctx, out, runID, domain.EvtRunCancelled, ctx.Err().Error(), "", "")
 			return
 		default:
 		}
@@ -284,15 +284,15 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string,
 		}
 		if ev.Err != nil {
 			if errors.Is(ev.Err, domain.ErrNeedsApproval) {
-				r.emit(out, runID, domain.EvtApprovalRequested, ev.Err.Error(), "", "")
+				r.emit(ctx, out, runID, domain.EvtApprovalRequested, ev.Err.Error(), "", "")
 				return
 			}
 			var ce *domain.CodedError
 			if errors.As(ev.Err, &ce) && ce.Code == "tool_failed" {
-				r.emit(out, runID, domain.EvtToolFailed, ev.Err.Error(), lastTool, "")
+				r.emit(ctx, out, runID, domain.EvtToolFailed, ev.Err.Error(), lastTool, "")
 			}
-			r.emit(out, runID, domain.EvtModelFailed, ev.Err.Error(), "", "")
-			r.emit(out, runID, domain.EvtRunFailed, ev.Err.Error(), "", "")
+			r.emit(ctx, out, runID, domain.EvtModelFailed, ev.Err.Error(), "", "")
+			r.emit(ctx, out, runID, domain.EvtRunFailed, ev.Err.Error(), "", "")
 			return
 		}
 		if ev.Output != nil && ev.Output.MessageOutput != nil {
@@ -304,27 +304,27 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string,
 			if text == "" && mo.MessageStream != nil {
 				var onDelta func(textSoFar string)
 				if stream {
-					onDelta = func(txt string) { r.emit(out, runID, domain.EvtModelToken, txt, "", "") }
+					onDelta = func(txt string) { r.emit(ctx, out, runID, domain.EvtModelToken, txt, "", "") }
 				}
 				text = drainStream(mo.MessageStream, onDelta)
 			}
 			if text != "" {
 				lastText = text
-				r.emit(out, runID, domain.EvtModelCompleted, text, "", "")
+				r.emit(ctx, out, runID, domain.EvtModelCompleted, text, "", "")
 			}
 			if mo.ToolName != "" {
 				lastTool = mo.ToolName
-				r.emit(out, runID, domain.EvtToolCompleted, mo.ToolName, mo.ToolName, "")
+				r.emit(ctx, out, runID, domain.EvtToolCompleted, mo.ToolName, mo.ToolName, "")
 			}
 		}
 		if ev.Action != nil && ev.Action.Interrupted != nil {
-			r.emit(out, runID, domain.EvtApprovalRequested, "interrupted", "", "")
+			r.emit(ctx, out, runID, domain.EvtApprovalRequested, "interrupted", "", "")
 			return
 		}
 	}
 	_ = checkpointID
 	_ = lastText
-	r.emit(out, runID, domain.EvtRunFinished, lastText, "", "")
+	r.emit(ctx, out, runID, domain.EvtRunFinished, lastText, "", "")
 }
 
 // drainStream 消费流；onDelta 在每 ~200ms 窗口携带"到目前为止全文"flush 一次。
@@ -352,11 +352,20 @@ func drainStream(sr *schema.StreamReader[*schema.Message], onDelta func(textSoFa
 	return sb.String()
 }
 
-func (r *EinoRunner) emit(out chan<- RuntimeEvent, runID string, typ domain.EventType, text, tool, payload string) {
+// emit 阻塞式投递：消费者总是 range 到 close（runtime.run / RunChild 均如此），
+// 故缓冲满时阻塞等待即可、绝不丢事件。ctx.Done 只作为逃生门（消费者停滞时
+// 避免永久卡死）。先做一次非阻塞投递：保证“缓冲有空位 + ctx 已取消”场景
+// （典型：drain 的 run.cancelled）确定性送达，而非 select 随机二选一丢弃。
+func (r *EinoRunner) emit(ctx context.Context, out chan<- RuntimeEvent, runID string, typ domain.EventType, text, tool, payload string) {
 	ev := RuntimeEvent{Type: typ, Text: text, ToolName: tool, Payload: payload, RunID: runID}
 	select {
 	case out <- ev:
 	default:
+		select {
+		case out <- ev:
+		case <-ctx.Done():
+			return
+		}
 	}
 	if r.onEvent != nil {
 		r.onEvent(ev)
