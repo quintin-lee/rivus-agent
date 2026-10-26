@@ -1,7 +1,7 @@
 # Rivus Agent Backend
 
 Go + CloudWeGo Eino ADK 的轻量级 AI Agent 服务：单进程、SQLite、有界 Worker。
-详见方案文档 `../go-eino-adk-lightweight-agent-plan.md`。
+设计文档见 [`../docs/superpowers/`](../docs/superpowers/)；仓库总览见 [`../README.md`](../README.md)。
 
 ## 目录
 

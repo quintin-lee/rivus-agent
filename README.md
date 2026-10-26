@@ -34,8 +34,10 @@ rivus-agent/
 │   ├── skills/               # 本地 Skill 目录
 │   ├── tests/                # 集成测试
 │   └── Makefile
-├── frontend/                 # 前端（预留）
-└── go-eino-adk-lightweight-agent-plan.md  # 技术方案
+├── frontend/                 # 前端（React + Vite + TS + Tailwind，127 测试）
+├── docs/                     # 设计文档（superpowers/specs、plans）
+├── docker-compose.yml        # 一键启动（backend + frontend）
+└── .env.example              # 环境变量示例
 ```
 
 ## 快速开始
@@ -95,21 +97,44 @@ curl -X POST localhost:8080/api/v1/runs \
 curl -N localhost:8080/api/v1/runs/<run_id>/events
 ```
 
+## Docker 快速开始
+
+```bash
+cp .env.example .env        # 填入 MODEL_BASE_URL / MODEL_API_KEY / MODEL_NAME
+docker compose up -d
+```
+
+- 后端 API：`http://localhost:8080`（healthcheck 通过 `wget /healthz` 探测，
+  前端容器 `depends_on: service_healthy`，就绪后自动启动）
+- 前端界面：`http://localhost:8081`（nginx 静态托管，反代 `/api`、`/healthz`、
+  `/readyz`、`/metrics` 至后端容器）
+- 数据持久化：数据卷 `rivus-data` → 容器内 `/data/agent.db`（SQLite，WAL 模式）；
+  后端 skills 目录以 `./backend/skills` 只读挂载进容器
+- 镜像加速：`.env` 中设置 `DOCKER_REGISTRY=registry.1ms.run/` 等前缀
+
 ## API 速览
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | POST | `/api/v1/sessions` | 创建会话 |
+| GET | `/api/v1/sessions` | 会话列表 |
 | GET | `/api/v1/sessions/{id}` | 获取会话 |
+| DELETE | `/api/v1/sessions/{id}` | 删除会话 |
+| GET | `/api/v1/runs` | Run 列表 |
 | POST | `/api/v1/runs` | 提交任务（支持 `Idempotency-Key`） |
 | GET | `/api/v1/runs/{id}` | 查看 Run 状态与结果 |
-| GET | `/api/v1/runs/{id}/events` | SSE 事件流 |
+| GET | `/api/v1/runs/{id}/events` | SSE 事件流（`Last-Event-ID` 重放） |
 | POST | `/api/v1/runs/{id}/cancel` | 取消 Run |
-| POST | `/api/v1/runs/{id}/approvals/{approval_id}` | 批准 / 拒绝 |
 | POST | `/api/v1/runs/{id}/resume` | 恢复暂停 / 中断任务 |
+| POST | `/api/v1/runs/{id}/approvals/{approval_id}` | 批准 / 拒绝 |
+| GET | `/api/v1/runs/{id}/approvals` | 审批列表 |
+| GET | `/api/v1/settings/tools` | 读取 Skills/MCP 工具配置 |
+| PUT | `/api/v1/settings/tools` | 更新 Skills/MCP 工具配置 |
+| GET | `/api/v1/settings/model` | 读取模型设置 |
+| PUT | `/api/v1/settings/model` | 更新模型设置 |
 | GET | `/healthz` | 存活检查 |
 | GET | `/readyz` | 就绪检查 |
-| GET | `/metrics` | 基础指标 |
+| GET | `/metrics` | expvar 指标（含延迟直方图桶） |
 
 ## 配置
 
@@ -123,6 +148,9 @@ curl -N localhost:8080/api/v1/runs/<run_id>/events
 | `MODEL_NAME` | 模型名称 |
 | `MODEL_API_KEY` | API Key |
 | `WORKER_CONCURRENCY` | 并发 Worker 数，默认 1 |
+| `MODEL_PROVIDER` | 模型提供方标识，缺省走 OpenAI 兼容协议 |
+| `AGENT_SKILLS_DIR` | 本地 Skill 目录，缺省 `./skills` |
+| `LOG_LEVEL` | 日志级别 `debug/info/warn/error`，默认 `info` |
 
 YAML 配置示例见 `backend/configs/config.example.yaml`。
 
@@ -159,4 +187,4 @@ make clean   # 清理构建产物
 
 ## 详细文档
 
-完整技术方案（含架构设计、状态机、测试策略、风险评估）见 [`go-eino-adk-lightweight-agent-plan.md`](./go-eino-adk-lightweight-agent-plan.md)。
+设计文档（specs / plans）见 [`docs/superpowers/`](./docs/superpowers/)。
