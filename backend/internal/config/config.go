@@ -14,7 +14,13 @@ type Config struct {
 	Addr              string `yaml:"addr"`
 	DBPath            string `yaml:"db_path"`
 	SkillsDir         string `yaml:"skills_dir"`
+	WorkspaceDir      string `yaml:"workspace_dir"`
+	KnowledgeDir      string `yaml:"knowledge_dir"`
 	WorkerConcurrency int    `yaml:"worker_concurrency"`
+
+	// HTTPFetchAllowlist 限制 http_fetch 工具可访问的域名（精确匹配 host）；
+	// 为空 = http_fetch 完全禁用（所有请求直接拒绝）。
+	HTTPFetchAllowlist []string `yaml:"http_fetch_allowlist"`
 
 	AuthToken string `yaml:"-"`
 
@@ -38,6 +44,8 @@ func Default() Config {
 		Addr:              ":8080",
 		DBPath:            "./data/agent.db",
 		SkillsDir:         "./skills",
+		WorkspaceDir:      "./workspace",
+		KnowledgeDir:      "./knowledge",
 		WorkerConcurrency: 1,
 		ModelProvider:     "openai_compat",
 		ModelName:         "gpt-4o-mini",
@@ -81,6 +89,21 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("AGENT_SKILLS_DIR"); v != "" {
 		c.SkillsDir = v
+	}
+	if v := os.Getenv("AGENT_WORKSPACE_DIR"); v != "" {
+		c.WorkspaceDir = v
+	}
+	if v := os.Getenv("AGENT_KNOWLEDGE_DIR"); v != "" {
+		c.KnowledgeDir = v
+	}
+	if v := os.Getenv("AGENT_HTTP_FETCH_ALLOWLIST"); v != "" {
+		var out []string
+		for _, part := range strings.Split(v, ",") {
+			if s := strings.TrimSpace(part); s != "" {
+				out = append(out, s)
+			}
+		}
+		c.HTTPFetchAllowlist = out
 	}
 	if v := os.Getenv("AGENT_AUTH_TOKEN"); v != "" {
 		c.AuthToken = v
