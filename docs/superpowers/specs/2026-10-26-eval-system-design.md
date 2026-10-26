@@ -95,6 +95,8 @@ type Result struct {
 | 14 | timeout_terminates | SetFallback 循环 + max_duration_seconds=1 → timed_out | 稳定性 |
 | 15 | skill_disabled_denied | PUT settings/tools 关 skills → invoke_skill 被拒（tool_denied） | 正确性 |
 
+> 执行偏差（计划期确认）：#1 由 workspace_write 往返改为 file_read_content（HTTP 载荷不支持 approved_tools，写路径由 #3 审批流覆盖）；#15 由 settings 禁用改为 invoke_skill_unknown_fails（禁用生效链路未验证，unknown-skill 拒绝路径确定性更强）。#12 子失败注入用子模型错误（EnqueueFunc）；#14 用每轮 250ms 慢模型调用使 1s 时限先于服务端 max_iterations 钳制触发。
+
 实现注意：
 - evals 包不能复用 tests/integration 的 `withTempWorkspace`（不同包）——在本包定义等价 helper（`builtin.SetDirs` + `t.Cleanup` 恢复 `./workspace` / `./knowledge`；包内测试串行，安全）。
 - #6 memory / #8 tasks 需真实 session 行（runs.session_id FK），沿用 `h.CreateSession`。
