@@ -17,7 +17,7 @@
 | 1 | 坏链 ×3：引用不存在的 `go-eino-adk-lightweight-agent-plan.md` | `README.md:38`、`README.md:162`、`backend/README.md:4` |
 | 2 | 过时：`frontend/ # 前端（预留）`，实际为完整 React 应用（20 测试文件 / 127 测试） | `README.md:37` |
 | 3 | API 速览仅 9 条，实际 19 条路由 | 对照 `backend/internal/api/http/server.go:127-145` |
-| 4 | `docker-compose.yml` 存在且较完整，但 README 完全未提；无 `.env.example` | 根目录 |
+| 4 | `docker-compose.yml` 存在且较完整，但 README 完全未提；`.env.example` 已存在（2026-10-09）且覆盖 compose 变量，缺 `MODEL_PROVIDER` 一行 | 根目录（修正于执行期：原稿误判为“无”，因 `ls` 未列点文件） |
 | 5 | `frontend/` 无 README | — |
 | 6 | 无逐端点 API 参考、无 SSE 事件目录、无架构/状态机文档 | `docs/` 下仅有 `superpowers/` |
 
@@ -35,7 +35,7 @@
 README.md / README.en.md          # 批1
 backend/README.md / README.en.md  # 批1
 frontend/README.md / README.en.md # 批1（新增）
-.env.example                      # 批1（新增）
+.env.example                      # 批1（已存在，补 MODEL_PROVIDER 行）
 docs/
   api/                            # 批2（中文），英文镜像 docs/en/api/
     overview.md                   #   认证、Idempotency-Key、错误格式、预算只紧不松
