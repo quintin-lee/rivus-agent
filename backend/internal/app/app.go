@@ -83,8 +83,15 @@ func (a *App) Start(ctx context.Context) error {
 	if err := registry.Register(subagent.TasksTool(registry, tasks, runner, runner)); err != nil {
 		return err
 	}
+	// 记忆工具（会话级持久记忆，LRU 100 条/会话）。
+	memories := store.NewMemoryRepo(db)
+	for _, d := range builtin.MemoryTools(memories) {
+		if err := registry.Register(d); err != nil {
+			return err
+		}
+	}
 	rt := runtime.New(runtime.Deps{
-		Tasks: tasks, Events: events, Approvals: approvals, Runner: runner, Log: a.log,
+		Tasks: tasks, Events: events, Approvals: approvals, Runner: runner, Log: a.log, Memories: memories,
 	}, cfg.WorkerConcurrency)
 
 	if _, err := runtime.RecoverOrphans(ctx, tasks, events); err != nil {

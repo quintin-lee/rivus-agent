@@ -259,7 +259,14 @@ func buildHarness(t TB, extraTools []tool.Definition, provider httpapi.ToolConfi
 	if err := registry.Register(subagent.TasksTool(registry, tasks, runner, runner)); err != nil {
 		t.Fatal(err)
 	}
-	rt := runtime.New(runtime.Deps{Tasks: tasks, Events: events, Approvals: approvals, Runner: runner}, 4)
+	// memory 工具（镜像 app.go：会话级持久记忆）。
+	memories := store.NewMemoryRepo(db)
+	for _, d := range builtin.MemoryTools(memories) {
+		if err := registry.Register(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rt := runtime.New(runtime.Deps{Tasks: tasks, Events: events, Approvals: approvals, Runner: runner, Memories: memories}, 4)
 
 	cfg := config.Default()
 	cfg.MaxDurationS = 120
