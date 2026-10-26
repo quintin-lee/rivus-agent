@@ -31,6 +31,7 @@ type Server struct {
 	tasks    *store.TaskRepo
 	events   *store.EventRepo
 	settings *store.SettingsRepo
+	memories *store.MemoryRepo
 	runs     *service.RunService
 	sessions *service.SessionService
 	tools    ToolConfigProvider
@@ -115,6 +116,9 @@ func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.Eve
 		opt(&o)
 	}
 	s := &Server{cfg: cfg, db: db, tasks: tasks, events: events, settings: settings, runs: runs, sessions: sessions, tools: o.tools, hub: o.hub, mux: http.NewServeMux()}
+	if db != nil {
+		s.memories = store.NewMemoryRepo(db)
+	}
 	s.routes()
 	return s
 }
@@ -127,6 +131,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/sessions", s.handleCreateSession)
 	s.mux.HandleFunc("GET /api/v1/sessions", s.handleListSessions)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}", s.handleGetSession)
+	s.mux.HandleFunc("GET /api/v1/sessions/{id}/memories", s.handleListMemories)
 	s.mux.HandleFunc("DELETE /api/v1/sessions/{id}", s.handleDeleteSession)
 	s.mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	s.mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
@@ -238,6 +243,29 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"sessions": sessions})
+}
+
+func (s *Server) handleListMemories(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, _, _, _, err := s.tasks.GetSession(r.Context(), ownerOf(r), id); err != nil {
+		writeErr(w, 404, "not_found", "session not found", false)
+		return
+	}
+	limit := 200
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	mems, err := s.memories.Latest(r.Context(), id, limit)
+	if err != nil {
+		writeErr(w, 500, "internal", "list memories failed", true)
+		return
+	}
+	if mems == nil {
+		mems = []domain.Memory{}
+	}
+	writeJSON(w, 200, map[string]any{"memories": mems})
 }
 
 func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
