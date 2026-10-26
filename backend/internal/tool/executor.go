@@ -61,11 +61,6 @@ func (e *Executor) Execute(ctx context.Context, req ExecRequest) (*ExecResult, e
 			return &ExecResult{Output: prev, OutputSize: len(prev)}, nil
 		}
 		e.mu.Unlock()
-		defer func() {
-			e.mu.Lock()
-			e.seen[key] = ""
-			e.mu.Unlock()
-		}()
 	}
 	if !e.allow(req.ToolName, def.RateLimitPerMin) {
 		return nil, domain.Wrap("rate_limited", "tool rate limit exceeded", true, nil)
