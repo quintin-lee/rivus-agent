@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +53,12 @@ func RegisterAll(r *tool.Registry) error {
 			RequiredScopes: []string{"workspace:write"},
 			Risk:           tool.RiskWrite, Approval: tool.ApprovalConditional, Idempotent: false, TimeoutMs: 15000, MaxResultBytes: 4 * 1024,
 			Handler: workspaceWrite,
+		},
+		{
+			Name: "http_fetch", Description: "抓取白名单域名的 HTTP GET 页面/接口（外部副作用，始终需审批）", Version: "v1",
+			InputSchema: `{"type":"object","properties":{"url":{"type":"string"},"max_bytes":{"type":"integer"}},"required":["url"]}`,
+			Risk:        tool.RiskExternal, Approval: tool.ApprovalAlways, Idempotent: false, TimeoutMs: 20000, MaxResultBytes: 64 * 1024,
+			Handler: httpFetch,
 		},
 	}
 	for _, d := range defs {
@@ -249,6 +258,55 @@ func fileEdit(_ context.Context, args json.RawMessage) (string, error) {
 		return "", err
 	}
 	out, _ := json.Marshal(map[string]string{"path": in.Path, "bytes_changed": fmt.Sprint(len(updated) - len(b))})
+	return string(out), nil
+}
+
+func httpFetch(ctx context.Context, args json.RawMessage) (string, error) {
+	var in struct {
+		URL      string `json:"url"`
+		MaxBytes int    `json:"max_bytes"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil || in.URL == "" {
+		return "", fmt.Errorf("invalid url")
+	}
+	u, err := url.Parse(in.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", fmt.Errorf("only http/https URLs are allowed")
+	}
+	// 域名白名单精确匹配（先校验后请求）；空 = 禁用
+	if len(httpAllowlist) == 0 {
+		return "", fmt.Errorf("http_fetch disabled: allowlist empty")
+	}
+	host := u.Hostname()
+	ok := false
+	for _, d := range httpAllowlist {
+		if strings.EqualFold(host, d) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return "", fmt.Errorf("host %q is not in the http_fetch allowlist", host)
+	}
+	n := in.MaxBytes
+	if n <= 0 || n > 64*1024 {
+		n = 64 * 1024
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", in.URL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body := make([]byte, n)
+	read, err := io.ReadFull(resp.Body, body)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", err
+	}
+	out, _ := json.Marshal(map[string]any{"status": resp.StatusCode, "body": string(body[:read])})
 	return string(out), nil
 }
 

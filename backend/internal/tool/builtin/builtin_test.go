@@ -3,6 +3,8 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,5 +150,56 @@ func TestFileEdit(t *testing.T) {
 	// traversal rejected
 	if _, err := fileEdit(context.Background(), json.RawMessage(`{"path":"../x","old_text":"a","new_text":"b"}`)); err == nil {
 		t.Fatal("traversal not rejected")
+	}
+}
+
+func TestHTTPFetch(t *testing.T) {
+	ws := t.TempDir()
+	SetDirs(ws, t.TempDir())
+
+	var srvURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(405)
+			return
+		}
+		_, _ = w.Write([]byte("0123456789ABCDEFGHIJ"))
+	}))
+	defer srv.Close()
+	srvURL = srv.URL // 127.0.0.1
+
+	// allowlist empty → all denied
+	SetHTTPAllowlist(nil)
+	if _, err := httpFetch(context.Background(), json.RawMessage(`{"url":"`+srvURL+`"}`)); err == nil {
+		t.Fatal("empty allowlist must deny")
+	}
+
+	// allowlist contains 127.0.0.1 → success
+	SetHTTPAllowlist([]string{"127.0.0.1"})
+	out, err := httpFetch(context.Background(), json.RawMessage(`{"url":"`+srvURL+`"}`))
+	if err != nil {
+		t.Fatalf("httpFetch: %v", err)
+	}
+	if !strings.Contains(out, `"status":200`) || !strings.Contains(out, "0123456789") {
+		t.Fatalf("httpFetch out: %s", out)
+	}
+
+	// max_bytes truncates body
+	out, err = httpFetch(context.Background(), json.RawMessage(`{"url":"`+srvURL+`","max_bytes":5}`))
+	if err != nil {
+		t.Fatalf("httpFetch max_bytes: %v", err)
+	}
+	if !strings.Contains(out, "01234") || strings.Contains(out, "0123456789A") {
+		t.Fatalf("max_bytes truncation failed: %s", out)
+	}
+
+	// non-listed domain rejected BEFORE request (host exact match)
+	if _, err := httpFetch(context.Background(), json.RawMessage(`{"url":"http://example.invalid/x"}`)); err == nil {
+		t.Fatal("non-allowlisted host must be rejected")
+	}
+
+	// non-http scheme rejected
+	if _, err := httpFetch(context.Background(), json.RawMessage(`{"url":"ftp://127.0.0.1/x"}`)); err == nil {
+		t.Fatal("non-http scheme must be rejected")
 	}
 }
