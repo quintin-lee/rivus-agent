@@ -46,6 +46,16 @@ type ResumeRequest struct {
 	RunID         string
 	CheckpointID  string
 	ApprovedTools map[string]bool
+	Budget        domain.Budget
+}
+
+// resolveResumeBudget：Resume 未携带预算（全零）时退回服务端默认上限；
+// 携带则原样使用（RunService 创建时已 ClampByServer，只收紧不放宽）。
+func resolveResumeBudget(b domain.Budget) domain.Budget {
+	if b == (domain.Budget{}) {
+		return domain.Budget{MaxIterations: 12, MaxModelCalls: 30, MaxToolCalls: 50, MaxDurationSeconds: 600}
+	}
+	return b
 }
 
 type AgentRunner interface {
@@ -231,7 +241,7 @@ func (r *EinoRunner) executeNew(ctx context.Context, req RunRequest) (<-chan Run
 }
 
 func (r *EinoRunner) executeResume(ctx context.Context, req ResumeRequest) (<-chan RuntimeEvent, error) {
-	agent, err := r.buildAgent(ctx, req.RunID, domain.Budget{MaxIterations: 12, MaxModelCalls: 30, MaxToolCalls: 50, MaxDurationSeconds: 600}, req.ApprovedTools)
+	agent, err := r.buildAgent(ctx, req.RunID, resolveResumeBudget(req.Budget), req.ApprovedTools)
 	if err != nil {
 		return nil, err
 	}
