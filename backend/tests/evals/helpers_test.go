@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 	"rivus-agent-backend/internal/domain"
@@ -131,6 +132,17 @@ func loopTool(id, name, args string) func(int, []*schema.Message) (*schema.Messa
 	}
 }
 
+// loopToolSlow 同 loopTool，但每次模型调用前睡眠 d（让 max_duration_seconds 预算先于迭代上限触发）。
+func loopToolSlow(id, name, args string, d time.Duration) func(int, []*schema.Message) (*schema.Message, error) {
+	return func(int, []*schema.Message) (*schema.Message, error) {
+		time.Sleep(d)
+		return &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+			ID: id, Type: "function",
+			Function: schema.FunctionCall{Name: name, Arguments: args},
+		}}}, nil
+	}
+}
+
 // reissueToolThenText 审批场景专用：无 Tool 角色消息 → 重发工具调用；有 → 收尾文本。
 func reissueToolThenText(id, name, args, finalText string) func(int, []*schema.Message) (*schema.Message, error) {
 	return func(_ int, msgs []*schema.Message) (*schema.Message, error) {
@@ -146,16 +158,18 @@ func reissueToolThenText(id, name, args, finalText string) func(int, []*schema.M
 	}
 }
 
-// firstApprovalID 取 run 的第一个审批 ID。
+// firstApprovalID 取 run 的第一个审批 ID（GET 返回 {"approvals":[...]} 包装结构）。
 func firstApprovalID(t *testing.T, h *testutil.Harness, runID string) string {
 	t.Helper()
 	code, body := h.Do("GET", "/api/v1/runs/"+runID+"/approvals", nil, nil)
 	if code != 200 {
 		t.Fatalf("list approvals: %d %s", code, body)
 	}
-	var list []domain.Approval
-	if err := json.Unmarshal(body, &list); err != nil || len(list) == 0 {
+	var wrapped struct {
+		Approvals []domain.Approval `json:"approvals"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err != nil || len(wrapped.Approvals) == 0 {
 		t.Fatalf("approvals parse: %v %s", err, body)
 	}
-	return list[0].ID
+	return wrapped.Approvals[0].ID
 }
