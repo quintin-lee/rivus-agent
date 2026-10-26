@@ -1,6 +1,8 @@
 # Example Skill
 
 description: 在生成重构建议时先收集文件证据再下结论
+when_to_use: 用户要求代码分析、重构建议时
+tools: knowledge_search, file_read
 version: v1
 
 ## 触发条件
