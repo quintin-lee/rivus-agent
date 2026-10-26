@@ -256,6 +256,9 @@ func buildHarness(t TB, extraTools []tool.Definition, provider httpapi.ToolConfi
 	if err := registry.Register(subagent.TaskTool(registry, tasks, runner, runner)); err != nil {
 		t.Fatal(err)
 	}
+	if err := registry.Register(subagent.TasksTool(registry, tasks, runner, runner)); err != nil {
+		t.Fatal(err)
+	}
 	rt := runtime.New(runtime.Deps{Tasks: tasks, Events: events, Approvals: approvals, Runner: runner}, 4)
 
 	cfg := config.Default()

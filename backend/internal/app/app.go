@@ -79,6 +79,10 @@ func (a *App) Start(ctx context.Context) error {
 	if err := registry.Register(subagent.TaskTool(registry, tasks, runner, runner)); err != nil {
 		return err
 	}
+	// tasks 工具（批量并行委派，默认并发 4 / 上限 8 / 批上限 5）。
+	if err := registry.Register(subagent.TasksTool(registry, tasks, runner, runner)); err != nil {
+		return err
+	}
 	rt := runtime.New(runtime.Deps{
 		Tasks: tasks, Events: events, Approvals: approvals, Runner: runner, Log: a.log,
 	}, cfg.WorkerConcurrency)
