@@ -59,6 +59,8 @@ func (a *App) Start(ctx context.Context) error {
 	checkpoints := store.NewCheckpointStore(db)
 
 	registry := tool.NewRegistry()
+	builtin.SetDirs(a.cfg.WorkspaceDir, a.cfg.KnowledgeDir)
+	builtin.SetHTTPAllowlist(a.cfg.HTTPFetchAllowlist)
 	if err := builtin.RegisterAll(registry); err != nil {
 		return err
 	}
