@@ -45,3 +45,4 @@ Thumbs.db
 
 # git worktrees（隔离工作区，不提交）
 /.worktrees
+eval-report.json

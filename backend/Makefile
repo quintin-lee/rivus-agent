@@ -9,7 +9,7 @@ help:
 	@echo "build            - compile to $(BIN)"
 	@echo "test             - run all tests (unit + integration + evals)"
 	@echo "test-integration - run API/approval integration tests only"
-	@echo "test-eval        - run regression eval scenarios only"
+	@echo "test-eval        - run regression eval scenarios only (writes eval-report.json)"
 	@echo "bench            - run benchmarks + load smoke"
 	@echo "vet              - go vet"
 	@echo "tidy             - go mod tidy"
