@@ -83,6 +83,11 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		`INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(2, ?)`, time.Now().UnixMilli()); err != nil {
 		return err
 	}
+	// v3：session_memories（会话级持久记忆；建表走 schemaSQL 的 IF NOT EXISTS，天然幂等）。
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(3, ?)`, time.Now().UnixMilli()); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

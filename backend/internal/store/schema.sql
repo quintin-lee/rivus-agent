@@ -93,3 +93,14 @@ CREATE TABLE IF NOT EXISTS server_settings (
   value TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS session_memories (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  source_run_id TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memories_session ON session_memories(session_id, created_at);
