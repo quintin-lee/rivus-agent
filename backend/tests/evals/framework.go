@@ -16,10 +16,10 @@ import (
 
 // Expect 定义场景的三维度期望。
 type Expect struct {
-	TerminalStatus domain.RunStatus   // 期望终态
-	ErrorCode      string             // 精确匹配；空=不检查
-	ResultContains []string           // ResultJSON 子串全命中
-	MaxModelCalls  int                // 效率维上限（0=不检查）
+	TerminalStatus domain.RunStatus // 期望终态
+	ErrorCode      string           // 精确匹配；空=不检查
+	ResultContains []string         // ResultJSON 子串全命中
+	MaxModelCalls  int              // 效率维上限（0=不检查）
 	MaxToolCalls   int
 	RequiredEvents []domain.EventType // 正确性维：事件存在性
 }

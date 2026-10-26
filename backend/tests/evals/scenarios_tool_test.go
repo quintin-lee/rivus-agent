@@ -222,8 +222,8 @@ func TestScenarioTasksBatchOrder(t *testing.T) {
 		Script: func(h *testutil.Harness) string {
 			h.Model.EnqueueToolCall("tc-b", "tasks",
 				`{"tasks":[{"goal":"g1"},{"goal":"g2"}],"max_concurrency":1}`)
-			h.Model.EnqueueText("g1 完成")        // child1
-			h.Model.EnqueueText("g2 完成")        // child2
+			h.Model.EnqueueText("g1 完成")    // child1
+			h.Model.EnqueueText("g2 完成")    // child2
 			h.Model.EnqueueText("两个子任务已完成") // parent
 			return "eval-tasks"
 		},
