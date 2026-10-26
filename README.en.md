@@ -120,6 +120,7 @@ docker compose up -d
 | POST | `/api/v1/sessions` | Create session |
 | GET | `/api/v1/sessions` | List sessions |
 | GET | `/api/v1/sessions/{id}` | Get session |
+| GET | `/api/v1/sessions/{id}/memories` | List session memories |
 | DELETE | `/api/v1/sessions/{id}` | Delete session |
 | GET | `/api/v1/runs` | List runs |
 | POST | `/api/v1/runs` | Submit task (supports `Idempotency-Key`) |

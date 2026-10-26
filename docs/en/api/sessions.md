@@ -67,7 +67,22 @@ Delete a session.
 curl -X DELETE localhost:8080/api/v1/sessions/<session_id>
 ```
 
+## GET /api/v1/sessions/{id}/memories
+
+List session memories (persistent cross-run facts written by the `memory_write` tool; newest first). The latest 10 (≤8KB) are auto-injected into the model instruction of top-level runs in this session.
+
+**Query params**: `limit` (1..200, default 200).
+
+**Response** `200`: `{"memories":[{"id","session_id","owner_id","content","source_run_id","created_at"}]}`
+
+**Error**: `404 not_found` (missing or owned by another owner).
+
+```bash
+curl localhost:8080/api/v1/sessions/<session_id>/memories
+```
+
 ## Notes
 
 - Deleting a session does not cascade-delete its Runs; cancel active runs before deleting
 - After deletion, its Runs remain directly accessible via `GET /api/v1/runs/{id}`
+- Deleting a session **does** cascade-delete its memories (`session_memories` FK cascade)

@@ -75,7 +75,7 @@ Caps are tunable via YAML config (`backend/configs/config.example.yaml`); respon
 
 | Document | Contents |
 |---|---|
-| [`sessions.md`](sessions.md) | Session management (4 endpoints) |
+| [`sessions.md`](sessions.md) | Session management (5 endpoints, incl. memories) |
 | [`runs.md`](runs.md) | Run lifecycle (5 endpoints) |
 | [`events.md`](events.md) | SSE event stream + full event type catalog |
 | [`approvals.md`](approvals.md) | Human approval (2 endpoints) |

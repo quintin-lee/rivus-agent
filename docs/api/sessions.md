@@ -67,7 +67,22 @@ curl localhost:8080/api/v1/sessions/<session_id>
 curl -X DELETE localhost:8080/api/v1/sessions/<session_id>
 ```
 
+## GET /api/v1/sessions/{id}/memories
+
+列出会话记忆（`memory_write` 工具写入的跨 run 持久事实；新→旧）。最近 10 条（≤8KB）会自动注入该会话顶层 run 的模型指令。
+
+**查询参数**：`limit`（1..200，默认 200）。
+
+**响应** `200`：`{"memories":[{"id","session_id","owner_id","content","source_run_id","created_at"}]}`
+
+**错误**：`404 not_found`（不存在或不属于当前 owner）。
+
+```bash
+curl localhost:8080/api/v1/sessions/<session_id>/memories
+```
+
 ## 注意事项
 
 - 删除会话不会级联删除其 Run；先取消活跃 Run 再删
+- 会话删除**会**级联删除其记忆（`session_memories` 外键级联）
 - 会话删除后，其下 Run 仍可通过 `GET /api/v1/runs/{id}` 直接访问

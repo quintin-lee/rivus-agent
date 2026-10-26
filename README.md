@@ -119,6 +119,7 @@ docker compose up -d
 | POST | `/api/v1/sessions` | 创建会话 |
 | GET | `/api/v1/sessions` | 会话列表 |
 | GET | `/api/v1/sessions/{id}` | 获取会话 |
+| GET | `/api/v1/sessions/{id}/memories` | 会话记忆列表 |
 | DELETE | `/api/v1/sessions/{id}` | 删除会话 |
 | GET | `/api/v1/runs` | Run 列表 |
 | POST | `/api/v1/runs` | 提交任务（支持 `Idempotency-Key`） |
