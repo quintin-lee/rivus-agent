@@ -42,70 +42,84 @@ type taskIn struct {
 
 // NewTaskHandler：task 工具的唯一执行入口（父身份/预算/深度经 ctx）。
 func NewTaskHandler(reg *itool.Registry, tasks *store.TaskRepo, runner runtime.ChildExecutor, cleaner runtime.CheckpointCleaner) itool.Handler {
+	deps := childDeps{reg: reg, tasks: tasks, runner: runner, cleaner: cleaner}
 	return func(ctx context.Context, args json.RawMessage) (string, error) {
 		tc, ok := runtime.TaskContextFrom(ctx)
 		if !ok || tc.Depth >= 1 {
-			return errOut("task not available at this depth").String(), nil
+			return errRes("task not available at this depth").String(), nil
 		}
 		var in taskIn
 		if err := json.Unmarshal(args, &in); err != nil || strings.TrimSpace(in.Goal) == "" {
-			return errOut("task: invalid goal").String(), nil
+			return errRes("task: invalid goal").String(), nil
 		}
-		// 白名单：每个 name 在 registry 且 ApprovalNever+RiskRead；缺省=全量只读。
-		toolNames, err := resolveReadOnlyTools(reg, in.Tools)
-		if err != nil {
-			return errOut(err.Error()).String(), nil
+		return runOneChild(ctx, deps, tc, in).String(), nil
+	}
+}
+
+// childDeps：子委派所需的只读依赖集（reg/tasks/runner/cleaner）。
+type childDeps struct {
+	reg     *itool.Registry
+	tasks   *store.TaskRepo
+	runner  runtime.ChildExecutor
+	cleaner runtime.CheckpointCleaner
+}
+
+// runOneChild：单个子目标的完整生命周期（白名单→clamp→建行→模型循环→分类→终态化）。
+// ctx 必须是父活 ctx（cancel/deadline 级联）；DB 写全部走 bg（dead-ctx-safe）。
+func runOneChild(ctx context.Context, deps childDeps, tc runtime.TaskContext, in taskIn) taskResult {
+	toolNames, err := resolveReadOnlyTools(deps.reg, in.Tools)
+	if err != nil {
+		return errRes(err.Error())
+	}
+	budget := clampChildBudget(tc.ParentBudget, in)
+	// 子行落库 + 所有子 DB 写走 context.Background()（dead-ctx-safe；父 cancel/deadline 时 ctx 已死）
+	bg := context.Background()
+	childID := uuid.NewString()
+	if err := deps.tasks.CreateRun(bg, &domain.Run{
+		ID: childID, OwnerID: tc.OwnerID, SessionID: tc.SessionID,
+		Status: domain.RunQueued, Mode: "react", Goal: in.Goal,
+		Budget: budget, ParentRunID: tc.ParentRunID, Attempt: 1,
+	}); err != nil {
+		return errRes("task: create child run: " + err.Error())
+	}
+	_ = deps.tasks.MarkStarted(bg, tc.OwnerID, childID)
+	observability.IncrRunStarted()
+	// 模型循环用活 ctx（父 ctx）：父 cancel/deadline 经 drain 级联到子。
+	o := deps.runner.RunChild(ctx, runtime.ChildRequest{
+		OwnerID: tc.OwnerID, ChildRunID: childID, Goal: in.Goal,
+		ToolNames: toolNames, Budget: budget, Depth: tc.Depth + 1,
+		CheckpointID: "ckpt_" + childID + "_" + fmt.Sprintf("%d", time.Now().UnixNano()),
+	})
+	switch {
+	case o.PreDrainErr != nil:
+		finalizeChild(bg, deps.tasks, tc.OwnerID, childID, domain.RunFailed, "runner_error", o.PreDrainErr.Error(), false, deps.cleaner)
+		return taskResult{RunID: childID, Status: "failed", Error: "runner_error: " + o.PreDrainErr.Error()}
+	case o.SawApproval:
+		finalizeChild(bg, deps.tasks, tc.OwnerID, childID, domain.RunFailed, "child_needs_approval", "", false, deps.cleaner)
+		return taskResult{RunID: childID, Status: "failed", Error: "child hit approval (unsupported for read-only child in v1)"}
+	case o.Deadline:
+		finalizeChild(bg, deps.tasks, tc.OwnerID, childID, domain.RunTimedOut, "timed_out", "child exceeded budget", false, deps.cleaner)
+		return taskResult{RunID: childID, Status: "timed_out", Text: o.FinalText}
+	case o.Cancelled:
+		finalizeChild(bg, deps.tasks, tc.OwnerID, childID, domain.RunCancelled, "cancelled", "parent cancelled", false, deps.cleaner)
+		return taskResult{RunID: childID, Status: "cancelled", Text: o.FinalText, Error: "cancelled"}
+	case o.ModelFailed && o.ToolEvidence == 0:
+		finalizeChild(bg, deps.tasks, tc.OwnerID, childID, domain.RunFailed, "model_failed", "child model failed, no tool evidence", false, deps.cleaner)
+		return taskResult{RunID: childID, Status: "failed", Error: "model_failed"}
+	case strings.TrimSpace(o.FinalText) == "" && o.ToolEvidence == 0:
+		// 空结果守卫：无文本且无工具证据 → 失败，绝不判 succeeded。
+		finalizeChild(bg, deps.tasks, tc.OwnerID, childID, domain.RunFailed, "empty_result", "child produced no result or evidence", false, deps.cleaner)
+		return taskResult{RunID: childID, Status: "failed", Error: "empty_result"}
+	default:
+		rep := runtime.Verify(nil, o.FinalText, o.ToolEvidence) // 无 success_criteria → Passed 恒真
+		rb, _ := json.Marshal(map[string]any{"passed": rep.Passed, "evidence": o.FinalText})
+		_ = deps.tasks.SetResult(bg, childID, string(rb))
+		if rep.Passed {
+			finalizeChild(bg, deps.tasks, tc.OwnerID, childID, domain.RunSucceeded, "", "", true, deps.cleaner)
+		} else {
+			finalizeChild(bg, deps.tasks, tc.OwnerID, childID, domain.RunFailed, "verification_failed", "", false, deps.cleaner)
 		}
-		budget := clampChildBudget(tc.ParentBudget, in)
-		// 子行落库 + 所有子 DB 写走 context.Background()（dead-ctx-safe；父 cancel/deadline 时 ctx 已死）
-		bg := context.Background()
-		childID := uuid.NewString()
-		if err := tasks.CreateRun(bg, &domain.Run{
-			ID: childID, OwnerID: tc.OwnerID, SessionID: tc.SessionID,
-			Status: domain.RunQueued, Mode: "react", Goal: in.Goal,
-			Budget: budget, ParentRunID: tc.ParentRunID, Attempt: 1,
-		}); err != nil {
-			return errOut("task: create child run: " + err.Error()).String(), nil
-		}
-		_ = tasks.MarkStarted(bg, tc.OwnerID, childID)
-		observability.IncrRunStarted()
-		// 模型循环用活 ctx（父 ctx）：父 cancel/deadline 经 drain 级联到子。
-		o := runner.RunChild(ctx, runtime.ChildRequest{
-			OwnerID: tc.OwnerID, ChildRunID: childID, Goal: in.Goal,
-			ToolNames: toolNames, Budget: budget, Depth: tc.Depth + 1,
-			CheckpointID: "ckpt_" + childID + "_" + fmt.Sprintf("%d", time.Now().UnixNano()),
-		})
-		switch {
-		case o.PreDrainErr != nil:
-			finalizeChild(bg, tasks, tc.OwnerID, childID, domain.RunFailed, "runner_error", o.PreDrainErr.Error(), false, cleaner)
-			return out(childID, "failed", "", "runner_error: "+o.PreDrainErr.Error()).String(), nil
-		case o.SawApproval:
-			finalizeChild(bg, tasks, tc.OwnerID, childID, domain.RunFailed, "child_needs_approval", "", false, cleaner)
-			return out(childID, "failed", "", "child hit approval (unsupported for read-only child in v1)").String(), nil
-		case o.Deadline:
-			finalizeChild(bg, tasks, tc.OwnerID, childID, domain.RunTimedOut, "timed_out", "child exceeded budget", false, cleaner)
-			return out(childID, "timed_out", o.FinalText, "").String(), nil
-		case o.Cancelled:
-			finalizeChild(bg, tasks, tc.OwnerID, childID, domain.RunCancelled, "cancelled", "parent cancelled", false, cleaner)
-			return out(childID, "cancelled", o.FinalText, "cancelled").String(), nil
-		case o.ModelFailed && o.ToolEvidence == 0:
-			finalizeChild(bg, tasks, tc.OwnerID, childID, domain.RunFailed, "model_failed", "child model failed, no tool evidence", false, cleaner)
-			return out(childID, "failed", "", "model_failed").String(), nil
-		case strings.TrimSpace(o.FinalText) == "" && o.ToolEvidence == 0:
-			// 空结果守卫：无文本且无工具证据 → 失败，绝不判 succeeded。
-			finalizeChild(bg, tasks, tc.OwnerID, childID, domain.RunFailed, "empty_result", "child produced no result or evidence", false, cleaner)
-			return out(childID, "failed", "", "empty_result").String(), nil
-		default:
-			rep := runtime.Verify(nil, o.FinalText, o.ToolEvidence) // 无 success_criteria → Passed 恒真
-			rb, _ := json.Marshal(map[string]any{"passed": rep.Passed, "evidence": o.FinalText})
-			_ = tasks.SetResult(bg, childID, string(rb))
-			if rep.Passed {
-				finalizeChild(bg, tasks, tc.OwnerID, childID, domain.RunSucceeded, "", "", true, cleaner)
-			} else {
-				finalizeChild(bg, tasks, tc.OwnerID, childID, domain.RunFailed, "verification_failed", "", false, cleaner)
-			}
-			return out(childID, stringOfStatus(rep.Passed), o.FinalText, "").String(), nil
-		}
+		return taskResult{RunID: childID, Status: stringOfStatus(rep.Passed), Text: o.FinalText}
 	}
 }
 
@@ -128,14 +142,10 @@ func out(runID, status, text, errMsg string) *taskResult {
 	return &taskResult{RunID: runID, Status: status, Text: text, Error: errMsg}
 }
 
-func (r *taskResult) String() string { b, _ := json.Marshal(r); return string(b) }
+func (r taskResult) String() string { b, _ := json.Marshal(r); return string(b) }
 
-type errOut string
-
-func (e errOut) String() string {
-	b, _ := json.Marshal(map[string]string{"status": "failed", "error": string(e)})
-	return string(b)
-}
+// errRes：统一失败结果（等价旧 errOut 的 JSON 超集：多空 run_id/text 键）。
+func errRes(msg string) taskResult { return taskResult{Status: "failed", Error: msg} }
 
 func stringOfStatus(passed bool) string {
 	if passed {
