@@ -62,7 +62,6 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 	_ = r.deps.Tasks.MarkStarted(ctx, ownerID, run.ID)
 	budget := run.Budget
 	tracker := NewBudgetTracker(budget)
-	_ = tracker
 	deadline := time.Duration(budget.MaxDurationSeconds) * time.Second
 	if deadline <= 0 {
 		deadline = 600 * time.Second
@@ -117,32 +116,50 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 		observability.IncrRunFinished(false)
 		return
 	}
-	toolEvidence := 0
-	modelCalls := 0
 	started := time.Now()
 	finalText := ""
 	waitApproval := false
 	modelFailed := false
+	budgetFired := false
+	budgetCode := ""
 	for ev := range ch {
 		switch ev.Type {
 		case domain.EvtToolCompleted:
-			toolEvidence++
-			r.appendBudget(ctx, run.ID, modelCalls, toolEvidence, started)
+			tracker.AddToolCall()
+			r.appendBudget(ctx, run.ID, tracker, started)
 		case domain.EvtApprovalRequested:
 			waitApproval = true
 		case domain.EvtModelCompleted:
 			finalText = ev.Text
-			modelCalls++
-			r.appendBudget(ctx, run.ID, modelCalls, toolEvidence, started)
+			tracker.AddModelCall()
+			tracker.AddOutput(len(ev.Text))
+			r.appendBudget(ctx, run.ID, tracker, started)
 		case domain.EvtModelFailed:
 			modelFailed = true
 		case domain.EvtRunFailed:
 			finalText = ev.Text
 		}
+		if code, hit := tracker.OverBudget(); hit && !budgetFired {
+			budgetFired = true
+			budgetCode = code
+			_ = r.deps.Runner.Cancel(run.ID)
+		}
 	}
+	u := tracker.Snapshot()
 	if waitApproval || needApproval.Load() {
 		_ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunWaitingApproval, "", "")
 		observability.IncrRunFinished(false)
+		return
+	}
+	if budgetCode != "" {
+		// Cancel 已让 runner 退出；写库统一走 bgCtx（ctx 可能已随 cancel/timeout 失效，
+		// database/sql 对死 ctx 的写会静默 no-op）。
+		bgCtx := context.Background()
+		msg := "budget exceeded: " + budgetCode
+		_ = r.deps.Tasks.UpdateStatus(bgCtx, ownerID, run.ID, domain.RunFailed, budgetCode, msg)
+		r.append(bgCtx, run.ID, domain.EvtBudgetExceeded, msg)
+		observability.IncrRunFinished(false)
+		r.deps.Runner.DeleteCheckpointsByRun(bgCtx, run.ID)
 		return
 	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -157,15 +174,18 @@ func (r *Runtime) run(ctx context.Context, ownerID string, run *domain.Run, appr
 		r.deps.Runner.DeleteCheckpointsByRun(bgCtx, run.ID)
 		return
 	}
-	if modelFailed && toolEvidence == 0 {
+	if modelFailed && u.ToolCalls == 0 {
 		_ = r.deps.Tasks.UpdateStatus(ctx, ownerID, run.ID, domain.RunFailed, "model_failed", "model request failed and no tool evidence was produced")
 		r.append(ctx, run.ID, domain.EvtVerifyFailed, "model failed")
 		observability.IncrRunFinished(false)
 		r.deps.Runner.DeleteCheckpointsByRun(context.Background(), run.ID)
 		return
 	}
-	report := Verify(run.SuccessCriteria, finalText, toolEvidence)
-	if report.Passed && len(run.SuccessCriteria) == 0 && toolEvidence == 0 && finalText == "" {
+	if budget.MaxOutputBytes > 0 && len(finalText) > budget.MaxOutputBytes {
+		finalText = finalText[:budget.MaxOutputBytes] + "...[truncated]"
+	}
+	report := Verify(run.SuccessCriteria, finalText, u.ToolCalls)
+	if report.Passed && len(run.SuccessCriteria) == 0 && u.ToolCalls == 0 && finalText == "" {
 		report.Passed = false
 		report.Missing = []string{"empty result: no model output and no tool evidence"}
 	}
@@ -195,10 +215,11 @@ func (r *Runtime) append(ctx context.Context, runID string, typ domain.EventType
 // model_calls/tool_calls/duration_seconds)。payload 为结构化 JSON,故直接走
 // Events.Append(与 append 同一持久化 + eventshub 推送路径)。单 attempt 内
 // 计数从 0 单调递增;跨 attempt(Resume/Retry)重起(有意,见 spec)。
-func (r *Runtime) appendBudget(ctx context.Context, runID string, modelCalls, toolCalls int, started time.Time) {
+func (r *Runtime) appendBudget(ctx context.Context, runID string, tracker *BudgetTracker, started time.Time) {
+	u := tracker.Snapshot()
 	payload, _ := json.Marshal(map[string]int{
-		"model_calls":      modelCalls,
-		"tool_calls":       toolCalls,
+		"model_calls":      u.ModelCalls,
+		"tool_calls":       u.ToolCalls,
 		"duration_seconds": int(time.Since(started).Seconds()),
 	})
 	_, _ = r.deps.Events.Append(ctx, runID, domain.EvtBudgetConsumed, string(payload), "normal")
