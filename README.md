@@ -187,4 +187,6 @@ make clean   # 清理构建产物
 
 ## 详细文档
 
-设计文档（specs / plans）见 [`docs/superpowers/`](./docs/superpowers/)。
+- 架构设计：[`docs/architecture/`](./docs/architecture/)（组件图、Run 生命周期、状态机）
+- API 参考：[`docs/api/`](./docs/api/)（逐端点 + SSE 事件目录）
+- 设计文档（specs / plans）：[`docs/superpowers/`](./docs/superpowers/)

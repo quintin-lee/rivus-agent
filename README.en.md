@@ -188,4 +188,6 @@ make clean   # remove build artifacts
 
 ## Further Documentation
 
-Design docs (specs / plans) are in [`docs/superpowers/`](./docs/superpowers/).
+- Architecture: [`docs/en/architecture/`](./docs/en/architecture/) (component diagram, run lifecycle, state machine)
+- API reference: [`docs/en/api/`](./docs/en/api/) (per-endpoint + SSE event catalog)
+- Design docs (specs / plans): [`docs/superpowers/`](./docs/superpowers/)
