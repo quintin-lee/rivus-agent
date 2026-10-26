@@ -149,6 +149,8 @@ type gatewayTool struct {
 	approved       map[string]bool
 	executor       *itool.Executor
 	onNeedApproval func(runID, toolCallID, toolName string, args json.RawMessage)
+	// maxOutputBytes 来自 run budget（0 = 不限制），透传给 executor 做全局截断。
+	maxOutputBytes int
 }
 
 func (g *gatewayTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
@@ -166,6 +168,7 @@ func (g *gatewayTool) InvokableRun(ctx context.Context, argumentsInJSON string, 
 	if g.approved != nil && g.approved[g.def.Name+":"+itool.ArgsHash(raw)] {
 		out, err := g.executor.Execute(ctx, itool.ExecRequest{
 			RunID: g.runID, ToolName: g.def.Name, Args: raw, Approved: true, ToolCallID: callID,
+			MaxOutputBytes: g.maxOutputBytes,
 		})
 		if err != nil {
 			return "", err
@@ -174,6 +177,7 @@ func (g *gatewayTool) InvokableRun(ctx context.Context, argumentsInJSON string, 
 	}
 	out, err := g.executor.Execute(ctx, itool.ExecRequest{
 		RunID: g.runID, ToolName: g.def.Name, Args: raw, ToolCallID: callID,
+		MaxOutputBytes: g.maxOutputBytes,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrNeedsApproval) && g.onNeedApproval != nil {

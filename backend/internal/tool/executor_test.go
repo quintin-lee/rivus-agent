@@ -81,3 +81,22 @@ func TestIdempotentFailureNotCached(t *testing.T) {
 		t.Fatalf("handler called %d times; want 2", got)
 	}
 }
+
+// 全局输出预算（req.MaxOutputBytes）在 per-tool 截断之后生效。
+func TestExecuteGlobalOutputTruncation(t *testing.T) {
+	ex := registerTestTool(t, false, func(ctx context.Context, args json.RawMessage) (string, error) {
+		return "0123456789abcdefghij", nil // 20 bytes
+	})
+	ctx := context.Background()
+	res, err := ex.Execute(ctx, ExecRequest{
+		RunID: "r1", ToolCallID: "tc1", ToolName: "echo",
+		Args: json.RawMessage(`{}`), MaxOutputBytes: 10,
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	want := "0123456789...[truncated]"
+	if res.Output != want {
+		t.Fatalf("output = %q; want %q", res.Output, want)
+	}
+}

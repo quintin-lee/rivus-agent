@@ -91,7 +91,8 @@ func (r *EinoRunner) buildAgentFiltered(ctx context.Context, runID string, budge
 	for _, d := range defs {
 		d := d
 		tools = append(tools, &gatewayTool{def: d, runID: runID, approved: approved,
-			executor: r.executor, onNeedApproval: r.needApprovalHandler(runID)})
+			executor: r.executor, onNeedApproval: r.needApprovalHandler(runID),
+			maxOutputBytes: budget.MaxOutputBytes})
 	}
 	withTools, err := base.WithTools(collectInfos(tools))
 	if err != nil {

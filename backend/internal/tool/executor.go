@@ -21,6 +21,9 @@ type ExecRequest struct {
 	Args       json.RawMessage
 	Scopes     []string
 	Approved   bool
+	// MaxOutputBytes 是 run 级输出预算（0 = 不限制），在 per-tool MaxResultBytes
+	// 截断之后再执行一次全局截断。
+	MaxOutputBytes int
 }
 
 type ExecResult struct {
@@ -78,6 +81,9 @@ func (e *Executor) Execute(ctx context.Context, req ExecRequest) (*ExecResult, e
 	}
 	if len(out) > def.MaxResultBytes {
 		out = out[:def.MaxResultBytes] + "...[truncated]"
+	}
+	if req.MaxOutputBytes > 0 && len(out) > req.MaxOutputBytes {
+		out = out[:req.MaxOutputBytes] + "...[truncated]"
 	}
 	observability.ObserveTool(req.ToolName, true, lat)
 	if def.Idempotent {
