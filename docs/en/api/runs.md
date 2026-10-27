@@ -4,11 +4,11 @@ A Run is one task execution. Modes: `react` (ReAct tool loop, default) or `plan_
 
 ## GET /api/v1/runs
 
-List runs of a session.
+List runs: with `session_id`, lists runs of that session; omitting `session_id` returns the owner's cross-session **top-level** run history (`parent_run_id IS NULL`; sub-agent runs excluded).
 
 | Query param | Type | Required | Description |
 |---|---|---|---|
-| `session_id` | string | yes | Session ID; missing returns 400 |
+| `session_id` | string | no | Session ID; when provided lists that session only (incl. child runs), when missing returns cross-session top-level history |
 | `limit` | int | no | Page size, default 50 |
 
 **Response** `200`: `{"runs": [Run]}` with `Run` fields:

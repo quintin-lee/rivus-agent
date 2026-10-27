@@ -4,11 +4,11 @@ Run 是一次任务执行。模式 `react`（ReAct 工具循环，缺省）或 `
 
 ## GET /api/v1/runs
 
-列出某会话下的 Run。
+列出 Run：带 `session_id` 时列出该会话下的 Run；省略 `session_id` 时返回该 owner 跨会话的**顶层** Run 历史（`parent_run_id IS NULL`，子代理 run 不出现）。
 
 | 查询参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `session_id` | string | 是 | 会话 ID，缺失返回 400 |
+| `session_id` | string | 否 | 会话 ID；提供时仅列该会话（含子 run），缺失时跨会话顶层历史 |
 | `limit` | int | 否 | 返回条数，缺省 50 |
 
 **响应** `200`：`{"runs": [Run]}`，`Run` 字段：

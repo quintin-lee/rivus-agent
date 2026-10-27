@@ -35,7 +35,7 @@ the frontend maps `8081→8080` and compose injects `RIVUS_BACKEND=http://backen
 
 ```text
 src/
-  components/   # chat, run cards, approval cards, session memories dialog, subagent tree, tool calls detail, streaming typing indicator, terminal-failed re-run, etc.
+  components/   # chat, run cards, approval cards, session memories dialog, subagent tree, tool calls detail, streaming typing indicator, terminal-failed re-run, run history dialog, etc.
   store/        # Zustand state
   lib/          # API/SSE clients and utilities
   App.tsx       # root layout

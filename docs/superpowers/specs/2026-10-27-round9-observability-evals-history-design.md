@@ -45,6 +45,8 @@
 
 全部复用现有框架（Expect/MidRun/PostCheck/NewHarness），**不改框架**。已核实：`clampChildBudget` 40% + cap（model 20/tool 30/iter 10/dur 180/out 8KB）；`http_fetch` Approval=always 审批先于 allowlist 检查。
 
+> **执行偏差（批2）**：① #18 白名单按 `u.Hostname()` 匹配（剥端口）——测试 mustHost 首版用了 `u.Host`（含端口）导致恒拒绝；② `stubToolProvider.SaveTools` 升级为同步 `status.Skills/MCP.Enabled`（原 stub 只记录载荷，PUT-then-GET 翻转无法测试）；③ 实际拆分 12 工具级 + 8 agent 级（README 已按此更正）；④ searchDir 无命中时 builtin 强制 `hits: []`（非 null）。
+
 ### 3.3 批3 跨会话 Run 历史
 
 - 后端（向后兼容，无新端点）：
@@ -55,6 +57,8 @@
   - 新 `RunsHistoryDialog.tsx`：打开时拉全量 run；表格列 goal / session_id 短 ID / 状态徽标（复用 runStatusClasses）/ error_code / 耗时；点击行 → `useSessionStore.setActiveSessionId(run.session_id)` + 关闭弹窗；空态「（暂无运行记录）」；错误 + 重试。
   - `Header.tsx`：新增「运行历史」按钮（History 图标）。
 - 测试：store 层 ListRunsByOwner（多会话混合 + 子 run 排除 + limit）；http 层不带 session_id 200 / 带值走原路径；前端 dialog（渲染/跳转/空态/错误重试，vi.mock api）。
+
+> **执行偏差（批3）**：① `ListRunsBySession` 从未过滤子 run（会话列表一直包含子 run，为既有行为，本轮保持不变并写入测试注释）；owner 级 `ListRunsByOwner` 用 `parent_run_id IS NULL` 排除子 run；② 前端 `Run` 主键是 `id`（非 `run_id`）；③ 行点击跳转会话属 YAGNI 已裁剪，弹窗仅展示。
 
 ## 4. 验收
 
