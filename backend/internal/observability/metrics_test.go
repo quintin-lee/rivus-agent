@@ -68,3 +68,13 @@ func TestIncrEventAppendFailed(t *testing.T) {
 		t.Fatalf("event_append_failed=%d, want %d", got, before+1)
 	}
 }
+
+func TestIncrRateLimited(t *testing.T) {
+	before := expvar.Get("rate_limited_total").(*expvar.Int).Value()
+	IncrRateLimited()
+	IncrRateLimited()
+	after := expvar.Get("rate_limited_total").(*expvar.Int).Value()
+	if after-before != 2 {
+		t.Fatalf("want delta 2, got %d", after-before)
+	}
+}

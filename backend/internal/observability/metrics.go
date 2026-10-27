@@ -57,6 +57,11 @@ func ObserveTool(name string, ok bool, latencyMs int64) {
 // IncrEventAppendFailed 记录事件落库失败（配合 runtime 侧 slog Warn）。
 func IncrEventAppendFailed() { eventAppendFailed.Add(1) }
 
+var rateLimitedTotal = expvar.NewInt("rate_limited_total")
+
+// IncrRateLimited 记录一次因限流被拒绝的请求。
+func IncrRateLimited() { rateLimitedTotal.Add(1) }
+
 // ObserveLatencyMs 把时延计入 5 个桶（50/100/200/500/∞ ms），
 // 外部抓取 expvar 后可算直方图分位数。
 func ObserveLatencyMs(ms int64) {
