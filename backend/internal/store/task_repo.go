@@ -266,6 +266,54 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID str
 	return out, rows.Err()
 }
 
+// ListRunsByOwner 返回该 owner 全部顶层 run（排除子 agent run），跨会话，按创建时间倒序。
+func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID string, limit int) ([]domain.Run, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, session_id, owner_id, status, mode, goal,
+		        constraints_json, success_criteria_json, budget_json,
+		        checkpoint_id, attempt, idempotency_key, started_at, finished_at,
+		        error_code, error_summary, result_json, created_at, updated_at
+	         FROM runs WHERE owner_id = ? AND parent_run_id IS NULL ORDER BY created_at DESC LIMIT ?`,
+		ownerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []domain.Run{}
+	for rows.Next() {
+		var run domain.Run
+		var status, mode, goal string
+		var cj, scj, bj sql.NullString
+		var cpid, idem, ecode, esum, resj sql.NullString
+		var sa, fa sql.NullInt64
+		if err := rows.Scan(
+			&run.ID, &run.SessionID, &run.OwnerID, &status, &mode, &goal,
+			&cj, &scj, &bj, &cpid, &run.Attempt, &idem, &sa, &fa, &ecode, &esum, &resj,
+			&run.CreatedAt, &run.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		run.Status = domain.RunStatus(status)
+		run.Mode = mode
+		run.Goal = goal
+		_ = json.Unmarshal([]byte(strOr(cj, "[]")), &run.Constraints)
+		_ = json.Unmarshal([]byte(strOr(scj, "[]")), &run.SuccessCriteria)
+		_ = json.Unmarshal([]byte(strOr(bj, "{}")), &run.Budget)
+		run.CheckpointID = strOr(cpid, "")
+		run.IdempotencyKey = strOr(idem, "")
+		run.ErrorCode = strOr(ecode, "")
+		run.ErrorSummary = strOr(esum, "")
+		run.ResultJSON = strOr(resj, "")
+		run.StartedAt = intOr(sa)
+		run.FinishedAt = intOr(fa)
+		out = append(out, run)
+	}
+	return out, rows.Err()
+}
+
 // UpdateStatus 做状态机校验后更新状态。
 func (r *TaskRepo) UpdateStatus(ctx context.Context, ownerID, runID string, to domain.RunStatus, errCode, errSummary string) error {
 	run, err := r.GetRun(ctx, ownerID, runID)

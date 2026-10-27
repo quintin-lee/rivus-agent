@@ -115,3 +115,64 @@ func TestListChildrenByRun(t *testing.T) {
 		t.Fatalf("want non-nil empty [] got %v", empty)
 	}
 }
+
+func TestListRunsByOwner(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+
+	ses1, err := tasks.CreateSession(ctx, "u1", "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ses2, err := tasks.CreateSession(ctx, "u1", "s2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 三个顶层 run（跨两个会话）+ 一个子 run（应被排除）
+	setupRun(t, tasks, ses1, "run_a", domain.RunSucceeded)
+	setupRun(t, tasks, ses2, "run_b", domain.RunFailed)
+	setupRun(t, tasks, ses1, "run_c", domain.RunQueued)
+	if err := tasks.CreateRun(ctx, &domain.Run{ID: "run_child", SessionID: ses1, OwnerID: "u1",
+		Status: domain.RunSucceeded, Mode: "react", Goal: "child", ParentRunID: "run_a", Attempt: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := tasks.ListRunsByOwner(ctx, "u1", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 3 {
+		t.Fatalf("want 3 top-level runs, got %d", len(runs))
+	}
+	// created_at 相同时 SQLite 返回插入序的倒序不定 —— 只断言集合与排除
+	ids := map[string]bool{}
+	for _, r := range runs {
+		ids[r.ID] = true
+		if r.ParentRunID != "" {
+			t.Fatalf("child run %s leaked into owner history", r.ID)
+		}
+	}
+	for _, want := range []string{"run_a", "run_b", "run_c"} {
+		if !ids[want] {
+			t.Fatalf("missing run %s in %v", want, ids)
+		}
+	}
+	if ids["run_child"] {
+		t.Fatal("child run must be excluded")
+	}
+
+	// limit 钳制
+	small, err := tasks.ListRunsByOwner(ctx, "u1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(small) != 3 { // 3 条 < 50，钳制不影响结果
+		t.Fatalf("limit=0 should still return all 3, got %d", len(small))
+	}
+}
