@@ -218,3 +218,52 @@ func TestStartReconcilerRemovedSpecsStayRemoved(t *testing.T) {
 		}
 	}
 }
+
+type oneShotFactory struct{ tt Transport }
+
+func (f *oneShotFactory) New(context.Context, ServerSpec) (Transport, error) { return f.tt, nil }
+
+// callBlockingTransport: 让 initialize/tools/list 正常走 FakeTransport，
+// 从第 3 个请求（tools/call）起在 WriteLine 上阻塞，直到 release 关闭。
+type callBlockingTransport struct {
+	*FakeTransport
+	release chan struct{}
+	mu      sync.Mutex
+	calls   int
+}
+
+func (b *callBlockingTransport) WriteLine(p []byte) error {
+	b.mu.Lock()
+	b.calls++
+	n := b.calls
+	b.mu.Unlock()
+	if n >= 3 { // 第 3 个请求 = tools/call：阻塞直到 release 关闭
+		<-b.release
+	}
+	return b.FakeTransport.WriteLine(p)
+}
+
+func (b *callBlockingTransport) Stop() error { return nil }
+
+func TestCallTimeout(t *testing.T) {
+	release := make(chan struct{})
+	m := NewManager(&oneShotFactory{tt: &callBlockingTransport{
+		FakeTransport: &FakeTransport{Tools: []string{"echo"}, CallResult: "ok"},
+		release:       release,
+	}})
+	m.callTimeout = 50 * time.Millisecond // 注入短超时（默认 30s 不适合测试）
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_ = m.SpawnAll(ctx, []ServerSpec{{Name: "slow", Command: "x"}})
+	start := time.Now()
+	_, err := m.Call(ctx, "slow", "echo", nil)
+	elapsed := time.Since(start)
+	if err == nil || !strings.Contains(err.Error(), "mcp call timeout") {
+		t.Fatalf("err = %v, want mcp call timeout", err)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("Call blocked %s, want <=1s", elapsed)
+	}
+	close(release) // 释放阻塞的 WriteLine，让底层 goroutine 退出
+	time.Sleep(20 * time.Millisecond)
+}

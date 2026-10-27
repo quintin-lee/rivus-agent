@@ -19,16 +19,17 @@ type StatusEntry struct {
 
 // Manager owns all live MCP server connections.
 type Manager struct {
-	mu      sync.RWMutex
-	factory TransportFactory
-	clis    map[string]*Client // keyed by server name
-	status  map[string]StatusEntry
-	specs   []ServerSpec // 最近一次 SpawnAll/Reconcile 的期望服务器集（供周期重连）
+	mu          sync.RWMutex
+	factory     TransportFactory
+	clis        map[string]*Client // keyed by server name
+	status      map[string]StatusEntry
+	specs       []ServerSpec  // 最近一次 SpawnAll/Reconcile 的期望服务器集（供周期重连）
+	callTimeout time.Duration // 单次 tools/call 上限；NewManager 设 30s，测试可注入
 }
 
 // NewManager builds a Manager over a TransportFactory (stdio in prod, fake in tests).
 func NewManager(factory TransportFactory) *Manager {
-	return &Manager{factory: factory, clis: map[string]*Client{}, status: map[string]StatusEntry{}}
+	return &Manager{factory: factory, clis: map[string]*Client{}, status: map[string]StatusEntry{}, callTimeout: 30 * time.Second}
 }
 
 // SpawnAll connects to every server in specs; a failed initialize marks it "error"
@@ -107,18 +108,35 @@ func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 	m.mu.Unlock()
 }
 
-// Call invokes tools/call on a server. A dead or missing connection returns a
-// "disconnected" error; the wrapped client error keeps transport-read framing.
+// Call invokes tools/call on a server with a per-call timeout (default 30s).
+// The underlying client read is not context-aware (blocking ReadLine), so the
+// timeout guarantees only that THE CALLER returns promptly; a wedged stream
+// keeps the per-client mutex until the transport unblocks.
 func (m *Manager) Call(ctx context.Context, server, tool string, args map[string]any) (string, error) {
 	c, ok := m.clientFor(server)
 	if !ok {
 		return "", fmt.Errorf("mcp server %s disconnected", server)
 	}
-	out, err := c.Call(ctx, tool, args)
-	if err != nil {
-		return "", fmt.Errorf("mcp server %s: %w", server, err)
+	cctx, cancel := context.WithTimeout(ctx, m.callTimeout)
+	defer cancel()
+	type callResult struct {
+		out string
+		err error
 	}
-	return out, nil
+	ch := make(chan callResult, 1)
+	go func() {
+		out, err := c.Call(cctx, tool, args)
+		ch <- callResult{out, err}
+	}()
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			return "", fmt.Errorf("mcp server %s: %w", server, r.err)
+		}
+		return r.out, nil
+	case <-cctx.Done():
+		return "", fmt.Errorf("mcp call timeout after %s", m.callTimeout)
+	}
 }
 
 func (m *Manager) clientFor(name string) (*Client, bool) {
