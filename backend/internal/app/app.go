@@ -56,6 +56,16 @@ func (a *App) Start(ctx context.Context) error {
 	events := store.NewEventRepo(db)
 	hub := eventshub.New()
 	events.SetPublisher(hub.Publish)
+
+	if st, err := store.Stats(db); err == nil {
+		a.log.Info("db stats",
+			"page_count", st["page_count"], "page_size", st["page_size"],
+			"freelist_count", st["freelist_count"], "file_bytes", st["file_bytes"],
+			"wal_bytes", st["wal_bytes"])
+	} else {
+		a.log.Warn("db stats unavailable", "err", err)
+	}
+
 	approvals := store.NewApprovalRepo(db)
 	checkpoints := store.NewCheckpointStore(db)
 
@@ -140,14 +150,28 @@ func (a *App) Start(ctx context.Context) error {
 }
 
 func (a *App) Stop(ctx context.Context) error {
+	var firstErr error
 	if a.manager != nil {
-		_ = a.manager.StopAll()
+		if err := a.manager.StopAll(); err != nil {
+			a.log.Warn("mcp stop failed", "err", err)
+		}
 	}
 	if a.srv != nil {
-		_ = a.srv.Shutdown(ctx)
+		if err := a.srv.Shutdown(ctx); err != nil {
+			a.log.Warn("http shutdown failed", "err", err)
+			firstErr = err
+		}
 	}
 	if a.db != nil {
-		return a.db.Close()
+		if err := store.Checkpoint(a.db); err != nil {
+			a.log.Warn("db checkpoint failed", "err", err)
+		}
+		if err := a.db.Close(); err != nil {
+			a.log.Warn("db close failed", "err", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
-	return nil
+	return firstErr
 }
