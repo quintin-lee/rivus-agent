@@ -2,8 +2,11 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestManagerLifecycle(t *testing.T) {
@@ -145,5 +148,73 @@ func TestReconcileStaleErrorCleanup(t *testing.T) {
 	st := m.Status()
 	if len(st) != 1 || st[0].Name != "ok" || st[0].Status != "up" {
 		t.Fatalf("stale error entry not cleaned: %+v", st)
+	}
+}
+
+// ---- 批3: reconciler + call timeout ----
+
+// flakyFactory: 前 fails 次 New 返回错误，之后委托 inner。
+type flakyFactory struct {
+	mu    sync.Mutex
+	fails int
+	inner TransportFactory
+}
+
+func (f *flakyFactory) New(ctx context.Context, spec ServerSpec) (Transport, error) {
+	f.mu.Lock()
+	if f.fails > 0 {
+		f.fails--
+		f.mu.Unlock()
+		return nil, fmt.Errorf("flaky: boom")
+	}
+	f.mu.Unlock()
+	return f.inner.New(ctx, spec)
+}
+
+func TestStartReconcilerRetriesFailedServer(t *testing.T) {
+	m := NewManager(&flakyFactory{fails: 1, inner: NewFakeTransportFactory()})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	specs := []ServerSpec{{Name: "flaky", Command: "echo"}}
+	_ = m.SpawnAll(ctx, specs)
+	if st := m.Status()[0]; st.Status != "error" {
+		t.Fatalf("initial status = %q, want error", st.Status)
+	}
+	m.StartReconciler(ctx, 10*time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		st := m.Status()
+		if len(st) == 1 && st[0].Status == "up" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("server not recovered within 2s: %+v", st)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestStartReconcilerRemovedSpecsStayRemoved(t *testing.T) {
+	f := NewFakeTransportFactory()
+	m := NewManager(f)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_ = m.SpawnAll(ctx, []ServerSpec{
+		{Name: "a", Command: "x"}, {Name: "b", Command: "y"},
+	})
+	// 同步 Reconcile 只保留 a：b 被停止；spec 记忆必须同步更新为 [a]，
+	// 否则 reconciler tick 会把 b 复活。
+	_ = m.Reconcile(ctx, []ServerSpec{{Name: "a", Command: "x"}})
+	m.StartReconciler(ctx, 10*time.Millisecond)
+	time.Sleep(60 * time.Millisecond) // 数个 tick
+	for _, e := range m.Status() {
+		if e.Name == "b" {
+			t.Fatalf("removed server b resurrected: %+v", e)
+		}
+	}
+	for _, e := range m.Status() {
+		if e.Name == "a" && e.Status != "up" {
+			t.Fatalf("server a degraded: %+v", e)
+		}
 	}
 }

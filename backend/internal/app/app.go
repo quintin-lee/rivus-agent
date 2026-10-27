@@ -108,6 +108,7 @@ func (a *App) Start(ctx context.Context) error {
 	if tc.MCPEnabled {
 		_ = a.manager.SpawnAll(ctx, tc.Servers)
 		_ = registry.Replace("mcp__", mcp.MCPDefinitions(a.manager.Status(), a.manager))
+		a.manager.StartReconciler(ctx, 30*time.Second) // 故障服务器每 30s 自动重连
 	}
 	if tc.SkillsEnabled {
 		_ = registry.Remove("invoke_skill")

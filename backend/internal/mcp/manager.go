@@ -23,6 +23,7 @@ type Manager struct {
 	factory TransportFactory
 	clis    map[string]*Client // keyed by server name
 	status  map[string]StatusEntry
+	specs   []ServerSpec // 最近一次 SpawnAll/Reconcile 的期望服务器集（供周期重连）
 }
 
 // NewManager builds a Manager over a TransportFactory (stdio in prod, fake in tests).
@@ -34,6 +35,7 @@ func NewManager(factory TransportFactory) *Manager {
 // (others continue). Idempotent for servers already connected. Per-server
 // failures are reflected in Status(), not the return value; this always returns nil.
 func (m *Manager) SpawnAll(ctx context.Context, specs []ServerSpec) error {
+	m.rememberSpecs(specs)
 	for _, s := range specs {
 		if _, ok := m.clientFor(s.Name); ok {
 			continue
@@ -47,6 +49,7 @@ func (m *Manager) SpawnAll(ctx context.Context, specs []ServerSpec) error {
 // the tool registry (Task 12 is that call site). Per-server failures are
 // reflected in Status(), not the return value; this always returns nil.
 func (m *Manager) Reconcile(ctx context.Context, specs []ServerSpec) error {
+	m.rememberSpecs(specs)
 	keep := map[string]bool{}
 	for _, s := range specs {
 		keep[s.Name] = true
@@ -123,6 +126,49 @@ func (m *Manager) clientFor(name string) (*Client, bool) {
 	defer m.mu.RUnlock()
 	c, ok := m.clis[name]
 	return c, ok
+}
+
+// StartReconciler launches a goroutine that re-Reconciles the last known spec
+// set every interval (<=0 defaults to 30s). Servers that are up are skipped;
+// error/missing ones are retried; servers removed from the remembered specs
+// stay stopped. Exits when ctx is cancelled.
+func (m *Manager) StartReconciler(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				specs := m.snapshotSpecs()
+				if len(specs) == 0 {
+					continue
+				}
+				_ = m.Reconcile(ctx, specs)
+			}
+		}
+	}()
+}
+
+// rememberSpecs stores the latest desired server set (SpawnAll/Reconcile).
+func (m *Manager) rememberSpecs(specs []ServerSpec) {
+	cp := make([]ServerSpec, len(specs))
+	copy(cp, specs)
+	m.mu.Lock()
+	m.specs = cp
+	m.mu.Unlock()
+}
+
+func (m *Manager) snapshotSpecs() []ServerSpec {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]ServerSpec, len(m.specs))
+	copy(out, m.specs)
+	return out
 }
 
 // Status returns a snapshot of every configured server's state. The returned
