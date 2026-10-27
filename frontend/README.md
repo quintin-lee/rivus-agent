@@ -35,7 +35,7 @@ npx vitest run              # 单次跑全部测试（20 文件 / 127 用例）
 
 ```text
 src/
-  components/   # 对话、Run 卡片、审批卡片等
+  components/   # 对话、Run 卡片、审批卡片、会话记忆弹窗、子 agent 执行树、工具调用明细等
   store/        # Zustand 状态
   lib/          # API/SSE 客户端与工具函数
   App.tsx       # 根布局

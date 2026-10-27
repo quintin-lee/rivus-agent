@@ -47,7 +47,7 @@ curl -X POST localhost:8080/api/v1/runs \
        "budget":{"max_duration_seconds":600,"max_model_calls":30,"max_tool_calls":50,"max_iterations":12}}'
 ```
 
-事件流：`GET /api/v1/runs/{id}/events`（SSE，支持断连后重放）。
+事件流：`GET /api/v1/runs/{id}/events`（SSE，支持断连后重放）。`tool.completed` 事件载荷含 `args` / `output` 摘要（各 1KB 截断），供前端工具调用明细展示。
 
 ## 配置
 

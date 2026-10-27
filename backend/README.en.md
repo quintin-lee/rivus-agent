@@ -47,7 +47,7 @@ curl -X POST localhost:8080/api/v1/runs \
        "budget":{"max_duration_seconds":600,"max_model_calls":30,"max_tool_calls":50,"max_iterations":12}}'
 ```
 
-Event stream: `GET /api/v1/runs/{id}/events` (SSE, supports replay after disconnect).
+Event stream: `GET /api/v1/runs/{id}/events` (SSE, supports replay after disconnect). The `tool.completed` event payload carries `args` / `output` summaries (each truncated at 1KB) for frontend tool-call detail rendering.
 
 ## Configuration
 
