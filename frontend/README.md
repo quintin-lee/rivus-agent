@@ -19,9 +19,9 @@ npm run dev        # http://localhost:5173
 ```bash
 npm run build               # tsc && vite build → dist/
 npm run preview             # 预览构建产物
-npm run lint                # ESLint
+npm run lint                # ESLint（v10 flat config）
 npx tsc --noEmit            # 仅类型检查
-npx vitest run              # 单次跑全部测试（20 文件 / 127 用例）
+npx vitest run              # 单次跑全部测试（25 文件 / 157 用例）
 ```
 
 ## Docker
@@ -35,7 +35,7 @@ npx vitest run              # 单次跑全部测试（20 文件 / 127 用例）
 
 ```text
 src/
-  components/   # 对话、Run 卡片、审批卡片、会话记忆弹窗、子 agent 执行树、工具调用明细、流式打字指示器、终态失败重新运行、运行历史弹窗等
+  components/   # 对话、Run 卡片、审批卡片、会话记忆弹窗、子 agent 执行树、工具调用明细、流式打字指示器、终态失败重新运行、运行历史弹窗、主题切换（light/dark/system，无闪烁）等
   store/        # Zustand 状态
   lib/          # API/SSE 客户端与工具函数
   App.tsx       # 根布局

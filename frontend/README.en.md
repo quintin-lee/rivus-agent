@@ -19,9 +19,9 @@ To start the backend, see the [root README](../README.en.md) or run `docker comp
 ```bash
 npm run build               # tsc && vite build → dist/
 npm run preview             # preview the build output
-npm run lint                # ESLint
+npm run lint                # ESLint (v10 flat config)
 npx tsc --noEmit            # type check only
-npx vitest run              # run the full test suite once (20 files / 127 tests)
+npx vitest run              # run the full test suite once (25 files / 157 tests)
 ```
 
 ## Docker
@@ -35,7 +35,7 @@ the frontend maps `8081→8080` and compose injects `RIVUS_BACKEND=http://backen
 
 ```text
 src/
-  components/   # chat, run cards, approval cards, session memories dialog, subagent tree, tool calls detail, streaming typing indicator, terminal-failed re-run, run history dialog, etc.
+  components/   # chat, run cards, approval cards, session memories dialog, subagent tree, tool calls detail, streaming typing indicator, terminal-failed re-run, run history dialog, theme toggle (light/dark/system, no flash), etc.
   store/        # Zustand state
   lib/          # API/SSE clients and utilities
   App.tsx       # root layout

@@ -71,3 +71,16 @@
 - eslint v10 生态差异：typescript-eslint 版本兼容性——若插件 API 不匹配，按 v10 迁移文档调整（types 不用 project service，保持轻量）。
 - golangci-lint 首次运行可能报存量问题：只调配置（exclude）不改业务代码；超出预期的报错记为偏差。
 - jsdom 无 matchMedia：测试需 mock；实现侧需守卫 `window.matchMedia` 不存在时的降级。
+
+## 7. 执行偏差回写
+
+**批1：**
+- typescript `^7.0.2` → `^6.0.3`：@typescript-eslint（含最新 8.72.1）尚不支持 TS 7（upstream issue 10940），导入即抛错；TS7 为原生提速移植，语言一致，回归全绿。
+- eslint-plugin-react 移除：无 eslint-10 兼容版本（peer 上限 ^9.7，version 检测 util 崩溃）；JSX 正确性由 tsc 覆盖。
+- 新增 devDep `@eslint/js`（core recommended 规则集来源）；`globals` 包未提升至顶层 node_modules → browser globals 内联（no-undef 已关闭）。
+- 存量 22 项 golangci 发现全部修复（非仅 exclude）：死代码 `subagent.out()`/harness.tools 字段删除、De Morgan ×2、ST1023、SA9005 加 nolint（eino 外部类型）、builtin_test 显式错误处理、goimports 分组（经 `golangci fmt` 保证版本一致）。errcheck 配置排除 Close 家族（io.Closer/io.ReadCloser/*database/sql.DB）。
+- golangci-lint 本地安装成功（v2），无需降级路径。
+
+**批2：** 按计划执行，无偏差（默认主题 system 会改变"暗色优先"的旧观感，为设计预期）。
+
+**批3：** 优雅退出时最后一连接干净关闭会使 SQLite 直接删除 `-wal` 文件（比 TRUNCATE 到 0 更彻底）；`app.Stop` 测试将"文件不存在"视为已截断。`Stop` 返回首个错误（shutdown 或 close），checkpoint 失败仅告警。

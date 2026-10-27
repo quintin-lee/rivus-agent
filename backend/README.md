@@ -150,6 +150,11 @@ tests/
 - 请求结束输出一条结构化访问日志：`http request` + method/path/status/duration_ms/request_id（401/429/404 错误路径同样记录）；日志器经 `httpapi.WithLogger` 注入，缺省 `slog.Default()`。
 - 指标：`GET /metrics`（expvar，免认证）——运行计数、工具延迟直方图分桶、`rate_limited_total`、`event_append_failed`。
 
+## 质量与维护
+
+- Lint 门禁：`golangci-lint run ./...`（配置见 `.golangci.yml`，CI lint job 同步执行）；前端 `npm run lint`（eslint v10 flat config）。
+- DB 维护：启动时输出 `db stats` 日志（页数/页大小/WAL 字节）；优雅退出先 `wal_checkpoint(TRUNCATE)` + `PRAGMA optimize` 再关闭连接（`store.Stats` / `store.Checkpoint`）。
+
 ## 说明
 
 - Eino 锁定 `v0.9.21` 稳定版，不追 alpha；升级依赖必须跑通工具调用、流式输出、中断恢复回归。
