@@ -2,6 +2,7 @@ import { API_BASE, OWNER_ID } from '@/App.config'
 import type {
   AgentEvent,
   CreateRunReq,
+  Memory,
   ModelSettings,
   Run,
   Session,
@@ -94,6 +95,19 @@ class ApiClient {
         `/api/v1/runs?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`,
       )
       return data.runs ?? []
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'not_found') return []
+      throw err
+    }
+  }
+
+  async listMemories(sessionId: string, limit = 200): Promise<Memory[]> {
+    try {
+      const data = await this.request<{ memories: Memory[] }>(
+        'GET',
+        `/api/v1/sessions/${encodeURIComponent(sessionId)}/memories?limit=${limit}`,
+      )
+      return data.memories ?? []
     } catch (err) {
       if (err instanceof ApiError && err.code === 'not_found') return []
       throw err

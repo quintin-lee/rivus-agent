@@ -180,6 +180,15 @@ export interface ToolConfigIn {
   mcpServers: MCPServerIn[]
 }
 
+export interface Memory {
+  id: string
+  session_id: string
+  owner_id: string
+  content: string
+  source_run_id?: string
+  created_at: number
+}
+
 export interface PendingGoal {
   id: string
   goal: string

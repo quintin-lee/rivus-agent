@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, FolderOpen, Trash2, RefreshCw } from 'lucide-react'
+import { Plus, FolderOpen, Trash2, RefreshCw, Brain } from 'lucide-react'
 import { useSessionStore } from '@/store/session-store'
 import { useRunStore } from '@/store/run-store'
 import { api } from '@/lib/api'
@@ -7,6 +7,7 @@ import { runStatusClasses, truncate, isActiveRunStatus } from '@/lib/status'
 import type { Run, RunStatus } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { MemoriesDialog } from '@/components/MemoriesDialog'
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,7 @@ export function SessionList() {
   const [deleteRuns, setDeleteRuns] = useState<Run[]>([])
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [memoriesTarget, setMemoriesTarget] = useState<{ id: string; title: string } | null>(null)
 
   async function openDelete(id: string) {
     setDeleteTarget(id)
@@ -151,6 +153,13 @@ export function SessionList() {
                   {s.title || s.session_id}
                 </button>
                 <button
+                  onClick={() => setMemoriesTarget({ id: s.session_id, title: s.title })}
+                  title="会话记忆"
+                  className="hidden h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground group-hover:flex"
+                >
+                  <Brain className="h-3 w-3" />
+                </button>
+                <button
                   onClick={() => void openDelete(s.session_id)}
                   title="删除会话"
                   className="mr-1 hidden h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-red-400 group-hover:flex"
@@ -226,6 +235,13 @@ export function SessionList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <MemoriesDialog
+        sessionId={memoriesTarget?.id ?? ''}
+        sessionTitle={memoriesTarget?.title ?? ''}
+        open={memoriesTarget !== null}
+        onOpenChange={(v) => !v && setMemoriesTarget(null)}
+      />
     </aside>
   )
 }
