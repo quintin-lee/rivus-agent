@@ -136,6 +136,7 @@ docker compose up -d
 | GET | `/healthz` | 存活检查 |
 | GET | `/readyz` | 就绪检查 |
 | GET | `/metrics` | expvar 指标（含延迟直方图桶） |
+| GET | `/version` | 构建版本信息（免认证） |
 
 ## 配置
 

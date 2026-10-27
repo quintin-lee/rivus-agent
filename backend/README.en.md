@@ -131,6 +131,12 @@ tests/
   fixtures/     # sample request payloads
 ```
 
+## Release
+
+- Local injection: `make build VERSION=v1.2.3` (Commit/BuildDate are taken from current git and UTC time automatically)
+- Remote release: pushing a `v*` tag triggers the `release` workflow — full test run → linux amd64/arm64 binaries → `gh release create --generate-notes`
+- Runtime check: `GET /version` (auth-exempt) returns the build version triple
+
 ## Notes
 
 - Eino is pinned to stable `v0.9.21`, no alphas; dependency upgrades must pass tool calling, streaming, and interrupt-recovery regressions.

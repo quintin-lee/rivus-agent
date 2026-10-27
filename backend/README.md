@@ -134,6 +134,12 @@ tests/
   fixtures/     # 样例请求 payload
 ```
 
+## 发布（Release）
+
+- 本地注入：`make build VERSION=v1.2.3`（Commit/BuildDate 自动取当前 git 与 UTC 时间）
+- 远端发布：push tag `v*` 触发 `release` workflow——跑全量测试 → 构建 linux amd64/arm64 二进制 → `gh release create --generate-notes`
+- 运行时核对：`GET /version`（免认证）返回版本三元组
+
 ## 说明
 
 - Eino 锁定 `v0.9.21` 稳定版，不追 alpha；升级依赖必须跑通工具调用、流式输出、中断恢复回归。

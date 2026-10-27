@@ -1,6 +1,6 @@
 # API Reference · System
 
-Health checks and metrics. `/healthz` and `/readyz` are **auth-exempt**; `/metrics` is subject to auth (see [`overview.md`](overview.md)).
+Health checks and metrics. `/healthz`, `/readyz`, and `/version` are **auth-exempt**; `/metrics` is subject to auth (see [`overview.md`](overview.md)).
 
 ## GET /healthz
 
@@ -38,6 +38,7 @@ Common metrics:
 | `tool_errors_total` | Failure counts per tool name (Map) |
 | `latency_ms_0_50` … `latency_ms_500_plus` | Tool execution latency histogram (5 buckets: `<50ms` / `50-100` / `100-200` / `200-500` / `≥500`) |
 | `event_append_failed` | Event persistence failure count |
+| `rate_limited_total` | Requests rejected by rate limiting (429) |
 
 **Response** `200`, example:
 
@@ -53,7 +54,20 @@ Common metrics:
 curl localhost:8080/metrics
 ```
 
+## GET /version
+
+Build version info (auth-exempt). The triple is injected via `-ldflags -X`; without injection it reads `dev` / `unknown` / `unknown`.
+
+```bash
+curl localhost:8080/version
+```
+
+```json
+{"version":"v1.2.3","commit":"47839d7","build_date":"2026-10-27T03:00:00Z"}
+```
+
 ## Notes
 
 - `/healthz` and `/readyz` are explicitly allowed through the auth middleware, no Bearer token needed
+- `/version` is also auth-exempt and returns the injected build triple; inject locally with `make build VERSION=v1.2.3`
 - The backend healthcheck in `docker-compose.yml` is based on `/healthz`

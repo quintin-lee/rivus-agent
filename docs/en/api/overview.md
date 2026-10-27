@@ -13,7 +13,7 @@ REST / SSE API reference for the Rivus Agent backend. Base URL: `http://localhos
 
 ## Authentication
 
-When the `AGENT_AUTH_TOKEN` env var is set, all routes except `/healthz` and `/readyz` require a Bearer token:
+When the `AGENT_AUTH_TOKEN` env var is set, all routes except `/healthz`, `/readyz`, and `/version` require a Bearer token:
 
 ```bash
 curl -H "Authorization: Bearer <token>" localhost:8080/api/v1/sessions

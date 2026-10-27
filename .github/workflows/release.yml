@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+
+      - name: Test
+        working-directory: backend
+        run: go test ./... -count=1
+
+      - name: Build (linux/amd64 + linux/arm64)
+        working-directory: backend
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags "-X rivus-agent-backend/internal/buildinfo.Version=${GITHUB_REF_NAME}" \
+            -o dist/agentd-linux-amd64 ./cmd/agentd
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath \
+            -ldflags "-X rivus-agent-backend/internal/buildinfo.Version=${GITHUB_REF_NAME}" \
+            -o dist/agentd-linux-arm64 ./cmd/agentd
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" backend/dist/* --generate-notes

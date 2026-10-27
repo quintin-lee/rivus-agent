@@ -13,7 +13,7 @@ Rivus Agent 后端 REST / SSE API 参考。Base URL：`http://localhost:8080`（
 
 ## 认证
 
-设置环境变量 `AGENT_AUTH_TOKEN` 后，除 `/healthz`、`/readyz` 外的所有路由都要求 Bearer Token：
+设置环境变量 `AGENT_AUTH_TOKEN` 后，除 `/healthz`、`/readyz`、`/version` 外的所有路由都要求 Bearer Token：
 
 ```bash
 curl -H "Authorization: Bearer <token>" localhost:8080/api/v1/sessions

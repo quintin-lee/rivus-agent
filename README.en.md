@@ -137,6 +137,7 @@ docker compose up -d
 | GET | `/healthz` | Liveness check |
 | GET | `/readyz` | Readiness check |
 | GET | `/metrics` | expvar metrics (includes latency histogram buckets) |
+| GET | `/version` | Build version info (auth-exempt) |
 
 ## Configuration
 
