@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -21,6 +22,7 @@ var (
 
 type Server struct {
 	cfg      config.Config
+	log      *slog.Logger
 	db       *sql.DB
 	tasks    *store.TaskRepo
 	events   *store.EventRepo
@@ -95,6 +97,7 @@ type Option func(*serverOptions)
 type serverOptions struct {
 	tools ToolConfigProvider
 	hub   *eventshub.Hub
+	log   *slog.Logger
 }
 
 func WithToolConfigProvider(p ToolConfigProvider) Option {
@@ -104,12 +107,20 @@ func WithEventHub(hub *eventshub.Hub) Option {
 	return func(o *serverOptions) { o.hub = hub }
 }
 
+func WithLogger(l *slog.Logger) Option {
+	return func(o *serverOptions) { o.log = l }
+}
+
 func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.EventRepo, settings *store.SettingsRepo, runs *service.RunService, sessions *service.SessionService, opts ...Option) *Server {
 	o := serverOptions{}
 	for _, opt := range opts {
 		opt(&o)
 	}
 	s := &Server{cfg: cfg, db: db, tasks: tasks, events: events, settings: settings, runs: runs, sessions: sessions, tools: o.tools, hub: o.hub, mux: http.NewServeMux()}
+	s.log = o.log
+	if s.log == nil {
+		s.log = slog.Default()
+	}
 	if db != nil {
 		s.memories = store.NewMemoryRepo(db)
 	}
@@ -118,5 +129,5 @@ func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.Eve
 }
 
 func (s *Server) Handler() http.Handler {
-	return s.securityHeaders(s.auth(s.rateLimit(s.mux)))
+	return s.securityHeaders(s.requestID(s.requestLog(s.auth(s.rateLimit(s.mux)))))
 }
