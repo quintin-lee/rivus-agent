@@ -47,6 +47,12 @@ export type ChatMessage =
       count: number
     }
   | {
+      kind: 'system-tools'
+      id: string
+      runId: string
+      calls: { tool: string; args?: string; output?: string; seq: number }[]
+    }
+  | {
       kind: 'system-approval'
       id: string
       runId: string
@@ -183,6 +189,19 @@ function emitRun(
       run,
       count: subagentCount,
     })
+  }
+
+  const toolCalls: { tool: string; args?: string; output?: string; seq: number }[] = []
+  for (const e of events) {
+    if (e.event_type !== 'tool.completed') continue
+    const p = eventPayload(e)
+    const args = typeof p.args === 'string' ? p.args : undefined
+    const output = typeof p.output === 'string' ? p.output : undefined
+    if (args === undefined && output === undefined) continue
+    toolCalls.push({ tool: typeof p.tool === 'string' ? p.tool : '', args, output, seq: e.seq })
+  }
+  if (toolCalls.length > 0) {
+    messages.push({ kind: 'system-tools', id: `tools-${run.id}`, runId: run.id, calls: toolCalls })
   }
 
   if (events.length > 0) {

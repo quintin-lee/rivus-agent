@@ -396,3 +396,29 @@ describe('system-subagent derivation', () => {
     expect(msgs.find((m) => m.kind === 'system-subagent')).toBeUndefined()
   })
 })
+
+describe('system-tools derivation', () => {
+  it('tool.completed with args/output produces system-tools message', () => {
+    const run = mkRun('r1', 'succeeded')
+    const evs = [
+      mkEv(1, 'tool.completed', JSON.stringify({ text: 'file_search', tool: 'file_search', args: '{"query":"x"}', output: 'hit' })),
+      mkEv(2, 'tool.completed', JSON.stringify({ text: 'legacy', tool: 'legacy' })),
+    ]
+    const msgs = deriveMessages({
+      runHistory: [run], activeRun: null, activeSteps: [], eventsByRun: { r1: evs }, pendingGoals: [], now: 0,
+    })
+    const t = msgs.find((m) => m.kind === 'system-tools')
+    expect(t).toBeTruthy()
+    expect((t as { calls: unknown[] }).calls).toHaveLength(1)
+    expect((t as { calls: { tool: string }[] }).calls[0].tool).toBe('file_search')
+  })
+
+  it('legacy-only events produce no system-tools', () => {
+    const run = mkRun('r1', 'succeeded')
+    const evs = [mkEv(1, 'tool.completed', JSON.stringify({ text: 'legacy', tool: 'legacy' }))]
+    const msgs = deriveMessages({
+      runHistory: [run], activeRun: null, activeSteps: [], eventsByRun: { r1: evs }, pendingGoals: [], now: 0,
+    })
+    expect(msgs.find((m) => m.kind === 'system-tools')).toBeUndefined()
+  })
+})
