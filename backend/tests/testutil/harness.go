@@ -172,8 +172,10 @@ func NewToolConfigHarness(t TB) *Harness {
 	return h
 }
 
-// stubToolProvider implements httpapi.ToolConfigProvider for tests: a fixed
-// status and a SaveTools that records payloads; no real reconcile.
+// stubToolProvider implements httpapi.ToolConfigProvider for tests: a status
+// that round-trips saved toggles (mirrors the real App contract where
+// SaveTools persists and GetToolsStatus reflects it) plus SaveTools payload
+// recording; no real reconcile.
 type stubToolProvider struct {
 	status httpapi.ToolStatus
 	save   func(httpapi.ToolConfigIn)
@@ -185,6 +187,8 @@ func (p *stubToolProvider) GetToolsStatus(context.Context) (httpapi.ToolStatus, 
 
 func (p *stubToolProvider) SaveTools(_ context.Context, in httpapi.ToolConfigIn) error {
 	p.save(in)
+	p.status.Skills.Enabled = in.SkillsEnabled
+	p.status.MCP.Enabled = in.MCPEnabled
 	return nil
 }
 
