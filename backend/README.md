@@ -115,7 +115,7 @@ v1 非目标：非致命工具调用、HTTP/SSE 传输、按会话/按技能开�
 
 ## 评估体系（Evals）
 
-`tests/evals/` 提供基于 mock 模型的确定性评估：15 个场景（工具级 8 + agent 级 7），按
+`tests/evals/` 提供基于 mock 模型的确定性评估：20 个场景（工具级 12 + agent 级 8），按
 **正确性 / 效率 / 稳定性** 三维度判定，跑完输出 `eval-report.json`（含通过率与分类汇总，
 已 gitignore；CI `evals` job 会将其作为产物上传）。
 
@@ -123,7 +123,7 @@ v1 非目标：非致命工具调用、HTTP/SSE 传输、按会话/按技能开�
 cd backend && make test-eval   # 等价 go test ./tests/evals/ -count=1
 ```
 
-新增场景：在 `scenarios_tool_test.go` / `scenarios_agent_test.go` 里追加
+新增场景：在 `scenarios_tool_test.go` / `scenarios_agent_test.go` / `scenarios_more_test.go` 里追加
 `Run(t, Scenario{...})` 即自动纳入报告（框架见 `framework.go`：`Expect` 声明三维度期望，
 `Script` 编排 mock 模型输出，`MidRun`/`PostCheck` 处理审批与额外断言）。
 
