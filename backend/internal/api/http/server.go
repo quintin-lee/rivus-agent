@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"rivus-agent-backend/internal/buildinfo"
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/eventshub"
@@ -150,6 +151,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/v1/settings/model", s.handleUpdateModelSettings)
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("GET /readyz", s.handleReady)
+	s.mux.HandleFunc("GET /version", s.handleVersion)
 	s.mux.Handle("/metrics", expvar.Handler())
 }
 
@@ -172,7 +174,8 @@ func writeErr(w http.ResponseWriter, status int, code, msg string, retryable boo
 
 func (s *Server) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/healthz") || strings.HasPrefix(r.URL.Path, "/readyz") {
+		if strings.HasPrefix(r.URL.Path, "/healthz") || strings.HasPrefix(r.URL.Path, "/readyz") ||
+			strings.HasPrefix(r.URL.Path, "/version") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -235,6 +238,14 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "ready"})
+}
+
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]string{
+		"version":    buildinfo.Version,
+		"commit":     buildinfo.Commit,
+		"build_date": buildinfo.BuildDate,
+	})
 }
 
 type createSessionReq struct {
