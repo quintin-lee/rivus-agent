@@ -33,6 +33,10 @@ curl -H "Authorization: Bearer <token>" localhost:8080/api/v1/sessions
 curl -H "X-Owner-ID: alice" localhost:8080/api/v1/runs/<run_id>
 ```
 
+## 请求标识（X-Request-ID）
+
+客户端可携带 `X-Request-ID` 请求头（≤64 字符，字符集 `[0-9a-zA-Z-._]`，其余字符剥除）；缺省自动生成 32 位 hex。所有响应回显该头，结构化访问日志按 `request_id` 关联，便于排障串联。
+
 ## 错误格式
 
 所有错误响应统一为：
@@ -49,6 +53,7 @@ curl -H "X-Owner-ID: alice" localhost:8080/api/v1/runs/<run_id>
 | `not_found` | 404 | 资源不存在（含跨 owner 访问） |
 | `conflict` | 409 | 状态机不允许该操作（如终态 Run 再取消） |
 | `unauthorized` | 401 | Bearer Token 缺失或错误 |
+| `rate_limited` | 429 | 触发速率限制（`retryable: true`，等待秒数见 `Retry-After` 响应头） |
 | `internal` | 500 | 服务端内部错误（`retryable: true`） |
 | `tools_not_configured` | 501 | 未配置 Tools Provider（settings/tools） |
 | `not_ready` | 503 | 数据库未就绪（readyz，`retryable: true`） |
@@ -80,6 +85,6 @@ curl -H "X-Owner-ID: alice" localhost:8080/api/v1/runs/<run_id>
 | [`events.md`](events.md) | SSE 事件流 + 全量事件类型目录 |
 | [`approvals.md`](approvals.md) | 人工审批（2 端点） |
 | [`settings.md`](settings.md) | Skills/MCP 与模型设置（4 端点） |
-| [`system.md`](system.md) | 健康检查与指标（3 端点） |
+| [`system.md`](system.md) | 健康/就绪/指标/版本（4 端点） |
 
 英文版：[`docs/en/api/`](../en/api/overview.md)。

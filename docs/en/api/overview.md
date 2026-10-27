@@ -33,6 +33,10 @@ All business routes isolate data by the `X-Owner-ID` request header, defaulting 
 curl -H "X-Owner-ID: alice" localhost:8080/api/v1/runs/<run_id>
 ```
 
+## Request ID (X-Request-ID)
+
+Clients may send an `X-Request-ID` header (≤64 chars, charset `[0-9a-zA-Z-._]`, other characters stripped); when absent a 32-hex id is generated. Every response echoes the header and the structured access log carries `request_id` for troubleshooting.
+
 ## Error Format
 
 All error responses share one shape:
@@ -49,6 +53,7 @@ Common `code` values:
 | `not_found` | 404 | Resource not found (includes cross-owner access) |
 | `conflict` | 409 | State machine rejects the operation (e.g. cancelling a terminal run) |
 | `unauthorized` | 401 | Bearer token missing or wrong |
+| `rate_limited` | 429 | Rate limit triggered (`retryable: true`; see the `Retry-After` response header) |
 | `internal` | 500 | Server-side internal error (`retryable: true`) |
 | `tools_not_configured` | 501 | No Tools Provider configured (settings/tools) |
 | `not_ready` | 503 | Database not ready (readyz, `retryable: true`) |
@@ -80,6 +85,6 @@ Caps are tunable via YAML config (`backend/configs/config.example.yaml`); respon
 | [`events.md`](events.md) | SSE event stream + full event type catalog |
 | [`approvals.md`](approvals.md) | Human approval (2 endpoints) |
 | [`settings.md`](settings.md) | Skills/MCP and model settings (4 endpoints) |
-| [`system.md`](system.md) | Health checks and metrics (3 endpoints) |
+| [`system.md`](system.md) | Health / readiness / metrics / version (4 endpoints) |
 
 Chinese version: [`docs/api/`](../../api/overview.md).
