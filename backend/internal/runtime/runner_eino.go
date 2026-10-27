@@ -79,6 +79,9 @@ type EinoRunner struct {
 
 	mu                sync.RWMutex
 	needApprovalByRun map[string]func(runID, toolCallID, toolName string, args json.RawMessage)
+
+	toolObsMu sync.Mutex
+	toolObs   map[string]toolObservation
 }
 
 func NewEinoRunner(
@@ -139,6 +142,46 @@ func (r *EinoRunner) needApprovalHandler(runID string) func(runID, toolCallID, t
 
 func (r *EinoRunner) Cancel(runID string) error { return r.cancels.cancel(runID) }
 
+// toolObservation 记录一次成功工具调用的 args/output 摘要（各截 1KB）。
+type toolObservation struct {
+	args   string
+	output string
+}
+
+// recordToolObserved 由 gatewayTool 在 Execute 成功后调用；按 runID|toolName 隔离
+// （并行子 agent 同名工具互不串扰）。map 超过 256 条整体清空，防长期运行泄漏。
+func (r *EinoRunner) recordToolObserved(runID, toolName string, args json.RawMessage, output string) {
+	const maxObs = 1024
+	a := string(args)
+	if len(a) > maxObs {
+		a = a[:maxObs]
+	}
+	o := output
+	if len(o) > maxObs {
+		o = o[:maxObs]
+	}
+	r.toolObsMu.Lock()
+	if r.toolObs == nil {
+		r.toolObs = map[string]toolObservation{}
+	}
+	if len(r.toolObs) >= 256 {
+		r.toolObs = map[string]toolObservation{}
+	}
+	r.toolObs[runID+"|"+toolName] = toolObservation{args: a, output: o}
+	r.toolObsMu.Unlock()
+}
+
+// takeToolObserved 取出即删除（consume-once）；resume 重放工具消息时无 stash，自然降级。
+func (r *EinoRunner) takeToolObserved(runID, toolName string) (toolObservation, bool) {
+	r.toolObsMu.Lock()
+	defer r.toolObsMu.Unlock()
+	obs, ok := r.toolObs[runID+"|"+toolName]
+	if ok {
+		delete(r.toolObs, runID+"|"+toolName)
+	}
+	return obs, ok
+}
+
 func (r *EinoRunner) DeleteCheckpointsByRun(ctx context.Context, runID string) {
 	if s, ok := r.checkpoints.(interface {
 		DeleteByRunPrefix(context.Context, string) error
@@ -163,6 +206,8 @@ type gatewayTool struct {
 	onNeedApproval func(runID, toolCallID, toolName string, args json.RawMessage)
 	// maxOutputBytes 来自 run budget（0 = 不限制），透传给 executor 做全局截断。
 	maxOutputBytes int
+	// onDone 在 Execute 成功后回调（记录 args/output 摘要；失败/需审批不回调）。
+	onDone func(args json.RawMessage, output string)
 }
 
 func (g *gatewayTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
@@ -185,20 +230,26 @@ func (g *gatewayTool) InvokableRun(ctx context.Context, argumentsInJSON string, 
 		if err != nil {
 			return "", err
 		}
+		if g.onDone != nil {
+			g.onDone(raw, out.Output)
+		}
 		return out.Output, nil
 	}
 	out, err := g.executor.Execute(ctx, itool.ExecRequest{
 		RunID: g.runID, ToolName: g.def.Name, Args: raw, ToolCallID: callID,
 		MaxOutputBytes: g.maxOutputBytes,
 	})
-	if err != nil {
-		if errors.Is(err, domain.ErrNeedsApproval) && g.onNeedApproval != nil {
-			g.onNeedApproval(g.runID, callID, g.def.Name, raw)
+		if err != nil {
+			if errors.Is(err, domain.ErrNeedsApproval) && g.onNeedApproval != nil {
+				g.onNeedApproval(g.runID, callID, g.def.Name, raw)
+			}
+			return "", err
 		}
-		return "", err
+		if g.onDone != nil {
+			g.onDone(raw, out.Output)
+		}
+		return out.Output, nil
 	}
-	return out.Output, nil
-}
 
 func shortHash(h string) string {
 	if len(h) > 12 {

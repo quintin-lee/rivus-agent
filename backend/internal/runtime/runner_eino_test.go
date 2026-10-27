@@ -2,6 +2,8 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -62,5 +64,44 @@ func TestEmitDeliversWhenRoomDespiteCancel(t *testing.T) {
 		}
 	default:
 		t.Fatal("event dropped although buffer had room")
+	}
+}
+
+func TestRecordTakeToolObserved(t *testing.T) {
+	r := NewEinoRunner(nil, nil, nil, nil)
+	r.recordToolObserved("r1", "file_search", json.RawMessage(`{"pattern":"x"}`), "out1")
+	obs, ok := r.takeToolObserved("r1", "file_search")
+	if !ok || obs.args != `{"pattern":"x"}` || obs.output != "out1" {
+		t.Fatalf("got ok=%v obs=%+v", ok, obs)
+	}
+	if _, ok := r.takeToolObserved("r1", "file_search"); ok {
+		t.Fatal("consume-once violated: second take returned value")
+	}
+}
+
+func TestToolObsIsolatedByRun(t *testing.T) {
+	r := NewEinoRunner(nil, nil, nil, nil)
+	r.recordToolObserved("rA", "file_search", json.RawMessage(`{"a":1}`), "outA")
+	r.recordToolObserved("rB", "file_search", json.RawMessage(`{"b":1}`), "outB")
+	obsA, ok := r.takeToolObserved("rA", "file_search")
+	if !ok || obsA.output != "outA" {
+		t.Fatalf("run isolation broken: %+v", obsA)
+	}
+	obsB, _ := r.takeToolObserved("rB", "file_search")
+	if obsB.output != "outB" {
+		t.Fatalf("run isolation broken: %+v", obsB)
+	}
+}
+
+func TestToolObsMapBounded(t *testing.T) {
+	r := NewEinoRunner(nil, nil, nil, nil)
+	for i := 0; i < 300; i++ {
+		r.recordToolObserved(fmt.Sprintf("r%d", i), "tool", json.RawMessage(`{}`), "o")
+	}
+	r.toolObsMu.Lock()
+	n := len(r.toolObs)
+	r.toolObsMu.Unlock()
+	if n > 256 {
+		t.Fatalf("map unbounded: %d", n)
 	}
 }

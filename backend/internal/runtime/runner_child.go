@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/cloudwego/eino/adk"
@@ -96,7 +97,10 @@ func (r *EinoRunner) buildAgentFiltered(ctx context.Context, runID string, budge
 		d := d
 		tools = append(tools, &gatewayTool{def: d, runID: runID, approved: approved,
 			executor: r.executor, onNeedApproval: r.needApprovalHandler(runID),
-			maxOutputBytes: budget.MaxOutputBytes})
+			maxOutputBytes: budget.MaxOutputBytes,
+			onDone: func(args json.RawMessage, output string) {
+				r.recordToolObserved(runID, d.Name, args, output)
+			}})
 	}
 	withTools, err := base.WithTools(collectInfos(tools))
 	if err != nil {
