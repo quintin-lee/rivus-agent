@@ -144,6 +144,12 @@ tests/
 - 远端发布：push tag `v*` 触发 `release` workflow——跑全量测试 → 构建 linux amd64/arm64 二进制 → `gh release create --generate-notes`
 - 运行时核对：`GET /version`（免认证）返回版本三元组
 
+## 观测（Observability）
+
+- 每个 HTTP 响应带 `X-Request-ID`：调用方可传入（净化 + 截断 64 字符后沿用），否则自动生成 32 位 hex；`RequestIDFrom(ctx)` 可在处理链中读取。
+- 请求结束输出一条结构化访问日志：`http request` + method/path/status/duration_ms/request_id（401/429/404 错误路径同样记录）；日志器经 `httpapi.WithLogger` 注入，缺省 `slog.Default()`。
+- 指标：`GET /metrics`（expvar，免认证）——运行计数、工具延迟直方图分桶、`rate_limited_total`、`event_append_failed`。
+
 ## 说明
 
 - Eino 锁定 `v0.9.21` 稳定版，不追 alpha；升级依赖必须跑通工具调用、流式输出、中断恢复回归。
