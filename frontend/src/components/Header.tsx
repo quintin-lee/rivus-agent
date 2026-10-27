@@ -1,9 +1,26 @@
 import { useState } from 'react'
-import { History } from 'lucide-react'
+import { History, Sun, Moon, Monitor } from 'lucide-react'
 import { useUiStore } from '@/store/ui-store'
 import { cn } from '@/lib/utils'
 import { SettingsDialog } from '@/components/SettingsDialog'
 import { RunsHistoryDialog } from '@/components/RunsHistoryDialog'
+
+function ThemeToggle() {
+  const theme = useUiStore((s) => s.theme)
+  const label = theme === 'light' ? '浅色' : theme === 'dark' ? '深色' : '跟随系统'
+  const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
+  return (
+    <button
+      type="button"
+      aria-label="切换主题"
+      title={`主题：${label}`}
+      onClick={() => useUiStore.getState().cycleTheme()}
+      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      <ThemeIcon className="h-4 w-4" />
+    </button>
+  )
+}
 
 function StatusDot({ color, label, title }: { color: string; label: string; title: string }) {
   return (
@@ -36,6 +53,7 @@ export function Header() {
           Rivus Agent
         </h1>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <button
             type="button"
             aria-label="运行历史"

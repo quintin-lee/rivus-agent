@@ -1,10 +1,29 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Header } from '@/components/Header'
 import { api } from '@/lib/api'
+import { useUiStore } from '@/store/ui-store'
 import type { Run } from '@/lib/types'
 
 vi.mock('@/lib/api', () => ({ api: { listRuns: vi.fn() } }))
+
+describe('Header theme toggle', () => {
+  beforeEach(() => {
+    useUiStore.setState({ theme: 'light' })
+  })
+  afterEach(() => {
+    localStorage.removeItem('rivus-theme')
+    document.documentElement.classList.remove('dark')
+  })
+
+  it('cycles theme on button click', () => {
+    render(<Header />)
+    fireEvent.click(screen.getByRole('button', { name: '切换主题' }))
+    expect(useUiStore.getState().theme).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(screen.getByTitle('主题：深色')).toBeTruthy()
+  })
+})
 
 describe('Header run-history entry', () => {
   it('opens the run history dialog from the header button', async () => {
