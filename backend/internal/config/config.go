@@ -22,6 +22,10 @@ type Config struct {
 	// 为空 = http_fetch 完全禁用（所有请求直接拒绝）。
 	HTTPFetchAllowlist []string `yaml:"http_fetch_allowlist"`
 
+	// RateLimitRPM 是 /api/v1/ 路由的每客户端（X-Owner-ID 或来源 IP）每分钟请求上限；
+	// 0 = 关闭（默认，向后兼容）。
+	RateLimitRPM int `yaml:"rate_limit_rpm"`
+
 	AuthToken string `yaml:"-"`
 
 	ModelProvider string `yaml:"model_provider"`
@@ -104,6 +108,11 @@ func applyEnv(c *Config) {
 			}
 		}
 		c.HTTPFetchAllowlist = out
+	}
+	if v := os.Getenv("AGENT_RATE_LIMIT_RPM"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			c.RateLimitRPM = n
+		}
 	}
 	if v := os.Getenv("AGENT_AUTH_TOKEN"); v != "" {
 		c.AuthToken = v
