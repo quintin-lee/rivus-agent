@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { deriveMessages, type ChatMessage } from '@/lib/chat-messages'
 import { groupEventsByRun } from '@/store/selectors'
 import { useRunStore } from '@/store/run-store'
+import type { Run } from '@/lib/types'
 import { UserBubble } from '@/components/Messages/UserBubble'
 import { AssistantBubble } from '@/components/Messages/AssistantBubble'
 import { Inbox } from 'lucide-react'
@@ -18,6 +19,7 @@ export function ChatMessageList() {
   const events = useRunStore((s) => s.events)
   const pendingGoals = useRunStore((s) => s.pendingGoals)
   const activateRun = useRunStore((s) => s.activateRun)
+  const submitRun = useRunStore((s) => s.submitRun)
 
   const eventsByRun = useMemo(() => groupEventsByRun(events), [events])
 
@@ -37,6 +39,16 @@ export function ChatMessageList() {
   const handleRetry = (runId: string) => {
     void activateRun(runId)
   }
+  const handleRerun = (run: Run) => {
+    void submitRun({
+      sessionId: run.session_id,
+      goal: run.goal,
+      mode: run.mode === 'plan_execute' ? 'plan_execute' : 'react',
+      constraints: run.constraints,
+      successCriteria: run.success_criteria,
+      budget: run.budget,
+    })
+  }
   if (messages.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card/50 p-8 text-center">
@@ -50,7 +62,7 @@ export function ChatMessageList() {
   return (
     <div className="flex flex-col gap-3">
       {messages.map((m) => (
-        <Bubble key={m.id} message={m} onRetry={handleRetry} />
+        <Bubble key={m.id} message={m} onRetry={handleRetry} onRerunRun={handleRerun} />
       ))}
     </div>
   )
@@ -59,9 +71,11 @@ export function ChatMessageList() {
 function Bubble({
   message,
   onRetry,
+  onRerunRun,
 }: {
   message: ChatMessage
   onRetry: (runId: string) => void
+  onRerunRun: (run: Run) => void
 }) {
   switch (message.kind) {
     case 'user':
@@ -76,6 +90,7 @@ function Bubble({
           progress={message.progress}
           partialText={message.partialText}
           onRetryRun={onRetry}
+          onRerunRun={onRerunRun}
         />
       )
     case 'system-subagent':

@@ -9,11 +9,12 @@ interface Props {
   run: Run
   steps?: Step[]
   onRetryRun: (runId: string) => void
+  onRerunRun?: (run: Run) => void
   progress?: { toolCalls: number; modelCalls: number; seconds: number }
   partialText?: string
 }
 
-export function SystemStatusBubble({ run, steps = [], onRetryRun, progress, partialText }: Props) {
+export function SystemStatusBubble({ run, steps = [], onRetryRun, onRerunRun, progress, partialText }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const isActive = !TERMINAL_RUN_STATUSES.includes(run.status)
@@ -27,16 +28,6 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun, progress, part
       onRetryRun(run.id)
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : 'Cancel failed')
-    }
-  }
-
-  const handleRetry = async () => {
-    setActionError(null)
-    try {
-      await api.resumeRun(run.id)
-      onRetryRun(run.id)
-    } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : 'Resume failed')
     }
   }
 
@@ -89,9 +80,9 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun, progress, part
             <button
               type="button"
               className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-              onClick={() => void handleRetry()}
+              onClick={() => onRerunRun?.(run)}
             >
-              Retry
+              重新运行
             </button>
           ) : null}
         </div>

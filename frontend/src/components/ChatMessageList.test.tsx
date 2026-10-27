@@ -112,4 +112,28 @@ describe('ChatMessageList', () => {
     render(<ChatMessageList />)
     expect(screen.queryByText(/no tasks yet/i)).toBeNull()
   })
+
+  it('re-runs a terminal-failed run via submitRun with the original run parameters', async () => {
+    const failed = mkRun('failed', {
+      mode: 'plan_execute',
+      constraints: ['c1'],
+      success_criteria: ['s1'],
+    })
+    seedStores(failed, [], [], [])
+    render(<ChatMessageList />)
+    fireEvent.click(screen.getByRole('button', { name: '重新运行' }))
+    await vi.waitFor(() =>
+      expect(api.createRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          session_id: 's1',
+          goal: 'do thing',
+          mode: 'plan_execute',
+          constraints: ['c1'],
+          success_criteria: ['s1'],
+          budget: failed.budget,
+        }),
+        expect.any(String),
+      ),
+    )
+  })
 })

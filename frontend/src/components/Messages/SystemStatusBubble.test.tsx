@@ -43,21 +43,28 @@ describe('SystemStatusBubble', () => {
     expect(api.cancelRun).toHaveBeenCalledWith('r1')
   })
 
-  it('renders a retry button for a failed run and calls api.resumeRun + onRetryRun', async () => {
-    const onRetryRun = vi.fn()
-    render(<SystemStatusBubble run={run('failed')} onRetryRun={onRetryRun} />)
-    expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /retry/i }))
+  it('re-runs a failed run via onRerunRun instead of resumeRun', async () => {
+    const onRerunRun = vi.fn()
+    const failed = run('failed')
+    render(
+      <SystemStatusBubble
+        run={failed}
+        onRetryRun={vi.fn()}
+        onRerunRun={onRerunRun}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '重新运行' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '重新运行' }))
     await vi.waitFor(() => {
-      expect(api.resumeRun).toHaveBeenCalledWith('r1')
-      expect(onRetryRun).toHaveBeenCalledWith('r1')
+      expect(api.resumeRun).not.toHaveBeenCalled()
+      expect(onRerunRun).toHaveBeenCalledWith(failed)
     })
   })
 
   it('renders no action buttons for a succeeded run', () => {
-    render(<SystemStatusBubble run={run('succeeded')} onRetryRun={vi.fn()} />)
+    render(<SystemStatusBubble run={run('succeeded')} onRetryRun={vi.fn()} onRerunRun={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: '重新运行' })).toBeNull()
   })
 
   it('lists running steps with their descriptions', () => {
