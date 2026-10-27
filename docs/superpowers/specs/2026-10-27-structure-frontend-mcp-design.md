@@ -45,6 +45,11 @@
 
 测试：每个组件/派生逻辑对应 vitest 用例；`npx tsc --noEmit` 0 错误。
 
+> **执行偏差（批2 实际落地，commit 2d3fbbf / 73c1cea）**：
+> 1. Markdown 渲染**已存在**——`result-block.tsx` 早已用 `ReactMarkdown + remarkGfm + rehypeSanitize`（XSS 安全）渲染 `result_json`，`react-markdown` 也已在 package.json 中；此项 0 工作量，未做改动（spec 初稿「唯一新增依赖」前提有误）。
+> 2. 打字指示器落在 `SystemStatusBubble`（run 状态卡）而非「最新 assistant 消息尾部」——assistant 消息只在终态才存在，流式期间没有可依附的消息节点；触发条件改为 `run running && partialText 非空`（token 流式增量），比 SSE 状态更准确。
+> 3. 「失败重试」实为**修复一个已存在的坏按钮**：原实现对流式失败前的 `resumeRun` 会被后端拒绝；现改为「重新运行」——用原 run 的 goal/budget/constraints/success_criteria 经 `submitRun` 创建新 run（`onRerunRun` 回调由 ChatMessageList 提供）。
+
 ### 批3：MCP 深化（2 项，TDD）
 
 1. **自动重连**：`Manager` 新增 `specs []ServerSpec`（SpawnAll/Reconcile 成功后记住）+ `StartReconciler(ctx, interval)`——后台 ticker 周期调用 `Reconcile(ctx, m.snapshotSpecs())`，error 状态的 server 自动重试，up 的跳过。周期固定 **30s**（用户批准，不加配置项）。`app.go` 启动时开 goroutine；测试用注入短 interval + FakeTransportFactory。
