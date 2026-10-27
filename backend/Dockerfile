@@ -9,11 +9,13 @@ ARG GO_VERSION=1.27
 
 FROM ${REGISTRY}golang:${GO_VERSION}-bookworm AS builder
 WORKDIR /src
+# 阶段内重声明：ARG 作用域仅限所在阶段，顶部声明不延续
+ARG VERSION=dev
 ENV CGO_ENABLED=0 GOFLAGS=-mod=mod GOPROXY=https://goproxy.cn,direct
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -trimpath -ldflags="-s -w" -o /out/agentd ./cmd/agentd
+RUN go build -trimpath -ldflags="-s -w -X rivus-agent-backend/internal/buildinfo.Version=${VERSION}" -o /out/agentd ./cmd/agentd
 
 FROM ${REGISTRY}alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata wget \

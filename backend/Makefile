@@ -2,6 +2,10 @@ MODULE := rivus-agent-backend
 BIN := bin/agentd
 MAIN := ./cmd/agentd
 GOFLAGS ?=
+VERSION ?= dev
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+LDFLAGS := -X $(MODULE)/internal/buildinfo.Version=$(VERSION) -X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) -X $(MODULE)/internal/buildinfo.BuildDate=$(DATE)
 
 .PHONY: help build test test-integration test-eval bench vet tidy run clean
 
@@ -18,7 +22,7 @@ help:
 
 build:
 	mkdir -p bin
-	go build $(GOFLAGS) -trimpath -o $(BIN) $(MAIN)
+	go build $(GOFLAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) $(MAIN)
 
 test:
 	go test ./...
