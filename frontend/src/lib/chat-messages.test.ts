@@ -362,3 +362,37 @@ describe('partialText derivation', () => {
     expect((status as { partialText?: string } | undefined)?.partialText).toBeUndefined()
   })
 })
+
+describe('system-subagent derivation', () => {
+  const input = (evs: AgentEvent[]) => ({
+    runHistory: [mkRun('r1', 'succeeded')],
+    activeRun: null,
+    activeSteps: [],
+    eventsByRun: { r1: evs },
+    pendingGoals: [],
+    now: 0,
+  })
+
+  it('task/tasks tool.completed produce system-subagent message with count', () => {
+    const evs = [
+      mkEv(1, 'tool.completed', JSON.stringify({ text: 'task', tool: 'task' })),
+      mkEv(2, 'tool.completed', JSON.stringify({ text: 'file_search', tool: 'file_search' })),
+      mkEv(3, 'tool.completed', JSON.stringify({ text: 'tasks', tool: 'tasks' })),
+    ]
+    const msgs = deriveMessages(input(evs))
+    const sub = msgs.find((m) => m.kind === 'system-subagent')
+    expect(sub).toBeTruthy()
+    expect((sub as { count: number }).count).toBe(2)
+    // 子 agent 卡在系统事件之前
+    const idxSub = msgs.findIndex((m) => m.kind === 'system-subagent')
+    const idxEvents = msgs.findIndex((m) => m.kind === 'system-events')
+    expect(idxSub).toBeGreaterThanOrEqual(0)
+    expect(idxSub).toBeLessThan(idxEvents)
+  })
+
+  it('plain tools produce no system-subagent', () => {
+    const evs = [mkEv(1, 'tool.completed', JSON.stringify({ text: 'file_search', tool: 'file_search' }))]
+    const msgs = deriveMessages(input(evs))
+    expect(msgs.find((m) => m.kind === 'system-subagent')).toBeUndefined()
+  })
+})

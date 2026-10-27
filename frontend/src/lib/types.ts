@@ -67,6 +67,7 @@ export interface Budget {
 export interface Run {
   id: string
   session_id: string
+  parent_run_id?: string
   owner_id: string
   status: RunStatus
   mode: string

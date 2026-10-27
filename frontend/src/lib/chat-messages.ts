@@ -40,6 +40,13 @@ export type ChatMessage =
       collapsed: boolean
     }
   | {
+      kind: 'system-subagent'
+      id: string
+      runId: string
+      run: Run
+      count: number
+    }
+  | {
       kind: 'system-approval'
       id: string
       runId: string
@@ -161,6 +168,23 @@ function emitRun(
   messages.push(statusMsg)
 
   const events = eventsByRun[run.id] ?? []
+
+  let subagentCount = 0
+  for (const e of events) {
+    if (e.event_type !== 'tool.completed') continue
+    const t = eventPayload(e).tool
+    if (t === 'task' || t === 'tasks') subagentCount++
+  }
+  if (subagentCount > 0) {
+    messages.push({
+      kind: 'system-subagent',
+      id: `subagent-${run.id}`,
+      runId: run.id,
+      run,
+      count: subagentCount,
+    })
+  }
+
   if (events.length > 0) {
     messages.push({
       kind: 'system-events',
