@@ -5,8 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
 	"rivus-agent-backend/internal/domain"
+
+	"github.com/cloudwego/eino/adk"
 )
 
 // driveDrain runs drain synchronously against a scripted iterator and returns
@@ -78,7 +79,7 @@ func TestDrainToolFailedEmitsEvtToolFailed(t *testing.T) {
 	if modelFailedIdx == -1 {
 		t.Fatalf("expected EvtModelFailed in drain output, got events: %+v", got)
 	}
-	if !(modelFailedIdx < runFailedIdx) {
+	if modelFailedIdx >= runFailedIdx {
 		t.Fatalf("EvtModelFailed (idx %d) must precede EvtRunFailed (idx %d): %+v", modelFailedIdx, runFailedIdx, got)
 	}
 	// Spec §Task10: EvtToolFailed is emitted BEFORE the existing run-fail

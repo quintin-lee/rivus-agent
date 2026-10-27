@@ -17,6 +17,7 @@ import (
 
 	einomodel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+
 	httpapi "rivus-agent-backend/internal/api/http"
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/domain"
@@ -35,7 +36,6 @@ type scriptState struct {
 	queue    []func(call int, input []*schema.Message) (*schema.Message, error)
 	fallback func(call int, input []*schema.Message) (*schema.Message, error)
 	calls    int
-	tools    []*schema.ToolInfo
 }
 
 type ScriptedModel struct{ st *scriptState }

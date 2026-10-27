@@ -97,6 +97,7 @@ func (m *openAICompatModel) buildRequest(input []*schema.Message, stream bool) (
 	for _, t := range m.tools {
 		var params any = map[string]any{"type": "object"}
 		if t.ParamsOneOf != nil {
+			//nolint:staticcheck // SA9005: eino schema.ParamsOneOf 字段未导出但语义上需防御性转换；marshal 为空时保持默认 params
 			if b, err := json.Marshal(t.ParamsOneOf); err == nil {
 				var decoded any
 				if err := json.Unmarshal(b, &decoded); err == nil && decoded != nil {

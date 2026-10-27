@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/runtime"
 	"rivus-agent-backend/internal/store"
+
+	"github.com/google/uuid"
 )
 
 type RunService struct {

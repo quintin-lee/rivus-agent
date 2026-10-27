@@ -10,11 +10,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/observability"
 	"rivus-agent-backend/internal/store"
 	itool "rivus-agent-backend/internal/tool"
+
+	"github.com/google/uuid"
 )
 
 type Deps struct {

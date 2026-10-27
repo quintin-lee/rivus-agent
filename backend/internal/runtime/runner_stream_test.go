@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"rivus-agent-backend/internal/domain"
+
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	"rivus-agent-backend/internal/domain"
 )
 
 // TestDrainStreamCoalesces: 3 chunks → onDelta called with full-so-far text

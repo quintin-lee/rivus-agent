@@ -20,7 +20,7 @@ func TestSearchDir(t *testing.T) {
 	write("docs/guide.md", "line1\nhas needle here\nline3")
 	write("notes.txt", "needle at top\nno match\nanother needle line")
 	write("binary.bin", "ok\x00binary\x00needle")
-	write("skip/huge.txt", "needle in huge file" + string(make([]byte, 600*1024)))
+	write("skip/huge.txt", "needle in huge file"+string(make([]byte, 600*1024)))
 	write("plain.txt", "no relevant words here")
 
 	hits := searchDir(root, "needle", 10)

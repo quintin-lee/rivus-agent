@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/tool/builtin"
 	"rivus-agent-backend/tests/testutil"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 // ---- 报告（TestMain 必须位于 _test.go） ----

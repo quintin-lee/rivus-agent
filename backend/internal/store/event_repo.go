@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/google/uuid"
 	"rivus-agent-backend/internal/domain"
+
+	"github.com/google/uuid"
 )
 
 // EventRepo 追加写入事件，SSE 通过 seq 支持 after 恢复读取。

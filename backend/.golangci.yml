@@ -1,0 +1,14 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Close 类错误在 defer 清理场景按惯例可忽略（db.Close / resp.Body.Close 等）
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (*database/sql.DB).Close
+
+formatters:
+  enable:
+    - goimports

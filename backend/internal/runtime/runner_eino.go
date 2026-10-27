@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"sync"
 
+	"rivus-agent-backend/internal/domain"
+	itool "rivus-agent-backend/internal/tool"
+
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 	jsonschema "github.com/eino-contrib/jsonschema"
-	"rivus-agent-backend/internal/domain"
-	itool "rivus-agent-backend/internal/tool"
 )
 
 type RuntimeEvent struct {
@@ -212,7 +213,7 @@ func (g *gatewayTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 }
 
 func (g *gatewayTool) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
-	var raw json.RawMessage = json.RawMessage(argumentsInJSON)
+	var raw = json.RawMessage(argumentsInJSON)
 	callID := g.def.Name + ":" + shortHash(itool.ArgsHash(raw))
 	if g.approved != nil && g.approved[g.def.Name+":"+itool.ArgsHash(raw)] {
 		out, err := g.executor.Execute(ctx, itool.ExecRequest{

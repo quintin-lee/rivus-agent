@@ -52,8 +52,12 @@ func TestFileListAndFileSearch(t *testing.T) {
 	SetDirs(ws, t.TempDir())
 	write := func(rel, content string) {
 		fp := filepath.Join(ws, rel)
-		os.MkdirAll(filepath.Dir(fp), 0o755)
-		os.WriteFile(fp, []byte(content), 0o644)
+		if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", fp, err)
+		}
+		if err := os.WriteFile(fp, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", fp, err)
+		}
 	}
 	write("docs/guide.md", "has needle here")
 	write("notes.txt", "plain")
@@ -115,7 +119,9 @@ func TestFileListAndFileSearch(t *testing.T) {
 func TestFileEdit(t *testing.T) {
 	ws := t.TempDir()
 	SetDirs(ws, t.TempDir())
-	os.WriteFile(filepath.Join(ws, "code.txt"), []byte("alpha\nbeta\ngamma\nbeta-end\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(ws, "code.txt"), []byte("alpha\nbeta\ngamma\nbeta-end\n"), 0o644); err != nil {
+		t.Fatalf("seed code.txt: %v", err)
+	}
 
 	// unique occurrence → replace succeeds
 	out, err := fileEdit(context.Background(), json.RawMessage(`{"path":"code.txt","old_text":"beta\n","new_text":"BETA\n"}`))
@@ -123,7 +129,9 @@ func TestFileEdit(t *testing.T) {
 		t.Fatalf("fileEdit: %v", err)
 	}
 	var res map[string]any
-	json.Unmarshal([]byte(out), &res)
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("parse fileEdit output %q: %v", out, err)
+	}
 	if res["path"] != "code.txt" {
 		t.Fatalf("fileEdit out: %s", out)
 	}
@@ -137,7 +145,9 @@ func TestFileEdit(t *testing.T) {
 		t.Fatal("zero-occurrence edit not rejected")
 	}
 	// two occurrences → error, file unchanged
-	os.WriteFile(filepath.Join(ws, "two.txt"), []byte("dup dup"), 0o644)
+	if err := os.WriteFile(filepath.Join(ws, "two.txt"), []byte("dup dup"), 0o644); err != nil {
+		t.Fatalf("seed two.txt: %v", err)
+	}
 	if _, err := fileEdit(context.Background(), json.RawMessage(`{"path":"two.txt","old_text":"dup","new_text":"x"}`)); err == nil {
 		t.Fatal("ambiguous edit not rejected")
 	}
@@ -209,9 +219,13 @@ func TestHTTPFetch(t *testing.T) {
 func TestKnowledgeSearchReal(t *testing.T) {
 	kn := t.TempDir()
 	SetDirs(t.TempDir(), kn)
-	os.MkdirAll(filepath.Join(kn, "rfc"), 0o755)
-	os.WriteFile(filepath.Join(kn, "rfc/notes.md"), []byte("budget enforcement details\nunrelated line\n"), 0o644)
-	os.WriteFile(filepath.Join(kn, "intro.txt"), []byte("intro without keyword\n"), 0o644)
+	os.MkdirAll(filepath.Join(kn, "rfc"), 0o755) //nolint:errcheck // 目录已存在时 MkdirAll 返回 nil；失败会让后续 WriteFile 暴露
+	if err := os.WriteFile(filepath.Join(kn, "rfc/notes.md"), []byte("budget enforcement details\nunrelated line\n"), 0o644); err != nil {
+		t.Fatalf("seed notes.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(kn, "intro.txt"), []byte("intro without keyword\n"), 0o644); err != nil {
+		t.Fatalf("seed intro.txt: %v", err)
+	}
 
 	out, err := knowledgeSearch(context.Background(), json.RawMessage(`{"query":"budget"}`))
 	if err != nil {

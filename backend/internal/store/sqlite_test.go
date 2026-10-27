@@ -50,4 +50,3 @@ func hasColumn(db *sql.DB, table, col string) error {
 	}
 	return fmt.Errorf("column %s.%s not found", table, col)
 }
-

@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/tests/testutil"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 func TestEvalModelErrorFails(t *testing.T) {

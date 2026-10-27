@@ -8,12 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/observability"
 	"rivus-agent-backend/internal/runtime"
-	itool "rivus-agent-backend/internal/tool"
 	"rivus-agent-backend/internal/store"
+	itool "rivus-agent-backend/internal/tool"
+
+	"github.com/google/uuid"
 )
 
 const taskToolName = "task"
@@ -24,11 +25,11 @@ const taskToolName = "task"
 func TaskTool(reg *itool.Registry, tasks *store.TaskRepo, runner runtime.ChildExecutor, cleaner runtime.CheckpointCleaner) itool.Definition {
 	h := NewTaskHandler(reg, tasks, runner, cleaner)
 	return itool.Definition{
-		Name: taskToolName,
+		Name:        taskToolName,
 		Description: "Delegate a read-only sub-goal to a child agent; runs synchronously and returns its result.",
-		Version: "v1",
+		Version:     "v1",
 		InputSchema: `{"type":"object","properties":{"goal":{"type":"string"},"tools":{"type":"array","items":{"type":"string"}},"max_model_calls":{"type":"integer"},"max_tool_calls":{"type":"integer"},"max_iterations":{"type":"integer"}},"required":["goal"]}`,
-		Risk: itool.RiskRead, Approval: itool.ApprovalNever, Idempotent: false, TimeoutMs: 120000, MaxResultBytes: 64 * 1024,
+		Risk:        itool.RiskRead, Approval: itool.ApprovalNever, Idempotent: false, TimeoutMs: 120000, MaxResultBytes: 64 * 1024,
 		Handler: h,
 	}
 }
@@ -139,10 +140,6 @@ type taskResult struct {
 	Error  string `json:"error,omitempty"`
 }
 
-func out(runID, status, text, errMsg string) *taskResult {
-	return &taskResult{RunID: runID, Status: status, Text: text, Error: errMsg}
-}
-
 func (r taskResult) String() string { b, _ := json.Marshal(r); return string(b) }
 
 // errRes：统一失败结果（等价旧 errOut 的 JSON 超集：多空 run_id/text 键）。
@@ -173,7 +170,7 @@ func resolveReadOnlyTools(reg *itool.Registry, names []string) ([]string, error)
 		if !ok {
 			return nil, fmt.Errorf("unknown tool %q", n)
 		}
-		if !(d.Approval == itool.ApprovalNever && d.Risk == itool.RiskRead) {
+		if d.Approval != itool.ApprovalNever || d.Risk != itool.RiskRead {
 			return nil, fmt.Errorf("tool %q is not a read-only (ApprovalNever+RiskRead) tool", n)
 		}
 		res = append(res, n)
@@ -198,7 +195,12 @@ func clampChildBudget(parent domain.Budget, in taskIn) domain.Budget {
 		}
 		return int(float64(v) * childBudgetFrac)
 	}
-	capTo := func(v, cap int) int { if v > cap { return cap }; return v }
+	capTo := func(v, cap int) int {
+		if v > cap {
+			return cap
+		}
+		return v
+	}
 	mmc := capTo(frac(parent.MaxModelCalls), childCapModelCalls)
 	mtc := capTo(frac(parent.MaxToolCalls), childCapToolCalls)
 	mi := capTo(frac(parent.MaxIterations), childCapIterations)
@@ -232,7 +234,7 @@ const (
 func TasksTool(reg *itool.Registry, tasks *store.TaskRepo, runner runtime.ChildExecutor, cleaner runtime.CheckpointCleaner) itool.Definition {
 	h := NewTasksHandler(reg, tasks, runner, cleaner)
 	return itool.Definition{
-		Name: tasksToolName,
+		Name:        tasksToolName,
 		Description: "Delegate multiple read-only sub-goals to child agents in parallel; runs synchronously and returns results in input order. Args: {\"tasks\":[{\"goal\":\"...\",\"tools\":[...],\"max_model_calls\":N}],\"max_concurrency\":4}",
 		Version:     "v1",
 		InputSchema: `{"type":"object","properties":{"tasks":{"type":"array","maxItems":5,"items":{"type":"object","properties":{"goal":{"type":"string"},"tools":{"type":"array","items":{"type":"string"}},"max_model_calls":{"type":"integer"},"max_tool_calls":{"type":"integer"},"max_iterations":{"type":"integer"}},"required":["goal"]}},"max_concurrency":{"type":"integer"}},"required":["tasks"]}`,

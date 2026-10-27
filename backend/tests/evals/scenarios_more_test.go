@@ -98,7 +98,7 @@ func TestScenarioSubagentChildBudgetClamped(t *testing.T) {
 		Budget:   map[string]any{"max_tool_calls": 10},
 		Script: func(h *testutil.Harness) string {
 			h.Model.EnqueueToolCall("tc-sub", "tasks", `{"tasks":[{"goal":"g1"}]}`)
-			h.Model.EnqueueText("g1 完成")  // child
+			h.Model.EnqueueText("g1 完成") // child
 			h.Model.EnqueueText("子任务完成") // parent
 			return "eval-subagent-budget"
 		},

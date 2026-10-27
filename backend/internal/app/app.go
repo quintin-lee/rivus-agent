@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"time"
 
-	einomodel "github.com/cloudwego/eino/components/model"
 	httpapi "rivus-agent-backend/internal/api/http"
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/eventshub"
@@ -24,6 +23,8 @@ import (
 	"rivus-agent-backend/internal/subagent"
 	"rivus-agent-backend/internal/tool"
 	"rivus-agent-backend/internal/tool/builtin"
+
+	einomodel "github.com/cloudwego/eino/components/model"
 )
 
 type App struct {

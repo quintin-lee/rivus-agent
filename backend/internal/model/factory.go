@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
+
 	"rivus-agent-backend/internal/config"
 )
 

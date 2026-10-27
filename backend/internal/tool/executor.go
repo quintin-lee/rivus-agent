@@ -7,10 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/observability"
 	"rivus-agent-backend/internal/security"
+
+	"golang.org/x/time/rate"
 )
 
 type ExecRequest struct {

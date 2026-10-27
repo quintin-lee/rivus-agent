@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/tool"
 	"rivus-agent-backend/tests/testutil"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 // 9) react 证据成功
