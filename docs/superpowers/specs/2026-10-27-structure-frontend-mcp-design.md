@@ -55,6 +55,10 @@
 1. **自动重连**：`Manager` 新增 `specs []ServerSpec`（SpawnAll/Reconcile 成功后记住）+ `StartReconciler(ctx, interval)`——后台 ticker 周期调用 `Reconcile(ctx, m.snapshotSpecs())`，error 状态的 server 自动重试，up 的跳过。周期固定 **30s**（用户批准，不加配置项）。`app.go` 启动时开 goroutine；测试用注入短 interval + FakeTransportFactory。
 2. **Call 超时**：`Manager.Call` 内 `ctx, cancel := context.WithTimeout(ctx, m.callTimeout)`（常量 30s），超时返回 `mcp call timeout` 错误；测试用阻塞 Transport（新增 testOnly blocking transport）断言 ≤1s 返回错误。
 
+> **执行偏差（批3 实施时确认）**：
+> 1. Call 超时实现为 goroutine + select 竞速——`Client.rpc` 的 `ReadLine` 无 ctx 感知（阻塞读），超时只保证**调用方**及时返回；被卡住的底层调用会继续持有该 client 的互斥锁直到 transport 解除阻塞。属现有架构约束，plan 不改 Transport 接口。
+> 2. 30s 以 `Manager.callTimeout` 字段默认值落地（`NewManager` 设 30s），测试注入 50ms 短超时；阻塞 transport 组合 FakeTransport（initialize/tools/list 正常放行，第 3 个请求 tools/call 阻塞 WriteLine），避免 SpawnAll 自身挂死。
+
 文档：backend/README zh/en MCP 小节补一句重连与超时语义。
 
 ## 3. 不做（YAGNI）

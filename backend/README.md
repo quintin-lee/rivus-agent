@@ -107,7 +107,11 @@ MCP 工具默认 **高风险 external + 始终需审批 always**（同 `workspac
 `waiting_approval` 卡片）；`invoke_skill` 为 **只读 read + 免审批 never**，把
 SKILL.md 正文作为上下文交给模型。
 
-v1 非目标：自动重连、非致命工具调用、HTTP/SSE 传输、按会话/按技能开关、密钥展开、按工具超时。
+**运行时自愈**：故障服务器由后台 reconciler 每 30s 自动重连（`Manager.StartReconciler`，
+up 的跳过、error 的重试、已移除的不再复活）；每次工具调用有 30s 超时保护，超时返回
+`mcp call timeout` 错误。
+
+v1 非目标：非致命工具调用、HTTP/SSE 传输、按会话/按技能开关、密钥展开、按工具超时。
 
 ## 评估体系（Evals）
 

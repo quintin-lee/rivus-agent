@@ -108,7 +108,12 @@ scope). MCP tools are **high-risk external + approval always** by default (same 
 `workspace_write`, going through the `waiting_approval` card); `invoke_skill` is
 **read-only + approval never**, handing the SKILL.md body to the model as context.
 
-v1 non-goals: auto-reconnect, non-fatal tool calls, HTTP/SSE transport, per-session/per-skill toggles, secret expansion, per-tool timeouts.
+**Runtime self-healing**: failed servers are re-connected automatically by a
+background reconciler every 30s (`Manager.StartReconciler`; up ones are skipped,
+error ones retried, removed ones stay stopped); each tool call is guarded by a
+30s timeout returning an `mcp call timeout` error.
+
+v1 non-goals: non-fatal tool calls, HTTP/SSE transport, per-session/per-skill toggles, secret expansion, per-tool timeouts.
 
 ## Evals
 
