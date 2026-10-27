@@ -155,6 +155,7 @@ docker compose up -d
 | `AGENT_WORKSPACE_DIR` | Tool workspace root (read/write scope of file_list/file_search/file_edit/workspace_write), default `./workspace` |
 | `AGENT_KNOWLEDGE_DIR` | Knowledge directory (search scope of knowledge_search), default `./knowledge` |
 | `AGENT_HTTP_FETCH_ALLOWLIST` | http_fetch domain allowlist (comma-separated, exact match; empty = outbound fetch fully disabled) |
+| `AGENT_RATE_LIMIT_RPM` | API rate limit (requests per minute per client, keyed by X-Owner-ID or source IP; 0 = disabled, default 0) |
 | `LOG_LEVEL` | Log level `debug/info/warn/error`, default `info` |
 
 See `backend/configs/config.example.yaml` for a YAML config example.

@@ -154,6 +154,7 @@ docker compose up -d
 | `AGENT_WORKSPACE_DIR` | 工具工作区根目录（file_list/file_search/file_edit/workspace_write 的读写范围），缺省 `./workspace` |
 | `AGENT_KNOWLEDGE_DIR` | 知识库目录（knowledge_search 检索范围），缺省 `./knowledge` |
 | `AGENT_HTTP_FETCH_ALLOWLIST` | http_fetch 域名白名单（逗号分隔，精确匹配；为空 = 完全禁用出网） |
+| `AGENT_RATE_LIMIT_RPM` | API 速率限制（每分钟每客户端请求数，按 X-Owner-ID 或来源 IP 分桶；0 = 关闭，默认 0） |
 | `LOG_LEVEL` | 日志级别 `debug/info/warn/error`，默认 `info` |
 
 YAML 配置示例见 `backend/configs/config.example.yaml`。
