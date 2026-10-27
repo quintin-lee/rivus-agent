@@ -8,6 +8,7 @@ import { Inbox } from 'lucide-react'
 import { SystemStatusBubble } from '@/components/Messages/SystemStatusBubble'
 import { SystemEventsBubble } from '@/components/Messages/SystemEventsBubble'
 import { ApprovalBubble } from '@/components/Messages/ApprovalBubble'
+import { SubagentCard } from '@/components/Messages/SubagentCard'
 
 export function ChatMessageList() {
   const runHistory = useRunStore((s) => s.runHistory)
@@ -76,6 +77,8 @@ function Bubble({
           onRetryRun={onRetry}
         />
       )
+    case 'system-subagent':
+      return <SubagentCard message={message} />
     case 'system-events':
       return <SystemEventsBubble message={message} />
     case 'system-approval':
