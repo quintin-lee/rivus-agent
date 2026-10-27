@@ -9,7 +9,7 @@ interface Props {
 }
 
 function parseApproval(event: Props['event']) {
-  let p: Record<string, unknown> = {}
+  let p: Record<string, unknown>
   try {
     p = JSON.parse(event.payload_json || '{}')
   } catch {
