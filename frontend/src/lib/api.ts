@@ -88,12 +88,12 @@ class ApiClient {
     }
   }
 
-  async listRuns(sessionId: string, limit = 50): Promise<Run[]> {
+  async listRuns(sessionId?: string, limit = 50): Promise<Run[]> {
     try {
-      const data = await this.request<{ runs: Run[] }>(
-        'GET',
-        `/api/v1/runs?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`,
-      )
+      const path = sessionId
+        ? `/api/v1/runs?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`
+        : `/api/v1/runs?limit=${limit}`
+      const data = await this.request<{ runs: Run[] }>('GET', path)
       return data.runs ?? []
     } catch (err) {
       if (err instanceof ApiError && err.code === 'not_found') return []

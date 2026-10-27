@@ -80,3 +80,20 @@ describe('ApiClient', () => {
     expect(evs[1].event_type).toBe('tool.completed')
   })
 })
+
+  it('listRuns omits session_id param when not provided', async () => {
+    const f = mockFetch(200, { runs: [{ run_id: 'r9', status: 'succeeded', goal: 'g' }] })
+    vi.stubGlobal('fetch', f)
+    const runs = await api.listRuns()
+    expect(runs).toHaveLength(1)
+    const [url] = f.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/runs?limit=50')
+  })
+
+  it('listRuns keeps session_id when provided', async () => {
+    const f = mockFetch(200, { runs: [] })
+    vi.stubGlobal('fetch', f)
+    await api.listRuns('s1')
+    const [url] = f.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/runs?session_id=s1&limit=50')
+  })
