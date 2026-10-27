@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -124,4 +125,44 @@ func TestFileSearchInChildWhitelist(t *testing.T) {
 	if !sawSearch {
 		t.Fatalf("child never executed file_search; events=%d", len(evs))
 	}
+}
+
+func TestToolCompletedPayloadHasArgsOutput(t *testing.T) {
+	dir := withTempWorkspace(t)
+	h := testutil.New(t)
+	ses := h.CreateSession("s")
+	h.Model.EnqueueToolCall("tc1", "file_search", `{"query":"x"}`)
+	h.Model.EnqueueText("done")
+	id, code, _ := h.CreateRun(ses, fixturePayload(t, ses), "tcp-1")
+	if code != 201 {
+		t.Fatalf("create run: %d", code)
+	}
+	run := h.WaitTerminal(id, 30*time.Second)
+	if run.Status != domain.RunSucceeded {
+		t.Fatalf("status=%s", run.Status)
+	}
+	evs, err := h.Events.ListAfter(context.Background(), id, 0, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range evs {
+		if e.Type != domain.EvtToolCompleted {
+			continue
+		}
+		var p map[string]any
+		if json.Unmarshal([]byte(e.PayloadJSON), &p) != nil {
+			continue
+		}
+		if p["tool"] == "file_search" {
+			if _, ok := p["args"]; !ok {
+				t.Fatalf("tool.completed missing args: %s", e.PayloadJSON)
+			}
+			if _, ok := p["output"]; !ok {
+				t.Fatalf("tool.completed missing output: %s", e.PayloadJSON)
+			}
+			_ = dir
+			return
+		}
+	}
+	t.Fatal("no tool.completed for file_search")
 }

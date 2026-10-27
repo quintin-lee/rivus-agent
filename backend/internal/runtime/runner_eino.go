@@ -367,7 +367,13 @@ func (r *EinoRunner) drain(ctx context.Context, runID, checkpointID string,
 			}
 			if mo.ToolName != "" {
 				lastTool = mo.ToolName
-				r.emit(ctx, out, runID, domain.EvtToolCompleted, mo.ToolName, mo.ToolName, "")
+				extra := ""
+				if obs, ok := r.takeToolObserved(runID, mo.ToolName); ok {
+					if b, err := json.Marshal(map[string]string{"args": obs.args, "output": obs.output}); err == nil {
+						extra = string(b)
+					}
+				}
+				r.emit(ctx, out, runID, domain.EvtToolCompleted, mo.ToolName, mo.ToolName, extra)
 			}
 		}
 		if ev.Action != nil && ev.Action.Interrupted != nil {

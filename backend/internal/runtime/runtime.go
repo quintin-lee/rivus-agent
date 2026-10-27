@@ -40,8 +40,8 @@ func New(deps Deps, concurrency int) *Runtime {
 	}
 	rt := &Runtime{deps: deps, sem: make(chan struct{}, concurrency)}
 	deps.Runner.OnEvent(func(ev RuntimeEvent) {
-		payload, _ := json.Marshal(map[string]string{"text": ev.Text, "tool": ev.ToolName})
-		if _, err := deps.Events.Append(context.Background(), ev.RunID, ev.Type, string(payload), "normal"); err != nil {
+		payload := mergeEventPayload(ev.Text, ev.ToolName, ev.Payload)
+		if _, err := deps.Events.Append(context.Background(), ev.RunID, ev.Type, payload, "normal"); err != nil {
 			deps.Log.Warn("event append failed", "run_id", ev.RunID, "type", ev.Type, "err", err)
 			observability.IncrEventAppendFailed()
 		}
@@ -53,6 +53,22 @@ func New(deps Deps, concurrency int) *Runtime {
 		_ = args
 	})
 	return rt
+}
+
+// mergeEventPayload 合并基础 {"text","tool"} 与 extra JSON（extra 键胜出；非法 extra 忽略）。
+// 现有全部 emit 调用 extra 均为空 → 输出与历史字节一致。
+func mergeEventPayload(text, tool, extra string) string {
+	m := map[string]string{"text": text, "tool": tool}
+	if extra != "" {
+		var e map[string]string
+		if err := json.Unmarshal([]byte(extra), &e); err == nil {
+			for k, v := range e {
+				m[k] = v
+			}
+		}
+	}
+	b, _ := json.Marshal(m)
+	return string(b)
 }
 
 func (r *Runtime) Execute(ctx context.Context, ownerID string, run *domain.Run, approved map[string]bool) {
