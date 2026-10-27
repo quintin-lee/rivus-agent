@@ -99,9 +99,20 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun, progress, part
       {actionError && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{actionError}</p>}
       <p className="mt-2 text-xs text-foreground/90">{run.goal}</p>
       {isActive && partialText && (
-        <p className="mt-1 max-h-40 overflow-hidden text-xs whitespace-pre-wrap text-foreground/80">
-          {partialText}
-        </p>
+        <>
+          <p className="mt-1 max-h-40 overflow-hidden text-xs whitespace-pre-wrap text-foreground/80">
+            {partialText}
+          </p>
+          <span className="mt-1 inline-flex items-center gap-1" aria-label="正在输入">
+            {[0, 150, 300].map((d) => (
+              <span
+                key={d}
+                className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground"
+                style={{ animationDelay: `${d}ms` }}
+              />
+            ))}
+          </span>
+        </>
       )}
       {isActive && progress && (
         <p className="mt-1 text-xs text-muted-foreground">

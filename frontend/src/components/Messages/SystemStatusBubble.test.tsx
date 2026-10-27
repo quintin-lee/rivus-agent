@@ -105,5 +105,21 @@ describe('SystemStatusBubble', () => {
     render(<SystemStatusBubble run={run('running')} onRetryRun={vi.fn()} />)
     expect(screen.queryByText(/hello/)).toBeNull()
   })
+
+  it('shows a typing indicator while streaming partial text on an active run', () => {
+    render(
+      <SystemStatusBubble run={run('running')} onRetryRun={vi.fn()} partialText="正在分析…" />,
+    )
+    expect(screen.getByLabelText('正在输入')).toBeTruthy()
+  })
+
+  it('hides the typing indicator without partial text or on a terminal run', () => {
+    const { rerender } = render(<SystemStatusBubble run={run('running')} onRetryRun={vi.fn()} />)
+    expect(screen.queryByLabelText('正在输入')).toBeNull()
+    rerender(
+      <SystemStatusBubble run={run('succeeded')} onRetryRun={vi.fn()} partialText="x" />,
+    )
+    expect(screen.queryByLabelText('正在输入')).toBeNull()
+  })
 })
 
