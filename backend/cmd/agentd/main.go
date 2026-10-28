@@ -13,6 +13,15 @@ import (
 )
 
 func main() {
+	// 子命令分发：`agentd export ...` 走导出，其余按服务模式启动。
+	if len(os.Args) > 1 && os.Args[1] == "export" {
+		runExport(os.Args[2:])
+		return
+	}
+	runServe()
+}
+
+func runServe() {
 	cfgPath := flag.String("config", os.Getenv("AGENT_CONFIG"), "config file path (optional)")
 	flag.Parse()
 	a, err := app.New(*cfgPath)
