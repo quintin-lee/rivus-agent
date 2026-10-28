@@ -97,6 +97,34 @@ Three global `server_settings` keys (key/value, no migrations):
 [{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}]
 ```
 
+Remote HTTP servers (`type:"http"`: POST JSON-RPC; replies may be JSON or an SSE
+stream; `headers` carry auth tokens and are **never echoed** back by the status API):
+
+```json
+[{"name":"remote","type":"http","url":"https://mcp.example.com/v1","headers":{"Authorization":"Bearer <token>"}}]
+```
+
+**config.yaml `mcp:` section and hot reload**: when the section is present, yaml is
+authoritative — it is written through to settings and applied at startup; when absent,
+settings (API config) win. If a config file is set (`-config`/`AGENT_CONFIG`) and has an
+`mcp:` section, a background poller checks mtime+size every 5s and applies changes live
+(invalid config logs a Warn and keeps the previous state; only the mcp section hot-reloads,
+everything else needs a restart):
+
+```yaml
+mcp:
+  enabled: true
+  servers:
+    - name: fs
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    - name: remote
+      type: http
+      url: https://mcp.example.com/v1
+      headers:
+        Authorization: Bearer <token>
+```
+
 API: `GET /api/v1/settings/tools` (read config + live status and discovered tools per server);
 `PUT /api/v1/settings/tools` (persist the three keys + trigger `Manager.Reconcile` + in-place
 refresh of the shared `Registry`'s `mcp__` family; running Agent snapshots are unaffected,
@@ -113,7 +141,7 @@ background reconciler every 30s (`Manager.StartReconciler`; up ones are skipped,
 error ones retried, removed ones stay stopped); each tool call is guarded by a
 30s timeout returning an `mcp call timeout` error.
 
-v1 non-goals: non-fatal tool calls, HTTP/SSE transport, per-session/per-skill toggles, secret expansion, per-tool timeouts.
+v1 non-goals: non-fatal tool calls, server-initiated SSE notifications, OAuth, per-session/per-skill toggles, secret expansion, per-tool timeouts.
 
 ## Evals
 

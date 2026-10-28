@@ -78,3 +78,12 @@ MCP 子系统（R8 批3 后）已具备：settings 驱动的服务器配置（`P
 - **长连接 MCP**（GET /sse 旧版协议）不支持——新规范服务器均支持 streamable HTTP；遇旧版报错信息明确
 - **热载竞态**：watcher 与 API SaveTools 并发写 settings/Reconcile —— 两者都经 `manager` 内部锁 + registry 锁，最终一致；watcher 应用前重新 Load 全量配置，无增量漂移
 - **yaml 覆盖 API 配置**：文档明示语义（yaml 有段=接管），避免用户误以为 API 修改丢失是 bug
+
+## 6. 执行偏差（回写）
+
+- **Task 1/2 合并**：计划 Task 1 的 `SpecTransportFactory` 引用 Task 2 的 `HTTPTransportFactory`，为保持可编译 http.go 全量实现随 Task 1 落地（143270b），Task 2 只补测试（b48c029，含导出的 `NewHTTPTransport` 便捷构造）。
+- **SSE id 匹配**：采用"首个含 id 字段的 data 载荷"方案（client.rpc 自身校验 id 且 c.mu 串行保证单 in-flight），transport 不记录请求 id。
+- **`setStatus` 签名**：改为接收整个 `ServerSpec`（原 name/command/args 三参），error 路径与 up 路径都携带 Type/URL。
+- **Task 3 GET 断言**：harness stub provider 的 GET servers 来自 `manager.Status()`（无 live 服务器为空），因此 url 回显断言以 PUT 记录的 provider payload 为准，GET 仅断言不泄漏 headers（headers 全链路不回显，超 spec 预期）。
+- **PUT 校验**：`mcpServersFromIn` 加了 `ValidateSpecs`（计划已列，确认落地）；非法 spec 返回 400 级错误（provider error）。
+- **热载校验语义**：watcher 与启动合并都先 `ValidateSpecs`，非法配置仅 Warn 不落库（spec §2 批3 的"保留旧配置"落实为 settings 未被覆盖）。

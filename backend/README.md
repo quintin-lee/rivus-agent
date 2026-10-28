@@ -89,12 +89,38 @@ make clean             # 清理构建产物
 |---|---|---|
 | `skills.enabled` | `"true"/"false"` | 是否注册 `invoke_skill` 工具 |
 | `mcp.enabled` | `"true"/"false"` | 是否启动 MCP 服务器 + 暴露 `mcp__` 工具 |
-| `mcp.servers` | JSON 数组 | stdio MCP 服务器列表（见下） |
+| `mcp.servers` | JSON 数组 | MCP 服务器列表（stdio 或 http，见下） |
 
 `mcp.servers` 示例（stdio；子进程独立进程组，`StopAll` 时整组回收）：
 
 ```json
 [{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}]
+```
+
+远程 HTTP 服务器（`type:"http"`，POST JSON-RPC，响应兼容 JSON 与 SSE 两种形态；
+`headers` 透传认证头，GET 状态接口**不回显** headers）：
+
+```json
+[{"name":"remote","type":"http","url":"https://mcp.example.com/v1","headers":{"Authorization":"Bearer <token>"}}]
+```
+
+**config.yaml `mcp:` 段与热载**：yaml 存在 `mcp:` 段时以 yaml 为权威——启动时写穿
+settings 并应用；无段时 settings（API 配置）权威。配置了 yaml 文件（`-config`/`AGENT_CONFIG`）
+且含 `mcp:` 段时，后台每 5s 轮询文件 mtime+size，变更即热生效（非法配置记 Warn 并保留
+现状；仅 mcp 段热载，其余字段重启生效）：
+
+```yaml
+mcp:
+  enabled: true
+  servers:
+    - name: fs
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    - name: remote
+      type: http
+      url: https://mcp.example.com/v1
+      headers:
+        Authorization: Bearer <token>
 ```
 
 API：`GET /api/v1/settings/tools`（读配置 + 各服务器实时状态与已发现工具）；
@@ -111,7 +137,7 @@ SKILL.md 正文作为上下文交给模型。
 up 的跳过、error 的重试、已移除的不再复活）；每次工具调用有 30s 超时保护，超时返回
 `mcp call timeout` 错误。
 
-v1 非目标：非致命工具调用、HTTP/SSE 传输、按会话/按技能开关、密钥展开、按工具超时。
+v1 非目标：非致命工具调用、SSE 服务器主动通知通道、OAuth、按会话/按技能开关、密钥展开、按工具超时。
 
 ## 评估体系（Evals）
 
