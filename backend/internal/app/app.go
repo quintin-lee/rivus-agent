@@ -111,6 +111,12 @@ func (a *App) Start(ctx context.Context) error {
 	a.skillLoader = skill.NewLoader(cfg.SkillsDir)
 	_ = a.skillLoader.Refresh()
 	a.manager = mcp.NewManager(mcp.NewSpecTransportFactory())
+	// config.yaml 有 mcp 段 = yaml 权威：写穿 settings（每次启动重放）。
+	if cfg.MCP != nil {
+		if err := a.applyMCPConfig(ctx, settings, registry, cfg.MCP.Enabled, mcpSpecsFromYaml(cfg.MCP.Servers)); err != nil {
+			a.log.Warn("mcp config apply failed", "err", err)
+		}
+	}
 	tc, err := mcp.ReadToolConfig(ctx, settings)
 	if err != nil {
 		a.log.Warn("tools config read: mcp.servers decode failed; starting with empty server list", "err", err)

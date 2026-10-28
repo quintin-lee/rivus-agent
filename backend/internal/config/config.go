@@ -26,6 +26,10 @@ type Config struct {
 	// 0 = 关闭（默认，向后兼容）。
 	RateLimitRPM int `yaml:"rate_limit_rpm"`
 
+	// MCP 是 config.yaml 的 mcp 段；nil = 未配置（settings/API 权威）。
+	// 非 nil = yaml 权威：启动时写穿 settings 并热应用。
+	MCP *MCPConfig `yaml:"mcp,omitempty"`
+
 	AuthToken string `yaml:"-"`
 
 	ModelProvider string `yaml:"model_provider"`
@@ -179,4 +183,21 @@ type BudgetLimits struct {
 	MaxToolCalls       int `json:"max_tool_calls"`
 	MaxIterations      int `json:"max_iterations"`
 	MaxOutputBytes     int `json:"max_output_bytes"`
+}
+
+// MCPConfig is the config.yaml "mcp:" section.
+type MCPConfig struct {
+	Enabled bool            `yaml:"enabled"`
+	Servers []MCPServerYaml `yaml:"servers"`
+}
+
+// MCPServerYaml mirrors mcp.ServerSpec; the config package does not import
+// mcp (which imports store) to keep dependency direction one-way.
+type MCPServerYaml struct {
+	Name    string            `yaml:"name"`
+	Command string            `yaml:"command"`
+	Args    []string          `yaml:"args"`
+	Type    string            `yaml:"type"`
+	URL     string            `yaml:"url"`
+	Headers map[string]string `yaml:"headers"`
 }
