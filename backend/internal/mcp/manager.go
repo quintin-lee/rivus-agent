@@ -10,8 +10,10 @@ import (
 // StatusEntry is one configured MCP server's live state (feeds GET /settings/tools).
 type StatusEntry struct {
 	Name    string   `json:"name"`
-	Command string   `json:"command"`
+	Command string   `json:"command,omitempty"`
 	Args    []string `json:"args,omitempty"`
+	Type    string   `json:"type,omitempty"` // "" | "stdio" | "http"
+	URL     string   `json:"url,omitempty"`
 	Status  string   `json:"status"` // "up" | "error"
 	Err     string   `json:"err,omitempty"`
 	Tools   []Tool   `json:"tools"` // cached tools/list result
@@ -85,7 +87,7 @@ func (m *Manager) Reconcile(ctx context.Context, specs []ServerSpec) error {
 func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 	tt, err := m.factory.New(ctx, s)
 	if err != nil {
-		m.setStatus(s.Name, s.Command, s.Args, "error", err.Error())
+		m.setStatus(s, "error", err.Error())
 		return
 	}
 	c := NewClient(tt)
@@ -93,18 +95,18 @@ func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 	defer cancel()
 	if err := c.Initialize(ictx); err != nil {
 		_ = tt.Stop() // best-effort teardown of the spawned child
-		m.setStatus(s.Name, s.Command, s.Args, "error", "initialize: "+err.Error())
+		m.setStatus(s, "error", "initialize: "+err.Error())
 		return
 	}
 	tools, err := c.ListTools(ictx)
 	if err != nil {
 		_ = tt.Stop() // best-effort teardown of the spawned child
-		m.setStatus(s.Name, s.Command, s.Args, "error", "tools/list: "+err.Error())
+		m.setStatus(s, "error", "tools/list: "+err.Error())
 		return
 	}
 	m.mu.Lock()
 	m.clis[s.Name] = c
-	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Status: "up", Tools: tools}
+	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, Status: "up", Tools: tools}
 	m.mu.Unlock()
 }
 
@@ -203,14 +205,14 @@ func (m *Manager) Status() []StatusEntry {
 }
 
 // setStatus records one server's live state; used for error paths in connect.
-func (m *Manager) setStatus(name, command string, args []string, status, errMsg string) {
+func (m *Manager) setStatus(s ServerSpec, status, errMsg string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	e := StatusEntry{Name: name, Command: command, Args: args, Status: status}
+	e := StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, Status: status}
 	if errMsg != "" {
 		e.Err = errMsg
 	}
-	m.status[name] = e
+	m.status[s.Name] = e
 }
 
 // StopAll stops every connection and clears all status. Per-server failures are

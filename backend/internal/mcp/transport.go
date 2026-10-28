@@ -76,3 +76,20 @@ func NewStdioTransportFactory() *StdioTransportFactory { return &StdioTransportF
 func (f *StdioTransportFactory) New(ctx context.Context, spec ServerSpec) (Transport, error) {
 	return NewStdioTransport(ctx, spec.Command, spec.Args)
 }
+
+// SpecTransportFactory dispatches on spec.Type: http → remote HTTP transport,
+// otherwise stdio child process.
+type SpecTransportFactory struct {
+	HTTP *HTTPTransportFactory
+}
+
+func NewSpecTransportFactory() *SpecTransportFactory {
+	return &SpecTransportFactory{HTTP: NewHTTPTransportFactory()}
+}
+
+func (f *SpecTransportFactory) New(ctx context.Context, spec ServerSpec) (Transport, error) {
+	if spec.Type == "http" {
+		return f.HTTP.New(ctx, spec)
+	}
+	return NewStdioTransport(ctx, spec.Command, spec.Args)
+}

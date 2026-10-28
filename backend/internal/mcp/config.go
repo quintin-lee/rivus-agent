@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 
 	"rivus-agent-backend/internal/store"
@@ -16,11 +17,15 @@ const (
 	KeyMCP_servers   = "mcp.servers"
 )
 
-// ServerSpec is one configured MCP server (stdio).
+// ServerSpec is one configured MCP server: a stdio child process or a remote
+// HTTP endpoint.
 type ServerSpec struct {
-	Name    string   `json:"name"`
-	Command string   `json:"command"`
-	Args    []string `json:"args,omitempty"`
+	Name    string            `json:"name"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Type    string            `json:"type,omitempty"` // "" | "stdio" | "http"
+	URL     string            `json:"url,omitempty"`  // http(s) endpoint for type=http
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // ToolConfig is the global tool configuration surfaced by /settings/tools.
@@ -46,12 +51,33 @@ func ServersFromJSON(v string) ([]ServerSpec, error) {
 	if err := json.Unmarshal([]byte(v), &out); err != nil {
 		return nil, fmt.Errorf("mcp.servers: %w", err)
 	}
-	for i := range out {
-		if !ValidServerName(out[i].Name) || out[i].Command == "" {
-			return nil, fmt.Errorf("server %q: invalid name or empty command", out[i].Name)
-		}
+	if err := ValidateSpecs(out); err != nil {
+		return nil, fmt.Errorf("mcp.servers: %w", err)
 	}
 	return out, nil
+}
+
+// ValidateSpecs checks the name/command/url rules for a spec list.
+func ValidateSpecs(specs []ServerSpec) error {
+	for _, s := range specs {
+		if !ValidServerName(s.Name) {
+			return fmt.Errorf("server %q: invalid name", s.Name)
+		}
+		switch s.Type {
+		case "", "stdio":
+			if s.Command == "" {
+				return fmt.Errorf("server %q: empty command", s.Name)
+			}
+		case "http":
+			u, err := url.Parse(s.URL)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				return fmt.Errorf("server %q: invalid http url %q", s.Name, s.URL)
+			}
+		default:
+			return fmt.Errorf("server %q: unknown type %q", s.Name, s.Type)
+		}
+	}
+	return nil
 }
 
 // ReadToolConfig reads all three keys from the settings store.

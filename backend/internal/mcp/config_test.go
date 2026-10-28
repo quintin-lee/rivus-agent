@@ -66,3 +66,33 @@ func TestServersFromJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestServersFromJSONHTTPType(t *testing.T) {
+	specs, err := ServersFromJSON(`[{"name":"remote","type":"http","url":"https://mcp.example.com/v1","headers":{"Authorization":"Bearer x"}}]`)
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("err=%v specs=%v", err, specs)
+	}
+	if specs[0].Type != "http" || specs[0].URL != "https://mcp.example.com/v1" || specs[0].Headers["Authorization"] != "Bearer x" {
+		t.Fatalf("spec=%+v", specs[0])
+	}
+	if _, err := ServersFromJSON(`[{"name":"bad","type":"http"}]`); err == nil {
+		t.Fatal("http without url must fail")
+	}
+	if _, err := ServersFromJSON(`[{"name":"bad","type":"http","url":"ws://x"}]`); err == nil {
+		t.Fatal("ws scheme must fail")
+	}
+	if _, err := ServersFromJSON(`[{"name":"s"}]`); err == nil {
+		t.Fatal("stdio without command must fail")
+	}
+}
+
+func TestValidateSpecs(t *testing.T) {
+	ok := []ServerSpec{{Name: "a", Command: "x"}, {Name: "b", Type: "http", URL: "http://127.0.0.1:1"}}
+	if err := ValidateSpecs(ok); err != nil {
+		t.Fatalf("ok: %v", err)
+	}
+	bad := []ServerSpec{{Name: "c", Type: "http"}}
+	if err := ValidateSpecs(bad); err == nil {
+		t.Fatal("http spec without url must fail")
+	}
+}

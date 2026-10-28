@@ -27,3 +27,13 @@ func TestStdioTransportRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip = %q, want ping", line)
 	}
 }
+
+func TestSpecFactoryDispatch(t *testing.T) {
+	f := NewSpecTransportFactory()
+	if _, err := f.New(context.Background(), ServerSpec{Name: "x", Command: "/nonexistent-cmd-xyz"}); err == nil {
+		t.Fatal("stdio dispatch expected exec failure")
+	}
+	if _, err := f.New(context.Background(), ServerSpec{Name: "x", Type: "http", URL: "http://127.0.0.1:1"}); err != nil {
+		t.Fatalf("http dispatch must not dial eagerly: %v", err)
+	}
+}
