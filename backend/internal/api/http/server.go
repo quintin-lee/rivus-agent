@@ -33,6 +33,10 @@ type Server struct {
 	tools    ToolConfigProvider
 	hub      *eventshub.Hub
 	mux      *http.ServeMux
+
+	// pprofEnabled：仅在 Bearer 认证启用时暴露 /debug/pprof（安全默认：
+	// 本地无 token 开发模式下不注册剖析端点）。
+	pprofEnabled bool
 }
 
 // ToolConfigProvider backs the /settings/tools endpoints. The httpapi layer
@@ -129,6 +133,7 @@ func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.Eve
 	if db != nil {
 		s.memories = store.NewMemoryRepo(db)
 	}
+	s.pprofEnabled = cfg.AuthToken != ""
 	s.routes()
 	return s
 }

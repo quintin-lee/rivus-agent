@@ -48,3 +48,39 @@ func TestPrometheusRequiresAuth(t *testing.T) {
 		t.Fatalf("code = %d, want 401", rec.Code)
 	}
 }
+
+func TestPprofGatedByAuth(t *testing.T) {
+	// auth 开启：必须带 token，且端点已注册
+	srv := newBareServer(config.Config{AuthToken: "tok"})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil))
+	if rec.Code != 401 {
+		t.Fatalf("no token: code = %d, want 401", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("with token: code = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "pprof") {
+		t.Fatalf("index page unexpected:\n%s", rec.Body.String())
+	}
+	// heap profile（debug=1 文本，即时返回，避免 CPU profile 阻塞）
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/debug/pprof/heap?debug=1", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "heap profile") {
+		t.Fatalf("heap: code = %d", rec.Code)
+	}
+
+	// auth 关闭（本地开发）：端点不注册 → 404
+	srv2 := newBareServer(config.Config{})
+	rec2 := httptest.NewRecorder()
+	srv2.Handler().ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil))
+	if rec2.Code != 404 {
+		t.Fatalf("auth disabled: code = %d, want 404", rec2.Code)
+	}
+}

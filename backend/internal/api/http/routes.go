@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"expvar"
+	"net/http/pprof"
 )
 
 func (s *Server) routes() {
@@ -27,4 +28,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /version", s.handleVersion)
 	s.mux.Handle("/metrics", expvar.Handler())
 	s.mux.HandleFunc("GET /metrics/prometheus", s.handlePromMetrics)
+	if s.pprofEnabled {
+		s.mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+		s.mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
+		s.mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+		s.mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
+		s.mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
+	}
 }
