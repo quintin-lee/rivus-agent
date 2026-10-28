@@ -65,7 +65,7 @@ MCP 子系统（R8 批3 后）已具备：settings 驱动的服务器配置（`P
 ## 4. 验收标准
 
 1. HTTP MCP 服务器（httptest 模拟，JSON 与 SSE 两种响应）经 `initialize→tools/list→tools/call` 全流程可用，工具注册进 `mcp__` 家族
-2. `PUT /settings/tools` 可配置 type/url/headers，GET status 回显
+2. `PUT /settings/tools` 可配置 type/url/headers，GET status 回显 type/url（**headers 不回显**，防 token 泄漏）
 3. config.yaml `mcp:` 段：启动写穿 settings；无段时 settings 权威
 4. 修改 yaml mcp 段文件，≤10s 内热生效（settings/registry 更新），非法 yaml 不破坏现状
 5. stdio 既有行为零回归（全部既有测试绿）
