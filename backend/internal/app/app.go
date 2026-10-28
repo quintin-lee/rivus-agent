@@ -110,7 +110,7 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	a.skillLoader = skill.NewLoader(cfg.SkillsDir)
 	_ = a.skillLoader.Refresh()
-	a.manager = mcp.NewManager(mcp.NewStdioTransportFactory())
+	a.manager = mcp.NewManager(mcp.NewSpecTransportFactory())
 	tc, err := mcp.ReadToolConfig(ctx, settings)
 	if err != nil {
 		a.log.Warn("tools config read: mcp.servers decode failed; starting with empty server list", "err", err)

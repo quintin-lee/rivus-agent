@@ -52,7 +52,8 @@ func (p *toolConfigProvider) GetToolsStatus(ctx context.Context) (httpapi.ToolSt
 			infos = append(infos, httpapi.ToolInfo{Name: tl.Name, Description: tl.Description})
 		}
 		st.MCP.Servers = append(st.MCP.Servers, httpapi.MCPServerInfo{
-			Name: e.Name, Status: e.Status, Command: e.Command, Args: e.Args, Tools: infos,
+			Name: e.Name, Status: e.Status, Command: e.Command, Args: e.Args,
+			Type: e.Type, URL: e.URL, Tools: infos,
 		})
 	}
 	return st, nil
@@ -122,7 +123,11 @@ func boolStr(b bool) string {
 func mcpServersFromIn(in httpapi.ToolConfigIn) ([]mcp.ServerSpec, error) {
 	out := make([]mcp.ServerSpec, 0, len(in.MCPServers))
 	for _, s := range in.MCPServers {
-		out = append(out, mcp.ServerSpec{Name: s.Name, Command: s.Command, Args: s.Args})
+		out = append(out, mcp.ServerSpec{Name: s.Name, Command: s.Command, Args: s.Args,
+			Type: s.Type, URL: s.URL, Headers: s.Headers})
+	}
+	if err := mcp.ValidateSpecs(out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

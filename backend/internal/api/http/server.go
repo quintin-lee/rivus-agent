@@ -69,6 +69,8 @@ type MCPServerInfo struct {
 	Status  string     `json:"status"` // "up" | "down" | "error"
 	Command string     `json:"command"`
 	Args    []string   `json:"args,omitempty"`
+	Type    string     `json:"type,omitempty"`
+	URL     string     `json:"url,omitempty"`
 	Tools   []ToolInfo `json:"tools"`
 }
 
@@ -85,9 +87,12 @@ type ToolConfigIn struct {
 }
 
 type MCPServerIn struct {
-	Name    string   `json:"name"`
-	Command string   `json:"command"`
-	Args    []string `json:"args,omitempty"`
+	Name    string            `json:"name"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Type    string            `json:"type,omitempty"` // "" | "stdio" | "http"
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // Option configures an httpapi.Server. Existing 7-arg New(...) calls stay

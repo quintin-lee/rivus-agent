@@ -183,3 +183,36 @@ func TestToolsSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("recorded mcpServer shape wrong: %+v", got[0].MCPServers[0])
 	}
 }
+
+// TestToolConfigHTTPMCPServerRoundtrip: PUT accepts type/url/headers for
+// remote MCP servers; the recorded provider payload carries them; GET status
+// never echoes headers (token leak prevention).
+func TestToolConfigHTTPMCPServerRoundtrip(t *testing.T) {
+	h := testutil.NewToolConfigHarness(t)
+	body := map[string]any{
+		"skillsEnabled": true, "mcpEnabled": true,
+		"mcpServers": []any{map[string]any{
+			"name": "remote", "type": "http", "url": "http://127.0.0.1:9/mcp",
+			"headers": map[string]any{"Authorization": "Bearer k"},
+		}},
+	}
+	code, out := h.Do("PUT", "/api/v1/settings/tools", body, nil)
+	if code != 200 {
+		t.Fatalf("PUT code=%d: %s", code, out)
+	}
+	got := h.SavedToolConfigs()
+	if len(got) != 1 || len(got[0].MCPServers) != 1 {
+		t.Fatalf("provider payload: %+v", got)
+	}
+	s := got[0].MCPServers[0]
+	if s.Type != "http" || s.URL != "http://127.0.0.1:9/mcp" || s.Headers["Authorization"] != "Bearer k" {
+		t.Fatalf("recorded spec: %+v", s)
+	}
+	code, out = h.Do("GET", "/api/v1/settings/tools", nil, nil)
+	if code != 200 {
+		t.Fatalf("GET code=%d", code)
+	}
+	if strings.Contains(string(out), "Bearer k") {
+		t.Fatal("headers must not be echoed via status API")
+	}
+}
