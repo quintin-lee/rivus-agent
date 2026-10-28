@@ -175,6 +175,8 @@ tests/
 - 每个 HTTP 响应带 `X-Request-ID`：调用方可传入（净化 + 截断 64 字符后沿用），否则自动生成 32 位 hex；`RequestIDFrom(ctx)` 可在处理链中读取。
 - 请求结束输出一条结构化访问日志：`http request` + method/path/status/duration_ms/request_id（401/429/404 错误路径同样记录）；日志器经 `httpapi.WithLogger` 注入，缺省 `slog.Default()`。
 - 指标：`GET /metrics`（expvar，免认证）——运行计数、工具延迟直方图分桶、`rate_limited_total`、`event_append_failed`。
+- Prometheus 抓取：`GET /metrics/prometheus` 输出 Prometheus 文本格式（counter + `{key="..."}` 标签，跳过 memstats/cmdline）；与 `/metrics` 一样免认证（或配置 token 后需 Bearer）。
+- 性能剖析：`GET /debug/pprof/`（heap/goroutine/allocs 等）与 `/debug/pprof/{cmdline,profile,symbol,trace}` —— **仅当配置了 `AGENT_AUTH_TOKEN`（认证开启）时注册**，且需 Bearer；本地无 token 开发模式不暴露（404）。示例：`curl -H "Authorization: Bearer $TOKEN" localhost:8080/debug/pprof/heap?debug=1`。
 
 ## 质量与维护
 

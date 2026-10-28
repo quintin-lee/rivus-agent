@@ -175,6 +175,8 @@ tests/
 - Every HTTP response carries `X-Request-ID`: callers may supply one (sanitized, truncated to 64 chars, then reused), otherwise a 32-char hex ID is generated; `RequestIDFrom(ctx)` reads it inside the handler chain.
 - One structured access log line is emitted when a request finishes: `http request` + method/path/status/duration_ms/request_id (error paths 401/429/404 included); the logger is injected via `httpapi.WithLogger`, defaulting to `slog.Default()`.
 - Metrics: `GET /metrics` (expvar, auth-exempt) — run counters, tool latency histogram buckets, `rate_limited_total`, `event_append_failed`.
+- Prometheus scraping: `GET /metrics/prometheus` serves the Prometheus text format (counters + `{key="..."}` labels, memstats/cmdline skipped); same auth posture as `/metrics` (auth-exempt, or Bearer when a token is configured).
+- Profiling: `GET /debug/pprof/` (heap/goroutine/allocs, …) and `/debug/pprof/{cmdline,profile,symbol,trace}` — **registered only when `AGENT_AUTH_TOKEN` is set (auth enabled)** and requires a Bearer token; without a token (local dev) the endpoints are not exposed (404). Example: `curl -H "Authorization: Bearer $TOKEN" localhost:8080/debug/pprof/heap?debug=1`.
 
 ## Quality & Maintenance
 
