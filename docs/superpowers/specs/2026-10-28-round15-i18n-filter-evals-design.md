@@ -32,7 +32,7 @@
 
 - **后端**（TDD）：
   - `handlers_runs.go handleListRuns`：读 `status` query——空 = 原行为（不过滤）；值必须是 8 个 `domain.RunStatus` 之一（queued/running/waiting_approval/paused/succeeded/failed/cancelled/timed_out），非法 → 400 bad_request；透传给两个分支。
-  - `task_repo.go`：`ListRunsByOwner(ctx, owner, limit)` → `ListRunsByOwner(ctx, owner, status string, limit)`；`ListRunsBySession` 同加；`status != ""` 时 SQL 追加 `AND status = ?`。调用方仅 handler 一处（grep 核实）。
+  - `task_repo.go`：`ListRunsByOwner(ctx, owner, limit)` → `ListRunsByOwner(ctx, owner, status string, limit)`；`ListRunsBySession` 同加；`status != ""` 时 SQL 追加 `AND status = ?`。调用方两处：handlers_runs.go（透传）+ cmd/agentd/export.go:46（传 "" 保持原行为）。
 - **前端**（TDD）：
   - `api.ts listRuns(sessionId?, limit=50, status?)`：status 存在才拼 `&status=`。
   - `RunsHistoryDialog`：标题下加 chips 行（全部/成功/失败/取消/超时），激活态高亮，点击重拉；沿用 fetch-on-open + error/retry 结构。
