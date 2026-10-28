@@ -5,6 +5,7 @@ import { t } from '@/i18n'
 import { useUiStore } from '@/store/ui-store'
 import { runStatusClasses } from '@/lib/status'
 import type { Run, RunStatus } from '@/lib/types'
+import { RunDetailDialog } from '@/components/RunDetailDialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -48,6 +49,7 @@ export function RunsHistoryDialog({
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [detailRunId, setDetailRunId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -100,7 +102,11 @@ export function RunsHistoryDialog({
         )}
         <div className="flex flex-col gap-2">
           {runs.map((r) => (
-            <div key={r.id} className="rounded border border-border bg-muted/30 p-2">
+            <div
+              key={r.id}
+              className="cursor-pointer rounded border border-border bg-muted/30 p-2 transition-colors hover:bg-muted/60"
+              onClick={() => setDetailRunId(r.id)}
+            >
               <div className="flex items-center gap-2">
                 <span
                   className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${runStatusClasses[r.status as RunStatus] ?? ''}`}
@@ -122,6 +128,7 @@ export function RunsHistoryDialog({
           ))}
         </div>
       </DialogContent>
+      <RunDetailDialog runId={detailRunId} onOpenChange={(v) => !v && setDetailRunId(null)} />
     </Dialog>
   )
 }

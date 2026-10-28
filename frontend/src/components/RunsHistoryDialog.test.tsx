@@ -4,7 +4,14 @@ import { RunsHistoryDialog } from '@/components/RunsHistoryDialog'
 import { api } from '@/lib/api'
 import type { Run } from '@/lib/types'
 
-vi.mock('@/lib/api', () => ({ api: { listRuns: vi.fn() } }))
+vi.mock('@/lib/api', () => ({
+  api: {
+    listRuns: vi.fn(),
+    getRun: vi.fn(),
+    getEvents: vi.fn(),
+    listApprovals: vi.fn(),
+  },
+}))
 
 function run(over: Partial<Run> = {}): Run {
   return {
@@ -46,5 +53,17 @@ describe('RunsHistoryDialog', () => {
     vi.mocked(api.listRuns).mockResolvedValue([run()])
     fireEvent.click(screen.getByRole('button', { name: /重试/ }))
     await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
+  })
+
+  it('opens the run detail dialog when a row is clicked', async () => {
+    vi.mocked(api.listRuns).mockResolvedValue([run()])
+    vi.mocked(api.getRun).mockResolvedValue({ run: run(), steps: [] })
+    vi.mocked(api.getEvents).mockResolvedValue([])
+    vi.mocked(api.listApprovals).mockResolvedValue([])
+    render(<RunsHistoryDialog open onOpenChange={() => {}} />)
+    await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
+
+    fireEvent.click(screen.getByText(/整理周报/))
+    await waitFor(() => expect(api.getRun).toHaveBeenCalledWith('r1abcdef'))
   })
 })
