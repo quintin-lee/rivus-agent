@@ -21,7 +21,7 @@ npm run build               # tsc && vite build → dist/
 npm run preview             # preview the build output
 npm run lint                # ESLint (v10 flat config)
 npx tsc --noEmit            # type check only
-npx vitest run              # run the full test suite once (26 files / 169 tests)
+npx vitest run              # run the full test suite once (27 files / 177 tests)
 ```
 
 ## Internationalization (i18n)
@@ -30,9 +30,12 @@ A minimal bilingual mechanism is built in: `src/i18n/index.ts` dictionary +
 `t(key, params?)`, with the language in `ui-store` (`lang: 'zh' | 'en'`,
 default zh, persisted to localStorage `rivus-lang`) and toggled by the 中/EN
 button in the Header. Missing en keys fall back to zh; missing zh keys fall
-back to the key itself. No react-i18next. Migrated as samples: the session
-list/delete dialog, memories dialog, run history dialog, and the usage
-summary in `status.ts`.
+back to the key itself. No react-i18next. All component copy is now migrated
+(incl. the sub-agent card, tool calls card and settings dialog).
+
+The lint gate includes `eslint-plugin-react-hooks`: `rules-of-hooks` is an
+error (blocks the gate), `exhaustive-deps` is a warn. The run history dialog
+supports status filter chips (All/Succeeded/Failed/Cancelled/Timed out).
 
 ## Docker
 

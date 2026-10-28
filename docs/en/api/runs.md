@@ -9,6 +9,7 @@ List runs: with `session_id`, lists runs of that session; omitting `session_id` 
 | Query param | Type | Required | Description |
 |---|---|---|---|
 | `session_id` | string | no | Session ID; when provided lists that session only (incl. child runs), when missing returns cross-session top-level history |
+| `status` | string | no | Filter by run status (one of queued/running/waiting_approval/paused/succeeded/failed/cancelled/timed_out); invalid values return 400 |
 | `limit` | int | no | Page size, default 50 |
 
 **Response** `200`: `{"runs": [Run]}` with `Run` fields:

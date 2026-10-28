@@ -21,7 +21,7 @@ npm run build               # tsc && vite build → dist/
 npm run preview             # 预览构建产物
 npm run lint                # ESLint（v10 flat config）
 npx tsc --noEmit            # 仅类型检查
-npx vitest run              # 单次跑全部测试（26 文件 / 169 用例）
+npx vitest run              # 单次跑全部测试（27 文件 / 177 用例）
 ```
 
 ## 国际化（i18n）
@@ -29,8 +29,10 @@ npx vitest run              # 单次跑全部测试（26 文件 / 169 用例）
 内置极简双语机制：`src/i18n/index.ts` 词典 + `t(key, params?)`，语言态在
 `ui-store`（`lang: 'zh' | 'en'`，默认 zh，localStorage `rivus-lang` 持久化），
 Header 的「中/EN」按钮切换。en 缺键回退 zh，zh 缺键回退键名。不引入
-react-i18next；已迁移会话列表/删除弹窗、记忆弹窗、运行历史弹窗与
-`status.ts` 的用量摘要作为样例。
+react-i18next；全部组件文案已迁移（含子 agent 卡、工具调用卡、设置弹窗）。
+
+lint 门禁含 `eslint-plugin-react-hooks`：`rules-of-hooks` 为 error（挡门禁）、
+`exhaustive-deps` 为 warn。运行历史弹窗支持状态筛选 chips（全部/成功/失败/取消/超时）。
 
 ## Docker
 

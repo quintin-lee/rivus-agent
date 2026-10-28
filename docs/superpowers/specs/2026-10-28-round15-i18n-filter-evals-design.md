@@ -59,4 +59,6 @@
 
 ## 6. 执行偏差
 
-（执行后回写）
+- **批1**：实际键集合比 §3.1 多 2 个——SubagentCard 刷新按钮 `title="刷新"` 与 SettingsDialog 底部 `关闭` 也在硬编码清单里，补 `common.refresh`（已存在，直接复用）/`common.close`。既有组件测试断言（中文）在 zh 默认下经 t() 渲染不变，未改动；en 态用例加在 ToolCallsCard。
+- **批2**：`ListRunsBySession` 的第二个调用方 `cmd/agentd/export.go` 传 `""`；`tests/bench/bench_test.go` 的 BenchmarkListRunsByOwner 同步补参（spec §1.3 遗漏盘点）。repo 侧过滤用条件拼接 + `[]any` 参数；`domain.RunStatus.Valid()` 新增 8 状态 switch。
+- **批3**：3 场景全部按计划落地；`runs_status_filter` 第二个 run 复用主 run 的 SessionID（PostCheck 拿 `run.SessionID`），幂等键 `r15-filter-ok`；拒绝路径确认无需 SetFallback（拒绝即终态）。README 场景计数回写 27（工具级 16 + agent 级 11）。
