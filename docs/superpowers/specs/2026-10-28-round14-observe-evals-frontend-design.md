@@ -66,4 +66,13 @@ frontend/src/lib/api.ts                           修改：+listEvents/listAppro
 
 ## 6. 执行偏差
 
-（执行后回写）
+- **批1**：pprof 门禁取 `cfg.AuthToken != ""`（有鉴权才暴露），`pprof.Index` 一个路由即覆盖全部具名 profile（heap/cpu/goroutine…），仅额外注册 cmdline/profile/symbol/trace；Prometheus 输出遍历 `expvar.Do`，`String/Func/JSON`（cmdline/memstats）显式跳过。
+- **批2**：
+  - `Scenario.NewHarness` 签名为 `func(t TB, _ ...tool.Definition)` → 用适配器包装 `NewToolConfigHarness`（invoke_skill 场景）。
+  - `Script` 返回值是幂等键字符串而非 goal；`Budget` 字段是 `map[string]any`（snake_case）。
+  - file_edit 入参键为 `old_text`/`new_text`（非 old/new）——首版按直觉写错，红测暴露后修正。
+  - cancel 场景 Script 闭包拿不到 runID → fallback 用 R9 的 owner-wide `GET /api/v1/runs?limit=50` 按 goal 标记定位 run 再 POST cancel。
+  - 取消命中的确定性保证 = 终态 `status==cancelled` + `error_code==cancelled`；`EvtRunCancelled` 是竞态事件（cancel 落在迭代间隙才发，落在模型调用中则是 model.failed→run.failed），故 RequiredEvents 断言撤掉。
+  - `h.Do` 返回 `(int, []byte)` 两值。
+  - 共享夹具变更：harness 的 demo skill 增加 `references/cheatsheet.md`（供 reference 场景断言）。
+- **批3**：RunDetailDialog Props 实现为 `{ runId: string | null, onOpenChange }`（受控 Radix Dialog），RunsHistoryDialog 内嵌于 Dialog 内实现行点击 → 详情叠加；api.ts 复用已有 listEvents/getRun，新增 listApprovals。
