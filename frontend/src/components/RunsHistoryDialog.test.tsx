@@ -37,7 +37,7 @@ describe('RunsHistoryDialog', () => {
     render(<RunsHistoryDialog open onOpenChange={() => {}} />)
     await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
     expect(screen.getByText(/第二个目标/)).toBeTruthy()
-    expect(api.listRuns).toHaveBeenCalledWith(undefined, 50)
+    expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined)
   })
 
   it('shows empty state', async () => {
@@ -53,6 +53,14 @@ describe('RunsHistoryDialog', () => {
     vi.mocked(api.listRuns).mockResolvedValue([run()])
     fireEvent.click(screen.getByRole('button', { name: /重试/ }))
     await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
+  })
+
+  it('refetches with status when a filter chip is clicked', async () => {
+    vi.mocked(api.listRuns).mockResolvedValue([run({ status: 'failed' })])
+    render(<RunsHistoryDialog open onOpenChange={() => {}} />)
+    await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: '失败' }))
+    await waitFor(() => expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, 'failed'))
   })
 
   it('opens the run detail dialog when a row is clicked', async () => {

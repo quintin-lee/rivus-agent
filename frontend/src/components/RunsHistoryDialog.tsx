@@ -50,18 +50,27 @@ export function RunsHistoryDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [detailRunId, setDetailRunId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState('')
+
+  const statusChips: [string, string][] = [
+    ['', t('runs.filterAll')],
+    ['succeeded', t('status.succeeded')],
+    ['failed', t('status.failed')],
+    ['cancelled', t('status.cancelled')],
+    ['timed_out', t('status.timed_out')],
+  ]
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      setRuns(await api.listRuns(undefined, 50))
+      setRuns(await api.listRuns(undefined, 50, statusFilter || undefined))
     } catch (e) {
       setError(e instanceof Error ? e.message : t('common.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [statusFilter])
 
   useEffect(() => {
     if (open) void load()
@@ -77,6 +86,22 @@ export function RunsHistoryDialog({
           </DialogTitle>
           <DialogDescription>{t('runs.description')}</DialogDescription>
         </DialogHeader>
+        <div className="flex flex-wrap gap-1.5">
+          {statusChips.map(([value, label]) => (
+            <button
+              key={value || 'all'}
+              onClick={() => setStatusFilter(value)}
+              className={
+                'rounded-full border px-2.5 py-0.5 text-xs transition-colors ' +
+                (statusFilter === value
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground hover:text-foreground')
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="flex justify-end">
           <Button
             variant="ghost"

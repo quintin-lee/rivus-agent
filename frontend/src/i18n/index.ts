@@ -44,6 +44,7 @@ const zh: Record<string, string> = {
   'runs.description': '跨会话的全部顶层运行（最新在前，不含子 agent 运行）。',
   'runs.empty': '（无运行记录）',
   'runs.sessionLabel': '会话',
+  'runs.filterAll': '全部',
 
   'status.queued': '排队中',
   'status.running': '运行中',
@@ -111,6 +112,7 @@ const en: Record<string, string> = {
   'runs.description': 'All top-level runs across sessions (newest first, sub-agent runs excluded).',
   'runs.empty': '(no runs)',
   'runs.sessionLabel': 'Session',
+  'runs.filterAll': 'All',
 
   'status.queued': 'Queued',
   'status.running': 'Running',

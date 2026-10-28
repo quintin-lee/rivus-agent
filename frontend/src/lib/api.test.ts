@@ -97,3 +97,19 @@ describe('ApiClient', () => {
     const [url] = f.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/v1/runs?session_id=s1&limit=50')
   })
+
+  it('listRuns appends status when provided', async () => {
+    const f = mockFetch(200, { runs: [] })
+    vi.stubGlobal('fetch', f)
+    await api.listRuns(undefined, 50, 'failed')
+    const [url] = f.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/runs?limit=50&status=failed')
+  })
+
+  it('listRuns keeps session_id and status together', async () => {
+    const f = mockFetch(200, { runs: [] })
+    vi.stubGlobal('fetch', f)
+    await api.listRuns('s1', 50, 'succeeded')
+    const [url] = f.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/runs?session_id=s1&limit=50&status=succeeded')
+  })
