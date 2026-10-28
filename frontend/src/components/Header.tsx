@@ -22,6 +22,21 @@ function ThemeToggle() {
   )
 }
 
+function LangToggle() {
+  const lang = useUiStore((s) => s.lang)
+  return (
+    <button
+      type="button"
+      aria-label="切换语言"
+      title={lang === 'zh' ? '语言：中文' : 'Language: English'}
+      onClick={() => useUiStore.getState().toggleLang()}
+      className="flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      {lang === 'zh' ? 'EN' : '中'}
+    </button>
+  )
+}
+
 function StatusDot({ color, label, title }: { color: string; label: string; title: string }) {
   return (
     <div
@@ -53,6 +68,7 @@ export function Header() {
           Rivus Agent
         </h1>
         <div className="flex items-center gap-2">
+          <LangToggle />
           <ThemeToggle />
           <button
             type="button"

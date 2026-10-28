@@ -46,3 +46,23 @@ describe('Header run-history entry', () => {
     await waitFor(() => expect(screen.getByText(/历史目标/)).toBeTruthy())
   })
 })
+
+describe('Header language toggle', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    useUiStore.setState({ lang: 'zh' })
+  })
+
+  it('toggles zh<->en on click', () => {
+    render(<Header />)
+    // zh 界面上按钮显示目标语言 EN
+    const btn = screen.getByRole('button', { name: '切换语言' })
+    expect(btn.textContent).toBe('EN')
+    fireEvent.click(btn)
+    expect(useUiStore.getState().lang).toBe('en')
+    // en 界面上按钮显示目标语言 中
+    expect(screen.getByRole('button', { name: '切换语言' }).textContent).toBe('中')
+    fireEvent.click(screen.getByRole('button', { name: '切换语言' }))
+    expect(useUiStore.getState().lang).toBe('zh')
+  })
+})
