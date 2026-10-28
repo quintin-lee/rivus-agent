@@ -87,3 +87,41 @@ describe('theme', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 })
+
+const LANG_KEY = 'rivus-lang'
+
+describe('lang', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    useUiStore.setState({ lang: 'zh' })
+  })
+
+  it('default lang is zh', () => {
+    expect(useUiStore.getState().lang).toBe('zh')
+  })
+
+  it('setLang persists to localStorage', () => {
+    useUiStore.getState().setLang('en')
+    expect(useUiStore.getState().lang).toBe('en')
+    expect(localStorage.getItem(LANG_KEY)).toBe('en')
+  })
+
+  it('toggleLang flips zh<->en', () => {
+    useUiStore.getState().toggleLang()
+    expect(useUiStore.getState().lang).toBe('en')
+    useUiStore.getState().toggleLang()
+    expect(useUiStore.getState().lang).toBe('zh')
+  })
+
+  it('initLang reads storage', () => {
+    localStorage.setItem(LANG_KEY, 'en')
+    useUiStore.getState().initLang()
+    expect(useUiStore.getState().lang).toBe('en')
+  })
+
+  it('initLang ignores invalid stored value', () => {
+    localStorage.setItem(LANG_KEY, 'fr')
+    useUiStore.getState().initLang()
+    expect(useUiStore.getState().lang).toBe('zh')
+  })
+})

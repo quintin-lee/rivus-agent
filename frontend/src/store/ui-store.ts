@@ -20,21 +20,29 @@ export function applyTheme(t: Theme) {
   document.documentElement.classList.toggle('dark', isDark(t))
 }
 
+export type Lang = 'zh' | 'en'
+const LANG_KEY = 'rivus-lang'
+
 interface UiState {
   sseStatus: PollStatus
   apiReachable: boolean
   theme: Theme
+  lang: Lang
   setSseStatus: (s: PollStatus) => void
   setApiReachable: (b: boolean) => void
   setTheme: (t: Theme) => void
   cycleTheme: () => void
   initTheme: () => void
+  setLang: (l: Lang) => void
+  toggleLang: () => void
+  initLang: () => void
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
   sseStatus: 'stopped',
   apiReachable: true,
   theme: 'system',
+  lang: 'zh',
   setSseStatus: (s) => set({ sseStatus: s }),
   setApiReachable: (b) => set({ apiReachable: b }),
   setTheme: (t) => {
@@ -64,5 +72,24 @@ export const useUiStore = create<UiState>((set, get) => ({
           if (get().theme === 'system') applyTheme('system')
         })
     }
+  },
+  setLang: (l) => {
+    try {
+      localStorage.setItem(LANG_KEY, l)
+    } catch {
+      // 存储不可用时仅内存态生效
+    }
+    set({ lang: l })
+  },
+  toggleLang: () => get().setLang(get().lang === 'zh' ? 'en' : 'zh'),
+  initLang: () => {
+    let l: Lang = 'zh'
+    try {
+      const stored = localStorage.getItem(LANG_KEY)
+      if (stored === 'zh' || stored === 'en') l = stored
+    } catch {
+      // 忽略
+    }
+    set({ lang: l })
   },
 }))
