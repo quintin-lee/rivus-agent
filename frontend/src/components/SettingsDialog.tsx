@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { t } from '@/i18n'
+import { useUiStore } from '@/store/ui-store'
 import { Settings2 } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import type { ModelSettings } from '@/lib/types'
@@ -17,6 +19,8 @@ import {
 import { ToolsPanel } from './ToolsPanel'
 
 export function SettingsDialog() {
+  // 订阅 lang：切换语言时触发重渲染（t() 内部读取 store 最新值）
+  useUiStore((s) => s.lang)
   const [open, setOpen] = useState(false)
   const [settings, setSettings] = useState<ModelSettings | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
@@ -38,7 +42,7 @@ export function SettingsDialog() {
         setBaseUrl(s.base_url)
         setModel(s.model)
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : '加载失败'))
+      .catch((e) => setError(e instanceof ApiError ? e.message : t('common.loadFailed')))
   }, [open ])
 
   async function save() {

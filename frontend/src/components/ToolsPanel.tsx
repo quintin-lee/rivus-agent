@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { t } from '@/i18n'
+import { useUiStore } from '@/store/ui-store'
 import { Plus, Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import type { MCPServerIn, ToolStatus } from '@/lib/types'
@@ -8,6 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 
 export function ToolsPanel() {
+  // 订阅 lang：切换语言时触发重渲染（t() 内部读取 store 最新值）
+  useUiStore((s) => s.lang)
   const [status, setStatus] = useState<ToolStatus | null>(null)
   const [skillsEnabled, setSkillsEnabled] = useState(false)
   const [mcpEnabled, setMcpEnabled] = useState(false)
@@ -31,7 +35,7 @@ export function ToolsPanel() {
       .getTools()
       .then(applyStatus)
       .catch((e) => {
-        if (!cancelled.current) setError(e instanceof ApiError ? e.message : '加载失败')
+        if (!cancelled.current) setError(e instanceof ApiError ? e.message : t('common.loadFailed'))
       })
     return () => {
       cancelled.current = true
