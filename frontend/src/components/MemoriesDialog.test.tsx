@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoriesDialog } from '@/components/MemoriesDialog'
 import { api } from '@/lib/api'
+import { useUiStore } from '@/store/ui-store'
 import type { Memory } from '@/lib/types'
 
 vi.mock('@/lib/api', () => ({ api: { listMemories: vi.fn() } }))
@@ -49,5 +50,18 @@ describe('MemoriesDialog', () => {
     vi.mocked(api.listMemories).mockResolvedValue([mem('ok', 0)])
     fireEvent.click(screen.getByRole('button', { name: /重试/ }))
     await waitFor(() => expect(screen.getByText(/ok/)).toBeTruthy())
+  })
+})
+
+describe('MemoriesDialog i18n', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    useUiStore.setState({ lang: 'en' })
+  })
+
+  it('renders en empty state', async () => {
+    vi.mocked(api.listMemories).mockResolvedValue([])
+    render(<MemoriesDialog sessionId="s1" sessionTitle="t" open onOpenChange={() => {}} />)
+    await waitFor(() => expect(screen.getByText('(no memories)')).toBeTruthy())
   })
 })

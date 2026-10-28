@@ -4,6 +4,8 @@ import { useSessionStore } from '@/store/session-store'
 import { useRunStore } from '@/store/run-store'
 import { api } from '@/lib/api'
 import { runStatusClasses, truncate, isActiveRunStatus } from '@/lib/status'
+import { t } from '@/i18n'
+import { useUiStore } from '@/store/ui-store'
 import type { Run, RunStatus } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,6 +43,9 @@ export function SessionList() {
   const activateRun = useRunStore((s) => s.activateRun)
   const activeRunId = useRunStore((s) => s.activeRunId)
 
+  // 订阅 lang：切换语言时触发重渲染（t() 内部读取 store 最新值）
+  useUiStore((s) => s.lang)
+
   const [newTitle, setNewTitle] = useState('')
   const [creating, setCreating] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -56,7 +61,7 @@ export function SessionList() {
     try {
       setDeleteRuns(await api.listRuns(id))
     } catch {
-      setDeleteError('无法读取该会话的任务列表')
+      setDeleteError(t('sessionlist.loadRunsFailed'))
     }
   }
 
@@ -68,7 +73,7 @@ export function SessionList() {
       await deleteSession(deleteTarget)
       setDeleteTarget(null)
     } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : '删除失败')
+      setDeleteError(e instanceof Error ? e.message : t('common.deleteFailed'))
     } finally {
       setDeleting(false)
     }
@@ -94,14 +99,14 @@ export function SessionList() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <FolderOpen className="h-3.5 w-3.5" />
-            Sessions
+            {t('sessionlist.title')}
           </div>
           <Button
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-muted-foreground hover:text-foreground"
             onClick={() => void loadSessions()}
-            title="Refresh sessions"
+            title={t('sessionlist.refresh')}
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
@@ -114,7 +119,7 @@ export function SessionList() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') void handleCreate()
             }}
-            placeholder="New session title…"
+            placeholder={t('sessionlist.newPlaceholder')}
             className="h-8 text-xs"
           />
           <Button
@@ -129,7 +134,9 @@ export function SessionList() {
 
         <div className="flex flex-col gap-0.5">
           {sessions.length === 0 && (
-            <div className="px-2 py-1 text-xs text-muted-foreground/70">No sessions</div>
+            <div className="px-2 py-1 text-xs text-muted-foreground/70">
+              {t('sessionlist.noSessions')}
+            </div>
           )}
           {sessions.map((s) => {
             const active = s.session_id === activeSessionId
@@ -154,14 +161,14 @@ export function SessionList() {
                 </button>
                 <button
                   onClick={() => setMemoriesTarget({ id: s.session_id, title: s.title })}
-                  title="会话记忆"
+                  title={t('sessionlist.memoriesTitle')}
                   className="hidden h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground group-hover:flex"
                 >
                   <Brain className="h-3 w-3" />
                 </button>
                 <button
                   onClick={() => void openDelete(s.session_id)}
-                  title="删除会话"
+                  title={t('sessionlist.deleteTitle')}
                   className="mr-1 hidden h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-red-400 group-hover:flex"
                 >
                   <Trash2 className="h-3 w-3" />
@@ -175,7 +182,9 @@ export function SessionList() {
       <div className="flex-1 overflow-y-auto p-3 pt-0">
         <div className="flex flex-col gap-1">
           {runHistory.length === 0 && (
-            <div className="px-2 py-1 text-xs text-muted-foreground/70">No runs</div>
+            <div className="px-2 py-1 text-xs text-muted-foreground/70">
+              {t('sessionlist.noRuns')}
+            </div>
           )}
           {runHistory.map((run) => {
             const active = run.id === activeRunId
@@ -210,27 +219,25 @@ export function SessionList() {
       <Dialog open={deleteTarget !== null} onOpenChange={(v) => !v && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除会话？</DialogTitle>
+            <DialogTitle>{t('sessionlist.deleteConfirmTitle')}</DialogTitle>
             <DialogDescription>
-              该会话及名下 {deleteRuns.length} 个 Run（含事件与审批记录）将被一并删除，不可恢复。
+              {t('sessionlist.deleteConfirmBody', { count: deleteRuns.length })}
             </DialogDescription>
           </DialogHeader>
           {deleteHasActive && (
-            <div className="text-xs text-amber-400">
-              存在运行中的任务，请先取消后再删除。
-            </div>
+            <div className="text-xs text-amber-400">{t('sessionlist.deleteActiveWarn')}</div>
           )}
           {deleteError && <div className="text-xs text-red-400">{deleteError}</div>}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button
               variant="destructive"
               onClick={() => void confirmDelete()}
               disabled={deleting || deleteHasActive}
             >
-              {deleting ? '删除中…' : '删除'}
+              {deleting ? t('common.deleting') : t('common.delete')}
             </Button>
           </DialogFooter>
         </DialogContent>

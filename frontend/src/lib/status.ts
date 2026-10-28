@@ -1,5 +1,6 @@
 import type { RunStatus, StepStatus, EventType, AgentEvent } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { t } from '@/i18n'
 
 export const runStatusClasses: Record<RunStatus, string> = {
   queued: 'bg-muted text-foreground/90 border-border',
@@ -152,8 +153,11 @@ export function eventSummary(e: AgentEvent): string {
       return '…streaming'
     case 'budget.consumed':
       return p.tool_calls != null
-        ? `用量 工具 ${String(p.tool_calls)}/模型 ${String(p.model_calls ?? 0)}`
-        : '用量更新'
+        ? t('status.budgetUsage', {
+            tool: String(p.tool_calls),
+            model: String(p.model_calls ?? 0),
+          })
+        : t('status.budgetUpdated')
     case 'model.failed':
       return 'model call failed'
     case 'step.started':

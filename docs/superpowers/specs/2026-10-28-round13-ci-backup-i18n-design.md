@@ -89,3 +89,20 @@
 - `VACUUM INTO` 与活动写入并发：SQLite 保证快照一致性（读事务），风险低；测试用单连接即可。
 - main.go 分发改动影响现有启动路径：`os.Args[1]` 非 "export" 时走原逻辑，兼容 `-config` 位置参数习惯（flag.Parse 原样执行）。
 - i18n 字典与组件文案漂移：本批仅迁移样本文件，字典键以 touched 文件为准，未迁移文案不受影响。
+
+## 8. 执行偏差回写
+
+### 批2
+
+- `VACUUM INTO ?` 参数绑定在 modernc.org/sqlite v1.60.1 下可用（无需 DSN 回退方案）。
+- export 空会话时 runs/events/memories 序列化为 `[]` 而非 `null`（nil slice JSON 语义修正，commit 918e533）。
+- 真机冒烟确认：export 必须继承 AGENT_DB_PATH 环境变量（默认 cfg.DBPath 与 serve 不同库）；创建会话 API 响应键为 `session_id`。
+- golangci errcheck 要求 os.Stdout.Write 错误显式处理（随 docs 提交 fd8c17d 修复）。
+
+### 批3
+
+- `t()` 通过 `useUiStore.getState().lang` 读取语言（单一事实源，不用模块级变量）；组件以 `useUiStore((s) => s.lang)` 裸订阅触发重渲染（赋值未使用会被 lint 拒绝）。
+- `{name}` 占位用 `split/join` 实现：TS lib 目标低于 es2021，`String.replaceAll` 类型报错（TS2550）。
+- 原为英文的 SessionList 文案（Sessions/New session title…/No runs 等）迁入词典后默认语言变为中文（默认 lang=zh 的一致性结果）；SessionList 测试断言同步更新为新默认文案。
+- 字典补充键：`sessionlist.loadRunsFailed`、`common.deleteFailed`（迁移过程中确认需要）。
+- status.ts 仅迁移 `budget.consumed` 两行（eventSummary 的调用方按自身节奏重渲染，zh 输出字节级不变）；RunsHistoryDialog 的 statusLabel 映射改为 `status.*` 词典键 + 未知状态回退原值。

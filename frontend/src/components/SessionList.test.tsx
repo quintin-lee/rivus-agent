@@ -64,7 +64,7 @@ describe('SessionList', () => {
     const createSession = vi.fn().mockResolvedValue(undefined)
     seedStores({ createSession })
     render(<SessionList />)
-    const input = screen.getByPlaceholderText(/New session title/i) as HTMLInputElement
+    const input = screen.getByPlaceholderText(/新会话标题/i) as HTMLInputElement
     fireEvent.change(input, { target: { value: 'New One' } })
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Enter' })

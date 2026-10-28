@@ -21,8 +21,16 @@ npm run build               # tsc && vite build → dist/
 npm run preview             # 预览构建产物
 npm run lint                # ESLint（v10 flat config）
 npx tsc --noEmit            # 仅类型检查
-npx vitest run              # 单次跑全部测试（25 文件 / 157 用例）
+npx vitest run              # 单次跑全部测试（26 文件 / 169 用例）
 ```
+
+## 国际化（i18n）
+
+内置极简双语机制：`src/i18n/index.ts` 词典 + `t(key, params?)`，语言态在
+`ui-store`（`lang: 'zh' | 'en'`，默认 zh，localStorage `rivus-lang` 持久化），
+Header 的「中/EN」按钮切换。en 缺键回退 zh，zh 缺键回退键名。不引入
+react-i18next；已迁移会话列表/删除弹窗、记忆弹窗、运行历史弹窗与
+`status.ts` 的用量摘要作为样例。
 
 ## Docker
 
@@ -35,7 +43,7 @@ npx vitest run              # 单次跑全部测试（25 文件 / 157 用例）
 
 ```text
 src/
-  components/   # 对话、Run 卡片、审批卡片、会话记忆弹窗、子 agent 执行树、工具调用明细、流式打字指示器、终态失败重新运行、运行历史弹窗、主题切换（light/dark/system，无闪烁）等
+  components/   # 对话、Run 卡片、审批卡片、会话记忆弹窗、子 agent 执行树、工具调用明细、流式打字指示器、终态失败重新运行、运行历史弹窗、主题切换（light/dark/system，无闪烁）、语言切换（中/EN）等
   store/        # Zustand 状态
   lib/          # API/SSE 客户端与工具函数
   App.tsx       # 根布局

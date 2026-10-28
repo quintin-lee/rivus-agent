@@ -21,8 +21,18 @@ npm run build               # tsc && vite build → dist/
 npm run preview             # preview the build output
 npm run lint                # ESLint (v10 flat config)
 npx tsc --noEmit            # type check only
-npx vitest run              # run the full test suite once (25 files / 157 tests)
+npx vitest run              # run the full test suite once (26 files / 169 tests)
 ```
+
+## Internationalization (i18n)
+
+A minimal bilingual mechanism is built in: `src/i18n/index.ts` dictionary +
+`t(key, params?)`, with the language in `ui-store` (`lang: 'zh' | 'en'`,
+default zh, persisted to localStorage `rivus-lang`) and toggled by the 中/EN
+button in the Header. Missing en keys fall back to zh; missing zh keys fall
+back to the key itself. No react-i18next. Migrated as samples: the session
+list/delete dialog, memories dialog, run history dialog, and the usage
+summary in `status.ts`.
 
 ## Docker
 
@@ -35,7 +45,7 @@ the frontend maps `8081→8080` and compose injects `RIVUS_BACKEND=http://backen
 
 ```text
 src/
-  components/   # chat, run cards, approval cards, session memories dialog, subagent tree, tool calls detail, streaming typing indicator, terminal-failed re-run, run history dialog, theme toggle (light/dark/system, no flash), etc.
+  components/   # chat, run cards, approval cards, session memories dialog, subagent tree, tool calls detail, streaming typing indicator, terminal-failed re-run, run history dialog, theme toggle (light/dark/system, no flash), language toggle (zh/en), etc.
   store/        # Zustand state
   lib/          # API/SSE clients and utilities
   App.tsx       # root layout

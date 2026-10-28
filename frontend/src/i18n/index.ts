@@ -8,6 +8,7 @@ const zh: Record<string, string> = {
   'common.retry': '重试',
   'common.refresh': '刷新',
   'common.loadFailed': '加载失败',
+  'common.deleteFailed': '删除失败',
   'common.loading': '加载中…',
 
   'time.justNow': '刚刚',
@@ -15,6 +16,7 @@ const zh: Record<string, string> = {
   'time.hourAgo': '{n} 小时前',
   'time.dayAgo': '{n} 天前',
 
+  'sessionlist.loadRunsFailed': '无法读取该会话的任务列表',
   'sessionlist.title': '会话',
   'sessionlist.refresh': '刷新会话',
   'sessionlist.newPlaceholder': '新会话标题…',
@@ -59,6 +61,7 @@ const en: Record<string, string> = {
   'common.retry': 'Retry',
   'common.refresh': 'Refresh',
   'common.loadFailed': 'Failed to load',
+  'common.deleteFailed': 'Failed to delete',
   'common.loading': 'Loading…',
 
   'time.justNow': 'just now',
@@ -66,6 +69,7 @@ const en: Record<string, string> = {
   'time.hourAgo': '{n} h ago',
   'time.dayAgo': '{n} d ago',
 
+  'sessionlist.loadRunsFailed': 'Failed to load runs for this session',
   'sessionlist.title': 'Sessions',
   'sessionlist.refresh': 'Refresh sessions',
   'sessionlist.newPlaceholder': 'New session title…',
@@ -109,7 +113,7 @@ export function t(key: string, params?: Record<string, string | number>): string
   let s = dict[lang][key] ?? dict.zh[key] ?? key
   if (params) {
     for (const [name, value] of Object.entries(params)) {
-      s = s.replaceAll(`{${name}}`, String(value))
+      s = s.split(`{${name}}`).join(String(value))
     }
   }
   return s
