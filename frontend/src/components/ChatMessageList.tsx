@@ -11,6 +11,7 @@ import { SystemEventsBubble } from '@/components/Messages/SystemEventsBubble'
 import { ApprovalBubble } from '@/components/Messages/ApprovalBubble'
 import { SubagentCard } from '@/components/Messages/SubagentCard'
 import { ToolCallsCard } from '@/components/Messages/ToolCallsCard'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export function ChatMessageList() {
   const runHistory = useRunStore((s) => s.runHistory)
@@ -51,20 +52,24 @@ export function ChatMessageList() {
   }
   if (messages.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card/50 p-8 text-center">
-        <Inbox className="h-5 w-5 text-muted-foreground/60" aria-hidden />
-        <p className="text-sm font-medium">No tasks yet</p>
-        <p className="text-xs text-muted-foreground">Describe a task below to start this session.</p>
-      </div>
+      <ErrorBoundary>
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card/50 p-8 text-center">
+          <Inbox className="h-5 w-5 text-muted-foreground/60" aria-hidden />
+          <p className="text-sm font-medium">No tasks yet</p>
+          <p className="text-xs text-muted-foreground">Describe a task below to start this session.</p>
+        </div>
+      </ErrorBoundary>
     )
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {messages.map((m) => (
-        <Bubble key={m.id} message={m} onRetry={handleRetry} onRerunRun={handleRerun} />
-      ))}
-    </div>
+    <ErrorBoundary>
+      <div className="flex flex-col gap-3">
+        {messages.map((m) => (
+          <Bubble key={m.id} message={m} onRetry={handleRetry} onRerunRun={handleRerun} />
+        ))}
+      </div>
+    </ErrorBoundary>
   )
 }
 
