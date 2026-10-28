@@ -29,6 +29,7 @@ import (
 
 type App struct {
 	cfg         config.Config
+	cfgPath     string
 	log         *slog.Logger
 	srv         *http.Server
 	db          *sql.DB
@@ -41,7 +42,7 @@ func New(cfgPath string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &App{cfg: cfg, log: observability.NewLogger(cfg.LogLevel)}, nil
+	return &App{cfg: cfg, cfgPath: cfgPath, log: observability.NewLogger(cfg.LogLevel)}, nil
 }
 
 func (a *App) Start(ctx context.Context) error {
@@ -126,6 +127,10 @@ func (a *App) Start(ctx context.Context) error {
 		_ = a.manager.SpawnAll(ctx, tc.Servers)
 		_ = registry.Replace("mcp__", mcp.MCPDefinitions(a.manager.Status(), a.manager))
 		a.manager.StartReconciler(ctx, 30*time.Second) // 故障服务器每 30s 自动重连
+	}
+	// config.yaml mcp 段热载：5s 轮询 mtime+size（对 ConfigMap symlink 安全）。
+	if a.cfgPath != "" && cfg.MCP != nil {
+		go a.watchConfigFile(ctx, a.cfgPath, settings, registry, 5*time.Second)
 	}
 	if tc.SkillsEnabled {
 		_ = registry.Remove("invoke_skill")
