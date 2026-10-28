@@ -15,6 +15,11 @@ import (
 func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	owner := ownerOf(r)
 	sessionID := r.URL.Query().Get("session_id")
+	status := r.URL.Query().Get("status")
+	if status != "" && !domain.RunStatus(status).Valid() {
+		writeErr(w, 400, "bad_request", "invalid status", false)
+		return
+	}
 	limit := 50
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -23,7 +28,7 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	// session_id 缺省 = 跨会话历史（仅顶层 run）；存在 = 会话内列表（保持原行为）
 	if sessionID == "" {
-		runs, err := s.tasks.ListRunsByOwner(r.Context(), owner, limit)
+		runs, err := s.tasks.ListRunsByOwner(r.Context(), owner, status, limit)
 		if err != nil {
 			writeErr(w, 500, "internal", "list runs failed", true)
 			return
@@ -31,7 +36,7 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"runs": runs})
 		return
 	}
-	runs, err := s.tasks.ListRunsBySession(r.Context(), owner, sessionID, limit)
+	runs, err := s.tasks.ListRunsBySession(r.Context(), owner, sessionID, status, limit)
 	if err != nil {
 		if err == domain.ErrForbidden || err == domain.ErrBadRequest {
 			writeErr(w, 404, "not_found", "session not found", false)

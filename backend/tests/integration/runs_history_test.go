@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/tests/testutil"
@@ -70,4 +71,65 @@ func TestListRunsAcrossSessions(t *testing.T) {
 	if !got[id1] || !got["child_x"] {
 		t.Fatalf("session-scoped list unchanged behavior: want %s and child_x, got %v", id1, got)
 	}
+}
+
+func TestListRunsStatusFilter(t *testing.T) {
+	h := testutil.New(t)
+	ses := h.CreateSession("sf")
+	id1, _, _ := h.CreateRun(ses, map[string]any{"goal": "ok-run"}, "sf-ok")
+	// 让 run1 成功
+	h.Model.EnqueueText("done")
+	h.WaitTerminal(id1, 30*time.Second)
+	// run2 走预算上限失败
+	payload := map[string]any{"goal": "bad-run", "budget": map[string]any{"max_duration_seconds": 120,
+		"max_model_calls": 10, "max_tool_calls": 10, "max_iterations": 6, "max_output_bytes": 10}}
+	h.Model.EnqueueText("this output is far longer than ten bytes for sure")
+	id2, _, _ := h.CreateRun(ses, payload, "sf-bad")
+	run2 := h.WaitTerminal(id2, 30*time.Second)
+	if run2.Status != domain.RunFailed {
+		t.Fatalf("run2 = %s, want failed", run2.Status)
+	}
+
+	// 非法 status → 400
+	code, _ := h.Do("GET", "/api/v1/runs?status=bogus", nil, nil)
+	if code != 400 {
+		t.Fatalf("invalid status code = %d, want 400", code)
+	}
+	// 过滤 failed 只回败者
+	code, body := h.Do("GET", "/api/v1/runs?status=failed", nil, nil)
+	if code != 200 {
+		t.Fatalf("filtered code = %d", code)
+	}
+	var out struct {
+		Runs []domain.Run `json:"runs"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Runs) != 1 || out.Runs[0].ID != id2 {
+		t.Fatalf("failed filter = %v, want [%s]", idsOf(out.Runs), id2)
+	}
+	// 无过滤两者都有
+	code, body = h.Do("GET", "/api/v1/runs", nil, nil)
+	if code != 200 {
+		t.Fatalf("unfiltered code = %d", code)
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, r := range out.Runs {
+		found[r.ID] = true
+	}
+	if !found[id1] || !found[id2] {
+		t.Fatalf("unfiltered missing runs: %v vs {%s,%s}", found, id1, id2)
+	}
+}
+
+func idsOf(runs []domain.Run) []string {
+	out := make([]string, 0, len(runs))
+	for _, r := range runs {
+		out = append(out, r.ID)
+	}
+	return out
 }
