@@ -47,7 +47,10 @@ func buildExportPayload(db *sql.DB, sessionID string) (*exportPayload, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list runs: %w", err)
 	}
-	payload := &exportPayload{SessionID: sessionID, Runs: runs}
+	if runs == nil {
+		runs = []domain.Run{}
+	}
+	payload := &exportPayload{SessionID: sessionID, Runs: runs, Events: []domain.AgentEvent{}, Memories: []domain.Memory{}}
 	for _, r := range runs {
 		evs, err := events.ListAfter(ctx, r.ID, 0, -1) // -1 = 不限制
 		if err != nil {
@@ -58,6 +61,9 @@ func buildExportPayload(db *sql.DB, sessionID string) (*exportPayload, error) {
 	mems, err := memories.Latest(ctx, sessionID, 1<<20)
 	if err != nil {
 		return nil, fmt.Errorf("list memories: %w", err)
+	}
+	if mems == nil {
+		mems = []domain.Memory{}
 	}
 	payload.Memories = mems
 	return payload, nil
