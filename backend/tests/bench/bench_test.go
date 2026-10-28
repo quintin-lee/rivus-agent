@@ -3,11 +3,14 @@ package bench
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"rivus-agent-backend/internal/domain"
+	"rivus-agent-backend/internal/runtime"
 	"rivus-agent-backend/internal/store"
 	"rivus-agent-backend/internal/tool"
 	"rivus-agent-backend/internal/tool/builtin"
@@ -101,4 +104,134 @@ func TestLoadConcurrentCreateRuns(t *testing.T) {
 		}
 	}
 	t.Logf("%d concurrent runs finished in %v", n, time.Since(start))
+}
+
+// 幂等缓存命中开销（同 (runID, toolCallID) 重复执行）。
+func BenchmarkExecutorIdempotentHit(b *testing.B) {
+	reg := tool.NewRegistry()
+	def := tool.Definition{
+		Name: "echo_bench", Description: "echo", Risk: tool.RiskRead,
+		Approval: tool.ApprovalNever, Idempotent: true,
+		TimeoutMs: 1000, MaxResultBytes: 1024,
+		Handler: func(_ context.Context, _ json.RawMessage) (string, error) { return "ok", nil },
+	}
+	if err := reg.Register(def); err != nil {
+		b.Fatal(err)
+	}
+	ex := tool.NewExecutor(reg)
+	req := tool.ExecRequest{RunID: "r", ToolName: "echo_bench", Args: json.RawMessage(`{}`)}
+	ctx := context.Background()
+	if _, err := ex.Execute(ctx, req); err != nil { // 预热缓存
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := ex.Execute(ctx, req); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// 预算门禁检查开销（未超限路径，含互斥锁）。
+func BenchmarkBudgetOverBudget(b *testing.B) {
+	tr := runtime.NewBudgetTracker(domain.Budget{MaxModelCalls: 1000, MaxToolCalls: 1000,
+		MaxIterations: 1000, MaxOutputBytes: 1 << 30, MaxDurationSeconds: 3600})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tr.AddModelCall()
+		tr.AddOutput(64)
+		if _, hit := tr.OverBudget(); hit {
+			b.Fatal("unexpected budget trip")
+		}
+	}
+}
+
+// benchRun 构造一条可落库的 run（FK：需先建 session）。
+func benchRun(b *testing.B, tasks *store.TaskRepo, ctx context.Context, ses, id, goal string) {
+	b.Helper()
+	r := &domain.Run{ID: id, SessionID: ses, OwnerID: "u1", Status: domain.RunQueued,
+		Mode: "react", Goal: goal,
+		Budget:  domain.Budget{MaxDurationSeconds: 60, MaxModelCalls: 5, MaxToolCalls: 5, MaxIterations: 3, MaxOutputBytes: 1000},
+		Attempt: 1}
+	if err := tasks.CreateRun(ctx, r); err != nil {
+		b.Fatal(err)
+	}
+}
+
+// 事件读：预写 100 条后 ListAfter 全量读（文件 DB，8 连接）。
+func BenchmarkEventsListAfter(b *testing.B) {
+	db, err := store.Open(filepath.Join(b.TempDir(), "bench.db"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	tasks := store.NewTaskRepo(db)
+	ev := store.NewEventRepo(db)
+	ctx := context.Background()
+	ses, err := tasks.CreateSession(ctx, "u1", "bench-read")
+	if err != nil {
+		b.Fatal(err)
+	}
+	benchRun(b, tasks, ctx, ses, "run_read", "read")
+	for i := 0; i < 100; i++ {
+		if _, err := ev.Append(ctx, "run_read", domain.EvtToolCompleted, `{"n":1}`, "normal"); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := ev.ListAfter(ctx, "run_read", 0, 100); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// 顶层 run 列表读（owner 视角，R9）。
+func BenchmarkListRunsByOwner(b *testing.B) {
+	db, err := store.Open(filepath.Join(b.TempDir(), "bench.db"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	tasks := store.NewTaskRepo(db)
+	ctx := context.Background()
+	ses, err := tasks.CreateSession(ctx, "u1", "bench-list")
+	if err != nil {
+		b.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		benchRun(b, tasks, ctx, ses, fmt.Sprintf("run_list_%02d", i), "list")
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := tasks.ListRunsByOwner(ctx, "u1", 50); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// SQLite 混合读写（文件 DB 8 连接，WAL 并发，8 worker）。
+func BenchmarkSQLiteMixedRW(b *testing.B) {
+	db, err := store.Open(filepath.Join(b.TempDir(), "bench.db"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	tasks := store.NewTaskRepo(db)
+	ev := store.NewEventRepo(db)
+	ctx := context.Background()
+	ses, err := tasks.CreateSession(ctx, "u1", "bench-mixed")
+	if err != nil {
+		b.Fatal(err)
+	}
+	benchRun(b, tasks, ctx, ses, "run_mixed", "mixed")
+	b.ResetTimer()
+	b.SetParallelism(8)
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			if _, err := ev.Append(ctx, "run_mixed", domain.EvtToolCompleted, `{"n":1}`, "normal"); err != nil {
+				b.Fatal(err)
+			}
+			if _, err := tasks.GetRun(ctx, "u1", "run_mixed"); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
