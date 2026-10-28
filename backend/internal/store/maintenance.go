@@ -37,6 +37,21 @@ func Checkpoint(db *sql.DB) error {
 	return nil
 }
 
+// Backup 用 VACUUM INTO 生成一致性快照到 destPath。目标存在时报错（不覆盖）；
+// :memory: 源不支持（无文件可写）。
+func Backup(db *sql.DB, destPath string) error {
+	if dbFilePath(db) == "" {
+		return fmt.Errorf("backup unsupported for in-memory database")
+	}
+	if _, err := os.Stat(destPath); err == nil {
+		return fmt.Errorf("backup destination already exists: %s", destPath)
+	}
+	if _, err := db.Exec("VACUUM INTO ?", destPath); err != nil {
+		return fmt.Errorf("vacuum into: %w", err)
+	}
+	return nil
+}
+
 func dbFilePath(db *sql.DB) string {
 	rows, err := db.Query("PRAGMA database_list")
 	if err != nil {
