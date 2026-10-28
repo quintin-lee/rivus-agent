@@ -181,6 +181,11 @@ tests/
 - Lint gate: `golangci-lint run ./...` (see `.golangci.yml`; enforced by the CI lint job); frontend `npm run lint` (eslint v10 flat config).
 - DB maintenance: startup logs `db stats` (page count/size, WAL bytes); graceful shutdown runs `wal_checkpoint(TRUNCATE)` + `PRAGMA optimize` before closing the connection (`store.Stats` / `store.Checkpoint`).
 
+## Backup & Export
+
+- Online backup: `store.Backup(db, destPath)` produces a consistent snapshot via `VACUUM INTO`; it refuses to overwrite an existing destination; unsupported for `:memory:` databases.
+- Session export: `agentd export -session <id> [-o out.json]` dumps one session's runs / events / memories as JSON (stdout by default; same env vars as serve mode, e.g. `AGENT_DB_PATH`); runs are capped at 100 per session — use the backup path beyond that.
+
 ## Notes
 
 - Eino is pinned to stable `v0.9.21`, no alphas; dependency upgrades must pass tool calling, streaming, and interrupt-recovery regressions.

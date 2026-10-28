@@ -110,7 +110,10 @@ func runExport(args []string) {
 		os.Exit(1)
 	}
 	if *out == "" {
-		os.Stdout.Write(data)
+		if _, err := os.Stdout.Write(data); err != nil {
+			fmt.Fprintf(os.Stderr, "agentd export: write stdout: %v\n", err)
+			os.Exit(1)
+		}
 		fmt.Println()
 		return
 	}

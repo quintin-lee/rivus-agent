@@ -181,6 +181,11 @@ tests/
 - Lint 门禁：`golangci-lint run ./...`（配置见 `.golangci.yml`，CI lint job 同步执行）；前端 `npm run lint`（eslint v10 flat config）。
 - DB 维护：启动时输出 `db stats` 日志（页数/页大小/WAL 字节）；优雅退出先 `wal_checkpoint(TRUNCATE)` + `PRAGMA optimize` 再关闭连接（`store.Stats` / `store.Checkpoint`）。
 
+## 备份与导出
+
+- 在线备份：`store.Backup(db, destPath)` 基于 `VACUUM INTO` 生成一致性快照；目标文件已存在时报错（不覆盖）；`:memory:` 数据库不支持。
+- 会话导出：`agentd export -session <id> [-o out.json]` 将单个会话的 runs / events / memories 导出为 JSON（缺省写 stdout，`AGENT_DB_PATH` 等环境变量与 serve 模式一致）；单会话 run 数上限 100，超出请用备份方式。
+
 ## 说明
 
 - Eino 锁定 `v0.9.21` 稳定版，不追 alpha；升级依赖必须跑通工具调用、流式输出、中断恢复回归。
