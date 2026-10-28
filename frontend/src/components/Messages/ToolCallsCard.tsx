@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Wrench } from 'lucide-react'
+import { t } from '@/i18n'
+import { useUiStore } from '@/store/ui-store'
 
 type ToolsMessage = {
   kind: 'system-tools'
@@ -10,6 +12,7 @@ type ToolsMessage = {
 
 export function ToolCallsCard({ message }: { message: ToolsMessage }) {
   const [open, setOpen] = useState(false)
+  useUiStore((s) => s.lang)
   if (message.calls.length === 0) return null
   return (
     <div className="rounded-lg border border-border bg-card/60 px-3 py-2">
@@ -19,7 +22,7 @@ export function ToolCallsCard({ message }: { message: ToolsMessage }) {
       >
         {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         <Wrench className="h-3.5 w-3.5" />
-        <span>工具调用 ×{message.calls.length}</span>
+        <span>{t('toolcalls.cardTitle', { n: message.calls.length })}</span>
       </button>
       {open && (
         <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2">

@@ -64,7 +64,7 @@ export function SettingsDialog() {
       setModel(s.model)
       setSaved(true)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '保存失败')
+      setError(e instanceof ApiError ? e.message : t('settings.saveFailed'))
     } finally {
       setBusy(false)
     }
@@ -131,10 +131,10 @@ export function SettingsDialog() {
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            关闭
+            {t('common.close')}
           </Button>
           <Button onClick={() => void save()} disabled={busy}>
-            {busy ? '保存中…' : '保存'}
+            {busy ? t('settings.saving') : t('settings.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

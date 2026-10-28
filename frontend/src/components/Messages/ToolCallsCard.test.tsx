@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ToolCallsCard } from '@/components/Messages/ToolCallsCard'
+import { useUiStore } from '@/store/ui-store'
 
 const calls = [
   { tool: 'file_search', args: '{"query":"x"}', output: 'line1\nline2', seq: 1 },
@@ -21,5 +22,11 @@ describe('ToolCallsCard', () => {
       <ToolCallsCard message={{ kind: 'system-tools', id: 'x', runId: 'r1', calls: [] }} />,
     )
     expect(container.firstChild).toBeNull()
+  })
+
+  it('renders english title when lang is en', () => {
+    useUiStore.setState({ lang: 'en' })
+    render(<ToolCallsCard message={{ kind: 'system-tools', id: 'x', runId: 'r1', calls }} />)
+    expect(screen.getByText(/Tool calls ×2/)).toBeTruthy()
   })
 })

@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Bot, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
+import { t } from '@/i18n'
+import { useUiStore } from '@/store/ui-store'
 import { api } from '@/lib/api'
 import { runStatusClasses, truncate } from '@/lib/status'
 import type { Run } from '@/lib/types'
@@ -22,6 +24,7 @@ function durationSec(r: Run): number {
 
 export function SubagentCard({ message }: { message: SubagentMessage }) {
   const [open, setOpen] = useState(false)
+  useUiStore((s) => s.lang)
   const [children, setChildren] = useState<Run[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -37,7 +40,7 @@ export function SubagentCard({ message }: { message: SubagentMessage }) {
           .sort((a, b) => a.created_at - b.created_at),
       )
     } catch (e) {
-      setError(e instanceof Error ? e.message : '加载失败')
+      setError(e instanceof Error ? e.message : t('common.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -58,12 +61,12 @@ export function SubagentCard({ message }: { message: SubagentMessage }) {
         >
           {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           <Bot className="h-3.5 w-3.5" />
-          <span>子 agent ×{message.count}</span>
+          <span>{t('subagent.cardTitle', { n: message.count })}</span>
         </button>
         {open && (
           <button
             onClick={() => void load()}
-            title="刷新"
+            title={t('common.refresh')}
             className="text-muted-foreground/70 hover:text-foreground"
           >
             <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} />
