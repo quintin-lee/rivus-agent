@@ -29,6 +29,12 @@ func (f *HTTPTransportFactory) New(_ context.Context, spec ServerSpec) (Transpor
 	return newHTTPTransport(f.client, spec)
 }
 
+// NewHTTPTransport builds a standalone HTTP transport with the default client
+// (convenience for tests and direct use).
+func NewHTTPTransport(_ context.Context, spec ServerSpec) (*httpTransport, error) {
+	return newHTTPTransport(&http.Client{Timeout: httpCallTimeout}, spec)
+}
+
 // httpTransport: WriteLine POSTs the request; ReadLine returns the full
 // response. One write + one read per rpc, matching client.rpc's synchronous
 // model. The next WriteLine after a read starts a fresh request.
