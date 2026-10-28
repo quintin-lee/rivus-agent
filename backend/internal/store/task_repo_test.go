@@ -143,7 +143,7 @@ func TestListRunsByOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runs, err := tasks.ListRunsByOwner(ctx, "u1", 100)
+	runs, err := tasks.ListRunsByOwner(ctx, "u1", "", 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,11 +168,68 @@ func TestListRunsByOwner(t *testing.T) {
 	}
 
 	// limit 钳制
-	small, err := tasks.ListRunsByOwner(ctx, "u1", 0)
+	small, err := tasks.ListRunsByOwner(ctx, "u1", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(small) != 3 { // 3 条 < 50，钳制不影响结果
 		t.Fatalf("limit=0 should still return all 3, got %d", len(small))
 	}
+}
+
+func TestListRunsFilterByStatus(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	ses, err := tasks.CreateSession(ctx, "u1", "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupRun(t, tasks, ses, "run_ok", domain.RunSucceeded)
+	setupRun(t, tasks, ses, "run_bad", domain.RunFailed)
+	setupRun(t, tasks, ses, "run_gone", domain.RunCancelled)
+
+	// owner 分支：status 过滤
+	got, err := tasks.ListRunsByOwner(ctx, "u1", string(domain.RunFailed), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "run_bad" {
+		t.Fatalf("owner failed filter = %v, want [run_bad]", ids(got))
+	}
+	// owner 分支：空 status = 不过滤
+	got, err = tasks.ListRunsByOwner(ctx, "u1", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("owner no filter = %d runs, want 3", len(got))
+	}
+	// session 分支：status 过滤 + 空参
+	got, err = tasks.ListRunsBySession(ctx, "u1", ses, string(domain.RunCancelled), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "run_gone" {
+		t.Fatalf("session cancelled filter = %v, want [run_gone]", ids(got))
+	}
+	got, err = tasks.ListRunsBySession(ctx, "u1", ses, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("session no filter = %d runs, want 3", len(got))
+	}
+}
+
+func ids(runs []domain.Run) []string {
+	out := make([]string, 0, len(runs))
+	for _, r := range runs {
+		out = append(out, r.ID)
+	}
+	return out
 }

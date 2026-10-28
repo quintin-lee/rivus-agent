@@ -216,20 +216,26 @@ func (r *TaskRepo) ListChildrenByRun(ctx context.Context, parentRunID string) ([
 	return out, rows.Err()
 }
 
-func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID string, limit int) ([]domain.Run, error) {
+func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, status string, limit int) ([]domain.Run, error) {
 	if _, _, _, _, err := r.GetSession(ctx, ownerID, sessionID); err != nil {
 		return nil, err
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, session_id, owner_id, status, mode, goal,
+	q := `SELECT id, session_id, owner_id, status, mode, goal,
 		        constraints_json, success_criteria_json, budget_json,
 		        checkpoint_id, attempt, idempotency_key, started_at, finished_at,
 		        error_code, error_summary, result_json, created_at, updated_at
-	         FROM runs WHERE session_id = ? AND owner_id = ? ORDER BY created_at DESC LIMIT ?`,
-		sessionID, ownerID, limit)
+	         FROM runs WHERE session_id = ? AND owner_id = ?`
+	args := []any{sessionID, ownerID}
+	if status != "" {
+		q += ` AND status = ?`
+		args = append(args, status)
+	}
+	q += ` ORDER BY created_at DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -267,17 +273,24 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID str
 }
 
 // ListRunsByOwner 返回该 owner 全部顶层 run（排除子 agent run），跨会话，按创建时间倒序。
-func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID string, limit int) ([]domain.Run, error) {
+// status 非空时仅返回该状态的 run。
+func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID, status string, limit int) ([]domain.Run, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, session_id, owner_id, status, mode, goal,
+	q := `SELECT id, session_id, owner_id, status, mode, goal,
 		        constraints_json, success_criteria_json, budget_json,
 		        checkpoint_id, attempt, idempotency_key, started_at, finished_at,
 		        error_code, error_summary, result_json, created_at, updated_at
-	         FROM runs WHERE owner_id = ? AND parent_run_id IS NULL ORDER BY created_at DESC LIMIT ?`,
-		ownerID, limit)
+	         FROM runs WHERE owner_id = ? AND parent_run_id IS NULL`
+	args := []any{ownerID}
+	if status != "" {
+		q += ` AND status = ?`
+		args = append(args, status)
+	}
+	q += ` ORDER BY created_at DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

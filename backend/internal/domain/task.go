@@ -24,6 +24,17 @@ func (s RunStatus) Terminal() bool {
 	}
 }
 
+// Valid 报告 s 是否为已知的 8 个运行状态之一（HTTP 入参校验用）。
+func (s RunStatus) Valid() bool {
+	switch s {
+	case RunQueued, RunRunning, RunWaitingApproval, RunPaused,
+		RunSucceeded, RunFailed, RunCancelled, RunTimedOut:
+		return true
+	default:
+		return false
+	}
+}
+
 // ValidTransition 控制合法状态转换，终态不可直接改回 running。
 func ValidTransition(from, to RunStatus) bool {
 	if from.Terminal() {
