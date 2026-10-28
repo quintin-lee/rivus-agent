@@ -56,4 +56,8 @@
 
 ## 6. 执行偏差
 
-（执行后回写）
+- 批1 冒烟教训：`pkill -f bin/agentd` 会卡死常驻 shell（超时）——改用 `nohup` 启动时捕获的精确 PID `kill <PID>`；`agentd backup` 调用时同样必须带 `AGENT_DB_PATH` 环境变量（否则 config.Load 走默认路径，R13 同坑）。
+- 批3 幂等场景：重放 POST 短路不消耗 mock 输出（PostCheck 断言 model calls == 1）；Script 返回固定幂等键供 PostCheck 重放（framework.go:84 语义）。
+- 批3 审批 409 场景首稿漏种 a.txt（file_edit 找不到 old_text → 工具失败 → run failed）——补 `writeFileRel` 后通过；409 + conflict 断言按预期命中。
+- 批3 tasks 拒绝走 tool.completed（handler 返回字符串结果，工具"成功"），与设计一致；children == 0 断言确认拒绝发生在子 run 创建之前。
+- ErrorBoundary 测试时序：点击「重试」时若 children 仍是抛错元素会二次抛错（React 以旧 children 重渲染）——正确顺序为先 rerender 成不抛错的子树（兜底期间 children 不渲染、不会抛）再点击重试。

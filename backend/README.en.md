@@ -185,7 +185,7 @@ tests/
 
 ## Backup & Export
 
-- Online backup: `store.Backup(db, destPath)` produces a consistent snapshot via `VACUUM INTO`; it refuses to overwrite an existing destination; unsupported for `:memory:` databases.
+- Online backup: `store.Backup(db, destPath)` produces a consistent snapshot via `VACUUM INTO`; it refuses to overwrite an existing destination; unsupported for `:memory:` databases. CLI equivalent: `agentd backup -o snapshot.db` (same env vars as serve mode, e.g. `AGENT_DB_PATH`).
 - Session export: `agentd export -session <id> [-o out.json]` dumps one session's runs / events / memories as JSON (stdout by default; same env vars as serve mode, e.g. `AGENT_DB_PATH`); runs are capped at 100 per session — use the backup path beyond that.
 
 ## Notes

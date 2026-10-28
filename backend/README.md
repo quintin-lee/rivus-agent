@@ -185,7 +185,7 @@ tests/
 
 ## 备份与导出
 
-- 在线备份：`store.Backup(db, destPath)` 基于 `VACUUM INTO` 生成一致性快照；目标文件已存在时报错（不覆盖）；`:memory:` 数据库不支持。
+- 在线备份：`store.Backup(db, destPath)` 基于 `VACUUM INTO` 生成一致性快照；目标文件已存在时报错（不覆盖）；`:memory:` 数据库不支持。CLI 等价：`agentd backup -o snapshot.db`（`AGENT_DB_PATH` 等环境变量与 serve 模式一致）。
 - 会话导出：`agentd export -session <id> [-o out.json]` 将单个会话的 runs / events / memories 导出为 JSON（缺省写 stdout，`AGENT_DB_PATH` 等环境变量与 serve 模式一致）；单会话 run 数上限 100，超出请用备份方式。
 
 ## 说明
