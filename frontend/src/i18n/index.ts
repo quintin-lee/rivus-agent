@@ -49,6 +49,14 @@ const zh: Record<string, string> = {
   'status.timed_out': '超时',
   'status.budgetUsage': '用量 工具 {tool}/模型 {model}',
   'status.budgetUpdated': '用量更新',
+  'rundetail.title': '运行详情',
+  'rundetail.steps': '执行步骤',
+  'rundetail.toolCalls': '工具调用',
+  'rundetail.approvals': '审批记录',
+  'rundetail.budget': '预算用量',
+  'rundetail.emptySteps': '（无步骤记录）',
+  'rundetail.emptyToolCalls': '（无工具调用）',
+  'rundetail.emptyApprovals': '（无审批记录）',
 
   // 仅供测试的 zh-only 键
   'i18n.test.zhonly': '仅中文',
@@ -102,6 +110,14 @@ const en: Record<string, string> = {
   'status.timed_out': 'Timed out',
   'status.budgetUsage': 'Usage tool {tool}/model {model}',
   'status.budgetUpdated': 'Usage updated',
+  'rundetail.title': 'Run detail',
+  'rundetail.steps': 'Steps',
+  'rundetail.toolCalls': 'Tool calls',
+  'rundetail.approvals': 'Approvals',
+  'rundetail.budget': 'Budget usage',
+  'rundetail.emptySteps': '(no steps)',
+  'rundetail.emptyToolCalls': '(no tool calls)',
+  'rundetail.emptyApprovals': '(no approvals)',
 
   // i18n.test.zhonly deliberately absent from en — exercises fallback.
 }

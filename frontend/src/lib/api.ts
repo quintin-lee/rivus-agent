@@ -1,6 +1,7 @@
 import { API_BASE, OWNER_ID } from '@/App.config'
 import type {
   AgentEvent,
+  Approval,
   CreateRunReq,
   Memory,
   ModelSettings,
@@ -162,6 +163,14 @@ class ApiClient {
 
   async cancelRun(id: string): Promise<void> {
     await this.request('POST', `/api/v1/runs/${encodeURIComponent(id)}/cancel`, {})
+  }
+
+  async listApprovals(runId: string): Promise<Approval[]> {
+    const data = await this.request<{ approvals: Approval[] }>(
+      'GET',
+      `/api/v1/runs/${encodeURIComponent(runId)}/approvals`,
+    )
+    return data.approvals ?? []
   }
 
   async resumeRun(id: string): Promise<void> {
