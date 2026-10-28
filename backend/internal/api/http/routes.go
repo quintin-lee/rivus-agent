@@ -26,4 +26,5 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /readyz", s.handleReady)
 	s.mux.HandleFunc("GET /version", s.handleVersion)
 	s.mux.Handle("/metrics", expvar.Handler())
+	s.mux.HandleFunc("GET /metrics/prometheus", s.handlePromMetrics)
 }
