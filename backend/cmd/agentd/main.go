@@ -13,9 +13,13 @@ import (
 )
 
 func main() {
-	// 子命令分发：`agentd export ...` 走导出，其余按服务模式启动。
+	// 子命令分发：`agentd export`/`agentd backup` 走运维子命令，其余按服务模式启动。
 	if len(os.Args) > 1 && os.Args[1] == "export" {
 		runExport(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "backup" {
+		runBackup(os.Args[2:])
 		return
 	}
 	runServe()
