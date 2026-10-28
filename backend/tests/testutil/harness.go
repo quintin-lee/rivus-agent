@@ -227,6 +227,14 @@ func buildHarness(t TB, extraTools []tool.Definition, provider httpapi.ToolConfi
 			[]byte("description: demo skill\nversion: v1\n\n# demo\nDEMO SKILL BODY\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		// references/ 子文件：invoke_skill reference 参数的评估覆盖（R14）。
+		if err := os.MkdirAll(filepath.Join(skillDir, "demo", "references"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "demo", "references", "cheatsheet.md"),
+			[]byte("# cheatsheet\nR14-CHEATSHEET-MARKER\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		loader := skill.NewLoader(skillDir)
 		_ = loader.Refresh()
 		if err := registry.Register(skill.InvokeSkill(loader, 32*1024)); err != nil {
