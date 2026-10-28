@@ -64,6 +64,7 @@ const zh: Record<string, string> = {
   'rundetail.emptySteps': '（无步骤记录）',
   'rundetail.emptyToolCalls': '（无工具调用）',
   'rundetail.emptyApprovals': '（无审批记录）',
+  'error.boundary': '页面出错了，请重试',
 
   // 仅供测试的 zh-only 键
   'i18n.test.zhonly': '仅中文',
@@ -132,6 +133,7 @@ const en: Record<string, string> = {
   'rundetail.emptySteps': '(no steps)',
   'rundetail.emptyToolCalls': '(no tool calls)',
   'rundetail.emptyApprovals': '(no approvals)',
+  'error.boundary': 'Something went wrong. Please retry.',
 
   // i18n.test.zhonly deliberately absent from en — exercises fallback.
 }
