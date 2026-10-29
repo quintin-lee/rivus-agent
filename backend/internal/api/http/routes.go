@@ -11,6 +11,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}", s.handleGetSession)
 	s.mux.HandleFunc("GET /api/v1/sessions/{id}/memories", s.handleListMemories)
 	s.mux.HandleFunc("DELETE /api/v1/sessions/{id}", s.handleDeleteSession)
+	s.mux.HandleFunc("PATCH /api/v1/sessions/{id}", s.handleRenameSession)
 	s.mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	s.mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	s.mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)

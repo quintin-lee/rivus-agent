@@ -2,10 +2,12 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"rivus-agent-backend/internal/domain"
+	"rivus-agent-backend/internal/service"
 )
 
 type createSessionReq struct {
@@ -28,6 +30,35 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	owner, title, ca, ua, err := s.tasks.GetSession(r.Context(), ownerOf(r), id)
+	if err != nil {
+		writeErr(w, 404, "not_found", "session not found", false)
+		return
+	}
+	_ = owner
+	writeJSON(w, 200, map[string]any{"session_id": id, "title": title, "created_at": ca, "updated_at": ua})
+}
+
+type renameSessionReq struct {
+	Title string `json:"title"`
+}
+
+// handleRenameSession 重命名会话：空 title → 400；不存在/非属主 → 404；成功回读返回会话全量。
+func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var in renameSessionReq
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+		writeErr(w, 400, "bad_request", "invalid body", false)
+		return
+	}
+	if err := s.sessions.Rename(r.Context(), ownerOf(r), id, in.Title); err != nil {
+		if errors.Is(err, service.ErrEmptyTitle) {
+			writeErr(w, 400, "bad_request", "title is empty", false)
+			return
+		}
+		writeErr(w, 404, "not_found", "session not found", false)
+		return
+	}
 	owner, title, ca, ua, err := s.tasks.GetSession(r.Context(), ownerOf(r), id)
 	if err != nil {
 		writeErr(w, 404, "not_found", "session not found", false)
