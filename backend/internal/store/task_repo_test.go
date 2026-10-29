@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -147,7 +148,7 @@ func TestListRunsByOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runs, err := tasks.ListRunsByOwner(ctx, "u1", "", 100, 0)
+	runs, err := tasks.ListRunsByOwner(ctx, "u1", "", "", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +173,7 @@ func TestListRunsByOwner(t *testing.T) {
 	}
 
 	// limit 钳制
-	small, err := tasks.ListRunsByOwner(ctx, "u1", "", 0, 0)
+	small, err := tasks.ListRunsByOwner(ctx, "u1", "", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +199,7 @@ func TestListRunsFilterByStatus(t *testing.T) {
 	setupRun(t, tasks, ses, "run_gone", domain.RunCancelled)
 
 	// owner 分支：status 过滤
-	got, err := tasks.ListRunsByOwner(ctx, "u1", string(domain.RunFailed), 0, 0)
+	got, err := tasks.ListRunsByOwner(ctx, "u1", string(domain.RunFailed), "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +207,7 @@ func TestListRunsFilterByStatus(t *testing.T) {
 		t.Fatalf("owner failed filter = %v, want [run_bad]", ids(got))
 	}
 	// owner 分支：空 status = 不过滤
-	got, err = tasks.ListRunsByOwner(ctx, "u1", "", 0, 0)
+	got, err = tasks.ListRunsByOwner(ctx, "u1", "", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,14 +215,14 @@ func TestListRunsFilterByStatus(t *testing.T) {
 		t.Fatalf("owner no filter = %d runs, want 3", len(got))
 	}
 	// session 分支：status 过滤 + 空参
-	got, err = tasks.ListRunsBySession(ctx, "u1", ses, string(domain.RunCancelled), 0, 0)
+	got, err = tasks.ListRunsBySession(ctx, "u1", ses, string(domain.RunCancelled), "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].ID != "run_gone" {
 		t.Fatalf("session cancelled filter = %v, want [run_gone]", ids(got))
 	}
-	got, err = tasks.ListRunsBySession(ctx, "u1", ses, "", 0, 0)
+	got, err = tasks.ListRunsBySession(ctx, "u1", ses, "", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,5 +363,61 @@ func TestListSessionsOffset(t *testing.T) {
 	got, err = tasks.ListSessions(ctx, "u1", "", 2, 5)
 	if err != nil || len(got) != 0 {
 		t.Fatalf("beyond: n=%d err=%v", len(got), err)
+	}
+}
+
+func TestListRunsSearch(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	ses, err := tasks.CreateSession(ctx, "u1", "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mkRun := func(id, goal string) {
+		run := &domain.Run{ID: id, SessionID: ses, OwnerID: "u1", Status: domain.RunSucceeded,
+			Mode: "react", Goal: goal,
+			Budget:  domain.Budget{MaxDurationSeconds: 60, MaxModelCalls: 5, MaxToolCalls: 5, MaxIterations: 3, MaxOutputBytes: 1000},
+			Attempt: 1}
+		if err := tasks.CreateRun(ctx, run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkRun("run_a", "Alpha 任务")
+	mkRun("run_b", "beta notes")
+
+	cases := []struct {
+		name string
+		q    string
+		want []string
+	}{
+		{"blank q returns all", "   ", []string{"run_b", "run_a"}},
+		{"case-insensitive hit", "alpha", []string{"run_a"}},
+		{"uppercase term hits lowercase", "BETA", []string{"run_b"}},
+		{"miss returns empty", "zzz", []string{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+"/owner", func(t *testing.T) {
+			got, err := tasks.ListRunsByOwner(ctx, "u1", "", tc.q, 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(ids(got), ",") != strings.Join(tc.want, ",") {
+				t.Fatalf("owner search %q = %v, want %v", tc.q, ids(got), tc.want)
+			}
+		})
+		t.Run(tc.name+"/session", func(t *testing.T) {
+			got, err := tasks.ListRunsBySession(ctx, "u1", ses, "", tc.q, 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(ids(got), ",") != strings.Join(tc.want, ",") {
+				t.Fatalf("session search %q = %v, want %v", tc.q, ids(got), tc.want)
+			}
+		})
 	}
 }

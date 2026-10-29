@@ -245,29 +245,33 @@ func (r *TaskRepo) ListChildrenByRun(ctx context.Context, parentRunID string) ([
 	return out, rows.Err()
 }
 
-func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, status string, limit, offset int) ([]domain.Run, error) {
+func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, status, q string, limit, offset int) ([]domain.Run, error) {
 	if _, _, _, _, err := r.GetSession(ctx, ownerID, sessionID); err != nil {
 		return nil, err
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	q := `SELECT id, session_id, owner_id, status, mode, goal,
+	query := `SELECT id, session_id, owner_id, status, mode, goal,
 		        constraints_json, success_criteria_json, budget_json,
 		        checkpoint_id, attempt, idempotency_key, started_at, finished_at,
 		        error_code, error_summary, result_json, created_at, updated_at
 	         FROM runs WHERE session_id = ? AND owner_id = ?`
 	args := []any{sessionID, ownerID}
 	if status != "" {
-		q += ` AND status = ?`
+		query += ` AND status = ?`
 		args = append(args, status)
+	}
+	if term := strings.ToLower(strings.TrimSpace(q)); term != "" {
+		query += ` AND LOWER(goal) LIKE '%' || ? || '%'`
+		args = append(args, term)
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	q += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
-	rows, err := r.db.QueryContext(ctx, q, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -306,26 +310,30 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, st
 
 // ListRunsByOwner 返回该 owner 全部顶层 run（排除子 agent run），跨会话，按创建时间倒序。
 // status 非空时仅返回该状态的 run。
-func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID, status string, limit, offset int) ([]domain.Run, error) {
+func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID, status, q string, limit, offset int) ([]domain.Run, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	q := `SELECT id, session_id, owner_id, status, mode, goal,
+	query := `SELECT id, session_id, owner_id, status, mode, goal,
 		        constraints_json, success_criteria_json, budget_json,
 		        checkpoint_id, attempt, idempotency_key, started_at, finished_at,
 		        error_code, error_summary, result_json, created_at, updated_at
 	         FROM runs WHERE owner_id = ? AND parent_run_id IS NULL`
 	args := []any{ownerID}
 	if status != "" {
-		q += ` AND status = ?`
+		query += ` AND status = ?`
 		args = append(args, status)
+	}
+	if term := strings.ToLower(strings.TrimSpace(q)); term != "" {
+		query += ` AND LOWER(goal) LIKE '%' || ? || '%'`
+		args = append(args, term)
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	q += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
-	rows, err := r.db.QueryContext(ctx, q, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

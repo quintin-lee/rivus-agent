@@ -95,13 +95,14 @@ class ApiClient {
     }
   }
 
-  async listRuns(sessionId?: string, limit = 50, status?: string, offset = 0): Promise<Run[]> {
+  async listRuns(sessionId?: string, limit = 50, status?: string, offset = 0, q?: string): Promise<Run[]> {
     try {
       let path = sessionId
         ? `/api/v1/runs?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`
         : `/api/v1/runs?limit=${limit}`
       if (status) path = `${path}&status=${encodeURIComponent(status)}`
       if (offset > 0) path = `${path}&offset=${offset}`
+      if (q) path = `${path}&q=${encodeURIComponent(q)}`
       const data = await this.request<{ runs: Run[] }>('GET', path)
       return data.runs ?? []
     } catch (err) {

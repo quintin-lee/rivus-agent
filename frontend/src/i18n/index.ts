@@ -48,6 +48,7 @@ const zh: Record<string, string> = {
   'runs.empty': '（无运行记录）',
   'runs.sessionLabel': '会话',
   'runs.filterAll': '全部',
+  'runs.searchPlaceholder': '搜索目标…',
 
   'status.queued': '排队中',
   'status.running': '运行中',
@@ -120,6 +121,7 @@ const en: Record<string, string> = {
   'runs.empty': '(no runs)',
   'runs.sessionLabel': 'Session',
   'runs.filterAll': 'All',
+  'runs.searchPlaceholder': 'Search goals…',
 
   'status.queued': 'Queued',
   'status.running': 'Running',

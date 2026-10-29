@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { RunsHistoryDialog } from '@/components/RunsHistoryDialog'
 import { api } from '@/lib/api'
 import type { Run } from '@/lib/types'
@@ -37,7 +37,7 @@ describe('RunsHistoryDialog', () => {
     render(<RunsHistoryDialog open onOpenChange={() => {}} />)
     await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
     expect(screen.getByText(/第二个目标/)).toBeTruthy()
-    expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined)
+    expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 0, undefined)
   })
 
   it('shows empty state', async () => {
@@ -60,7 +60,7 @@ describe('RunsHistoryDialog', () => {
     render(<RunsHistoryDialog open onOpenChange={() => {}} />)
     await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: '失败' }))
-    await waitFor(() => expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, 'failed'))
+    await waitFor(() => expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, 'failed', 0, undefined))
   })
 
   it('opens the run detail dialog when a row is clicked', async () => {
@@ -83,6 +83,36 @@ it('shows load-more on full page and fetches next offset', async () => {
   await vi.waitFor(() => expect(screen.getByText('加载更多')).toBeTruthy())
   vi.mocked(api.listRuns).mockClear()
   fireEvent.click(screen.getByText('加载更多'))
-  await waitFor(() => expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 50))
-  expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 50)
+  await waitFor(() => expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 50, undefined))
+  expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 50, undefined)
+})
+
+it('debounces search input and reloads with q', async () => {
+  vi.useFakeTimers()
+  render(<RunsHistoryDialog open onOpenChange={() => {}} />)
+  fireEvent.change(screen.getByPlaceholderText('搜索目标…'), { target: { value: 'alpha' } })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250)
+  })
+  await vi.waitFor(() =>
+    expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 0, 'alpha'),
+  )
+  vi.useRealTimers()
+})
+
+it('reloads without q when search cleared', async () => {
+  vi.useFakeTimers()
+  render(<RunsHistoryDialog open onOpenChange={() => {}} />)
+  fireEvent.change(screen.getByPlaceholderText('搜索目标…'), { target: { value: 'alpha' } })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250)
+  })
+  fireEvent.change(screen.getByPlaceholderText('搜索目标…'), { target: { value: '' } })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250)
+  })
+  await vi.waitFor(() =>
+    expect(api.listRuns).toHaveBeenLastCalledWith(undefined, 50, undefined, 0, undefined),
+  )
+  vi.useRealTimers()
 })

@@ -43,7 +43,7 @@ func buildExportPayload(db *sql.DB, sessionID string) (*exportPayload, error) {
 
 	// ListRunsBySession 会把 limit 钳制到 <=100，这里取满一页；
 	// 超过 100 条时由 runExport 打印警告（当前单会话超过 100 个 run 极少见）。
-	runs, err := tasks.ListRunsBySession(ctx, ownerID, sessionID, "", 100, 0)
+	runs, err := tasks.ListRunsBySession(ctx, ownerID, sessionID, "", "", 100, 0)
 	if err != nil {
 		return nil, fmt.Errorf("list runs: %w", err)
 	}

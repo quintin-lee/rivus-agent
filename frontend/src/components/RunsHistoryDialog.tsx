@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { History, RefreshCw } from 'lucide-react'
+import { History, RefreshCw, Search } from 'lucide-react'
 import { api } from '@/lib/api'
 import { t } from '@/i18n'
 import { useUiStore } from '@/store/ui-store'
@@ -51,6 +51,8 @@ export function RunsHistoryDialog({
   const [error, setError] = useState('')
   const [detailRunId, setDetailRunId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
+  const [searchDraft, setSearchDraft] = useState('')
+  const [query, setQuery] = useState('')
 
   const statusChips: [string, string][] = [
     ['', t('runs.filterAll')],
@@ -64,30 +66,36 @@ export function RunsHistoryDialog({
     setLoading(true)
     setError('')
     try {
-      setRuns(await api.listRuns(undefined, 50, statusFilter || undefined))
+      setRuns(await api.listRuns(undefined, 50, statusFilter || undefined, 0, query || undefined))
     } catch (e) {
       setError(e instanceof Error ? e.message : t('common.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [statusFilter, query])
 
   const loadMore = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const more = await api.listRuns(undefined, 50, statusFilter || undefined, runs.length)
+      const more = await api.listRuns(undefined, 50, statusFilter || undefined, runs.length, query || undefined)
       setRuns((prev) => [...prev, ...more])
     } catch (e) {
       setError(e instanceof Error ? e.message : t('common.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, runs.length])
+  }, [statusFilter, runs.length, query])
 
   useEffect(() => {
     if (open) void load()
   }, [open, load])
+
+  // 搜索防抖：输入停止 200ms 后更新 query（load 依赖 query 自动重拉第 1 页）
+  useEffect(() => {
+    const id = setTimeout(() => setQuery(searchDraft), 200)
+    return () => clearTimeout(id)
+  }, [searchDraft])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,6 +107,16 @@ export function RunsHistoryDialog({
           </DialogTitle>
           <DialogDescription>{t('runs.description')}</DialogDescription>
         </DialogHeader>
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            placeholder={t('runs.searchPlaceholder')}
+            className="h-8 w-full rounded-md border border-border bg-background pl-7 pr-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+
         <div className="flex flex-wrap gap-1.5">
           {statusChips.map(([value, label]) => (
             <button
