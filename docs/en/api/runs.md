@@ -41,6 +41,7 @@ List runs: with `session_id`, lists runs of that session; omitting `session_id` 
 
 ```bash
 curl 'localhost:8080/api/v1/runs?session_id=<session_id>&limit=20'
+curl 'localhost:8080/api/v1/runs?q=alpha'
 ```
 
 ## POST /api/v1/runs
