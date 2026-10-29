@@ -67,6 +67,25 @@ curl localhost:8080/api/v1/sessions/<session_id>
 curl -X DELETE localhost:8080/api/v1/sessions/<session_id>
 ```
 
+## PATCH /api/v1/sessions/{id}
+
+重命名会话。
+
+**请求** `{"title": "新标题"}`（TrimSpace 后非空；超 200 字符截断）
+
+**响应** `200`：`{"session_id":"...","title":"新标题","created_at":...,"updated_at":...}`
+
+**错误**：
+
+| 状态码 | 场景 |
+|---|---|
+| `400 bad_request` | title 为空（重命名为空无意义）或 body 非法 |
+| `404 not_found` | 不存在或跨 owner |
+
+```bash
+curl -X PATCH localhost:8080/api/v1/sessions/<session_id> -d '{"title":"新标题"}'
+```
+
 ## GET /api/v1/sessions/{id}/memories
 
 列出会话记忆（`memory_write` 工具写入的跨 run 持久事实；新→旧）。最近 10 条（≤8KB）会自动注入该会话顶层 run 的模型指令。

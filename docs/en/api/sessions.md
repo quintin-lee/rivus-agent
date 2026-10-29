@@ -67,6 +67,25 @@ Delete a session.
 curl -X DELETE localhost:8080/api/v1/sessions/<session_id>
 ```
 
+## PATCH /api/v1/sessions/{id}
+
+Rename a session.
+
+**Request** `{"title": "new title"}` (trimmed non-empty; truncated beyond 200 chars)
+
+**Response** `200`: `{"session_id":"...","title":"new title","created_at":...,"updated_at":...}`
+
+**Errors**:
+
+| Status | Scenario |
+|---|---|
+| `400 bad_request` | Empty title (renaming to nothing is meaningless) or invalid body |
+| `404 not_found` | Missing or cross-owner |
+
+```bash
+curl -X PATCH localhost:8080/api/v1/sessions/<session_id> -d '{"title":"new title"}'
+```
+
 ## GET /api/v1/sessions/{id}/memories
 
 List session memories (persistent cross-run facts written by the `memory_write` tool; newest first). The latest 10 (≤8KB) are auto-injected into the model instruction of top-level runs in this session.

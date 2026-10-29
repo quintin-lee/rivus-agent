@@ -121,6 +121,7 @@ docker compose up -d
 | GET | `/api/v1/sessions/{id}` | 获取会话 |
 | GET | `/api/v1/sessions/{id}/memories` | 会话记忆列表 |
 | DELETE | `/api/v1/sessions/{id}` | 删除会话 |
+| PATCH | `/api/v1/sessions/{id}` | 会话重命名 |
 | GET | `/api/v1/runs` | Run 列表（带 `session_id` 列该会话；省略则跨会话顶层历史；支持 `status` 过滤） |
 | POST | `/api/v1/runs` | 提交任务（支持 `Idempotency-Key`） |
 | GET | `/api/v1/runs/{id}` | 查看 Run 状态与结果 |

@@ -80,7 +80,7 @@ curl -H "X-Owner-ID: alice" localhost:8080/api/v1/runs/<run_id>
 
 | 文档 | 内容 |
 |---|---|
-| [`sessions.md`](sessions.md) | 会话管理（5 端点，含会话记忆） |
+| [`sessions.md`](sessions.md) | 会话管理（6 端点，含会话记忆与重命名） |
 | [`runs.md`](runs.md) | 运行生命周期（5 端点） |
 | [`events.md`](events.md) | SSE 事件流 + 全量事件类型目录 |
 | [`approvals.md`](approvals.md) | 人工审批（2 端点） |

@@ -122,6 +122,7 @@ docker compose up -d
 | GET | `/api/v1/sessions/{id}` | Get session |
 | GET | `/api/v1/sessions/{id}/memories` | List session memories |
 | DELETE | `/api/v1/sessions/{id}` | Delete session |
+| PATCH | `/api/v1/sessions/{id}` | Rename a session |
 | GET | `/api/v1/runs` | List runs (with `session_id` lists that session; omit for cross-session top-level history; supports `status` filter) |
 | POST | `/api/v1/runs` | Submit task (supports `Idempotency-Key`) |
 | GET | `/api/v1/runs/{id}` | View run status and result |

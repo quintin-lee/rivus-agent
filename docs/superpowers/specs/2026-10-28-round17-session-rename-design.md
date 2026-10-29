@@ -62,4 +62,7 @@
 
 ## 7. 执行偏差
 
-（执行后回写）
+- SessionList 新测试首稿漏 `render(<SessionList />)`（body 为空）——已补，沿用该文件既有 render + seedStores 模式。
+- 前端单测断言 store action（`renameSession`）而非 api 直调——沿用该文件 seedStores 覆盖 action 的既有 mock 风格；`api.renameSession` 与 deleteSession 同样无独立单测（服务端 PATCH 由集成测试覆盖）。
+- `docs/api/overview.md` zh/en 的 sessions.md 端点计数 5→6 也同步更新（spec §2 文档清单原未列）。
+- session-store 追加 action 时曾吞掉 deleteSession 的收尾 `},`（编辑笔误，tsc 立即暴露，已修）。
