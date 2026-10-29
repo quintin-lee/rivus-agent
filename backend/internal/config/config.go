@@ -22,6 +22,10 @@ type Config struct {
 	// 为空 = http_fetch 完全禁用（所有请求直接拒绝）。
 	HTTPFetchAllowlist []string `yaml:"http_fetch_allowlist"`
 
+	// Pprof 控制 /debug/pprof 是否注册：nil = 跟随认证（配置了 AuthToken 才开），
+	// 显式 true/false 覆盖（env AGENT_PPROF，yaml pprof）。
+	Pprof *bool `yaml:"pprof"`
+
 	// RateLimitRPM 是 /api/v1/ 路由的每客户端（X-Owner-ID 或来源 IP）每分钟请求上限；
 	// 0 = 关闭（默认，向后兼容）。
 	RateLimitRPM int `yaml:"rate_limit_rpm"`
@@ -116,6 +120,11 @@ func applyEnv(c *Config) {
 	if v := os.Getenv("AGENT_RATE_LIMIT_RPM"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			c.RateLimitRPM = n
+		}
+	}
+	if v := os.Getenv("AGENT_PPROF"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			c.Pprof = &b
 		}
 	}
 	if v := os.Getenv("AGENT_AUTH_TOKEN"); v != "" {

@@ -86,4 +86,4 @@ curl localhost:8080/version
 - `/healthz` and `/readyz` are explicitly allowed through the auth middleware, no Bearer token needed
 - `/version` is also auth-exempt and returns the injected build triple; inject locally with `make build VERSION=v1.2.3`
 - The backend healthcheck in `docker-compose.yml` is based on `/healthz`
-- `/debug/pprof/*` (index / cmdline / profile / symbol / trace) is registered only when `AGENT_AUTH_TOKEN` is configured; deployments without auth return 404 for these paths. Named profiles (heap, goroutine, etc.) are covered by the index handler, e.g. `GET /debug/pprof/heap?debug=1`
+- `/debug/pprof/*` (index / cmdline / profile / symbol / trace) is registered only when `AGENT_AUTH_TOKEN` is configured; deployments without auth return 404 for these paths. Named profiles (heap, goroutine, etc.) are covered by the index handler, e.g. `GET /debug/pprof/heap?debug=1`; control independently with `AGENT_PPROF` (unset follows the auth toggle)

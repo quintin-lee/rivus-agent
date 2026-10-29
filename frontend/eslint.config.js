@@ -18,7 +18,7 @@ export default [
       ...tsPlugin.configs.recommended.rules,
       'no-undef': 'off', // TS 自查，避免 browser globals 误报
       'react-hooks/rules-of-hooks': 'error', // 违规挡 lint 门禁
-      'react-hooks/exhaustive-deps': 'warn', // 存量提示不阻塞
+      'react-hooks/exhaustive-deps': 'error',
     },
   },
 ];

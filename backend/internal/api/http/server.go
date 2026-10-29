@@ -133,7 +133,12 @@ func New(cfg config.Config, db *sql.DB, tasks *store.TaskRepo, events *store.Eve
 	if db != nil {
 		s.memories = store.NewMemoryRepo(db)
 	}
-	s.pprofEnabled = cfg.AuthToken != ""
+	// pprof 默认跟随认证（有 token 才暴露）；AGENT_PPROF/yaml pprof 显式覆盖。
+	if cfg.Pprof != nil {
+		s.pprofEnabled = *cfg.Pprof
+	} else {
+		s.pprofEnabled = cfg.AuthToken != ""
+	}
 	s.routes()
 	return s
 }

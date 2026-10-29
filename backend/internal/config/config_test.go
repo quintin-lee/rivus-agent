@@ -1,6 +1,7 @@
 package config
 
 import (
+	"gopkg.in/yaml.v3"
 	"os"
 	"testing"
 )
@@ -82,5 +83,36 @@ func TestMCPConfigYAML(t *testing.T) {
 	cfg2, err := Load(writeYaml(t, "addr: ':0'\n"))
 	if err != nil || cfg2.MCP != nil {
 		t.Fatalf("mcp=%+v err=%v", cfg2.MCP, err)
+	}
+}
+
+func TestPprofConfig(t *testing.T) {
+	// 默认 nil（跟随认证开关）
+	cfg := Default()
+	if cfg.Pprof != nil {
+		t.Fatalf("default Pprof = %v, want nil", *cfg.Pprof)
+	}
+	// yaml 显式 true
+	var c Config
+	data := []byte("pprof: true\n")
+	if err := yaml.Unmarshal(data, &c); err != nil {
+		t.Fatal(err)
+	}
+	if c.Pprof == nil || !*c.Pprof {
+		t.Fatalf("yaml pprof = %v, want true", c.Pprof)
+	}
+	// env true/false
+	t.Setenv("AGENT_PPROF", "false")
+	c2 := Default()
+	applyEnv(&c2)
+	if c2.Pprof == nil || *c2.Pprof {
+		t.Fatalf("env false Pprof = %v, want false", c2.Pprof)
+	}
+	// 非法值忽略 → nil
+	t.Setenv("AGENT_PPROF", "notabool")
+	c3 := Default()
+	applyEnv(&c3)
+	if c3.Pprof != nil {
+		t.Fatalf("invalid env Pprof = %v, want nil", *c3.Pprof)
 	}
 }

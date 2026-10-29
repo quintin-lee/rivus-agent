@@ -163,6 +163,7 @@ docker compose up -d
 | `AGENT_KNOWLEDGE_DIR` | 知识库目录（knowledge_search 检索范围），缺省 `./knowledge` |
 | `AGENT_HTTP_FETCH_ALLOWLIST` | http_fetch 域名白名单（逗号分隔，精确匹配；为空 = 完全禁用出网） |
 | `AGENT_RATE_LIMIT_RPM` | API 速率限制（每分钟每客户端请求数，按 X-Owner-ID 或来源 IP 分桶；0 = 关闭，默认 0） |
+| `AGENT_PPROF` | pprof 调试端点开关（不设则跟随认证：配置了 AGENT_AUTH_TOKEN 才开启） |
 | `LOG_LEVEL` | 日志级别 `debug/info/warn/error`，默认 `info` |
 
 YAML 配置示例见 `backend/configs/config.example.yaml`。

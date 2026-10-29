@@ -86,4 +86,4 @@ curl localhost:8080/version
 - `/healthz` 与 `/readyz` 在认证中间件中显式放行，无需 Bearer Token
 - `/version` 同样免认证，返回构建注入的版本三元组；本地 `make build VERSION=v1.2.3` 可注入
 - `docker-compose.yml` 的 backend healthcheck 即基于 `/healthz`
-- `/debug/pprof/*`（索引 / cmdline / profile / symbol / trace）仅在配置了 `AGENT_AUTH_TOKEN` 时注册；未配置认证的部署访问这些路径返回 404。命名 profile（heap、goroutine 等）由索引 handler 覆盖，如 `GET /debug/pprof/heap?debug=1`
+- `/debug/pprof/*`（索引 / cmdline / profile / symbol / trace）仅在配置了 `AGENT_AUTH_TOKEN` 时注册；未配置认证的部署访问这些路径返回 404。命名 profile（heap、goroutine 等）由索引 handler 覆盖，如 `GET /debug/pprof/heap?debug=1`；可用 `AGENT_PPROF` 独立控制（不设则跟随认证开关）
