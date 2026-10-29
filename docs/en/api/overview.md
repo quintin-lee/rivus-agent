@@ -11,6 +11,17 @@ REST / SSE API reference for the Rivus Agent backend. Base URL: `http://localhos
 - Timestamp fields (`created_at` / `updated_at` / `expires_at`, etc.) are **Unix milliseconds integers**
 - ID prefixes: sessions `ses_`, runs `run_`
 
+## Pagination
+
+List endpoints accept `limit` / `offset` query parameters (`GET /api/v1/sessions`, `GET /api/v1/runs`):
+
+| Endpoint | limit default | limit cap | offset default |
+|---|---|---|---|
+| `GET /api/v1/sessions` | 50 | 200 | 0 |
+| `GET /api/v1/runs` | 50 | 100 | 0 |
+
+Results are always **newest first**; an out-of-range `offset` returns an empty list (`200` + empty array, not an error). The frontend uses a "Load more" button that increments offset by the current page size.
+
 ## Authentication
 
 When the `AGENT_AUTH_TOKEN` env var is set, all routes except `/healthz`, `/readyz`, and `/version` require a Bearer token:

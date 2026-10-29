@@ -11,6 +11,17 @@ Rivus Agent 后端 REST / SSE API 参考。Base URL：`http://localhost:8080`（
 - 时间戳字段（`created_at` / `updated_at` / `expires_at` 等）均为 **Unix 毫秒整数**
 - ID 前缀：会话 `ses_`、运行 `run_`
 
+## 分页
+
+列表端点支持 `limit` / `offset` 查询参数（`GET /api/v1/sessions`、`GET /api/v1/runs`）：
+
+| 端点 | limit 缺省 | limit 上限 | offset 缺省 |
+|---|---|---|---|
+| `GET /api/v1/sessions` | 50 | 200 | 0 |
+| `GET /api/v1/runs` | 50 | 100 | 0 |
+
+结果一律**最新在前**；`offset` 越界返回空列表（`200` + 空数组，非错误）。前端以「加载更多」按当前页大小递增 offset。
+
 ## 认证
 
 设置环境变量 `AGENT_AUTH_TOKEN` 后，除 `/healthz`、`/readyz`、`/version` 外的所有路由都要求 Bearer Token：
