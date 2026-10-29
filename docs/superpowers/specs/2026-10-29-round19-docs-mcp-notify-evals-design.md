@@ -54,4 +54,8 @@ Scenario 框架 run-based；会话 API 场景以最小 text-only run 进入 Post
 
 ## 7. 执行偏差
 
-（执行后回写）
+- `Transport` 接口的 `Stop()` 返回 `error`——计划中测试 transport 的裸 `Stop()` 编译不过，改为 `Stop() error { return nil }`。
+- pushTransport 按自查笔记 4 实现为独立完整假服务器（pending 请求槽 + initialize/tools/list/tools/call canned 响应 + inject 通知队列 + tools 队列），未嵌入 FakeTransport。
+- evals 场景采用 `Run(t, Scenario{...})` 包级函数调用（与 R16 场景文件一致），而非计划草稿中的 `.Run(t)` 方法风格。
+- README evals 计数行实际位于 backend/README.md:144 与 backend/README.en.md:148（根 README 无 evals 小节）。
+- 批 3 场景为 PostCheck 断言型，首跑即绿（预期成立）；批 1/批 2 均按计划 RED→GREEN，无其他偏差。
