@@ -8,7 +8,7 @@ interface SessionState {
   activeSessionId: string | null
   createSession: (title: string) => Promise<void>
   switchSession: (id: string) => void
-  loadSessions: () => Promise<void>
+  loadSessions: (q?: string) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
 }
@@ -41,8 +41,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     })
   },
 
-  loadSessions: async () => {
-    const sessions = await api.listSessions()
+  loadSessions: async (q?: string) => {
+    const sessions = await api.listSessions(q)
     set((state) => ({
       sessions,
       activeSessionId: state.activeSessionId ?? sessions[0]?.session_id ?? null,

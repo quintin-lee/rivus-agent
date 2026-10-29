@@ -93,3 +93,34 @@ describe('SessionList', () => {
     expect(useSessionStore.getState().renameSession).not.toHaveBeenCalled()
     expect(screen.getByText('Session One')).toBeTruthy()
   })
+
+it('debounces search input and reloads with q', async () => {
+  vi.useFakeTimers()
+  const loadSessions = vi.fn().mockResolvedValue(undefined)
+  seedStores({ loadSessions })
+  render(<SessionList />)
+  fireEvent.change(screen.getByPlaceholderText('搜索会话…'), { target: { value: 'alpha' } })
+  expect(loadSessions).not.toHaveBeenCalled()
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250)
+  })
+  expect(loadSessions).toHaveBeenCalledWith('alpha')
+  vi.useRealTimers()
+})
+
+it('reloads without q when search cleared', async () => {
+  vi.useFakeTimers()
+  const loadSessions = vi.fn().mockResolvedValue(undefined)
+  seedStores({ loadSessions })
+  render(<SessionList />)
+  fireEvent.change(screen.getByPlaceholderText('搜索会话…'), { target: { value: 'alpha' } })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250)
+  })
+  fireEvent.change(screen.getByPlaceholderText('搜索会话…'), { target: { value: '' } })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250)
+  })
+  expect(loadSessions).toHaveBeenLastCalledWith(undefined)
+  vi.useRealTimers()
+})

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Plus, FolderOpen, Trash2, RefreshCw, Brain, Pencil } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Plus, FolderOpen, Trash2, RefreshCw, Brain, Pencil, Search } from 'lucide-react'
 import { useSessionStore } from '@/store/session-store'
 import { useRunStore } from '@/store/run-store'
 import { api } from '@/lib/api'
@@ -56,6 +56,24 @@ export function SessionList() {
   const [memoriesTarget, setMemoriesTarget] = useState<{ id: string; title: string } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
+  const [searchDraft, setSearchDraft] = useState('')
+  const [query, setQuery] = useState('')
+
+  // 搜索防抖：输入停止 200ms 后才更新 query
+  useEffect(() => {
+    const id = setTimeout(() => setQuery(searchDraft), 200)
+    return () => clearTimeout(id)
+  }, [searchDraft])
+
+  // query 变化触发带 q 的重新拉取（跳过挂载首跑——App 已做初始全量加载）
+  const firstRun = useRef(true)
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false
+      return
+    }
+    void loadSessions(query || undefined)
+  }, [query, loadSessions])
 
   function startRename(id: string, title: string) {
     setRenamingId(id)
@@ -121,11 +139,21 @@ export function SessionList() {
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-muted-foreground hover:text-foreground"
-            onClick={() => void loadSessions()}
+            onClick={() => void loadSessions(query || undefined)}
             title={t('sessionlist.refresh')}
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            placeholder={t('sessionlist.searchPlaceholder')}
+            className="h-8 pl-7 text-xs"
+          />
         </div>
 
         <div className="flex gap-1.5">

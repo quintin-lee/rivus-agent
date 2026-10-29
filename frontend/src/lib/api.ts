@@ -83,9 +83,10 @@ class ApiClient {
     return this.request<Session>('PATCH', `/api/v1/sessions/${encodeURIComponent(id)}`, { title })
   }
 
-  async listSessions(): Promise<Session[]> {
+  async listSessions(q?: string): Promise<Session[]> {
     try {
-      const data = await this.request<{ sessions: Session[] }>('GET', '/api/v1/sessions')
+      const path = q ? `/api/v1/sessions?q=${encodeURIComponent(q)}` : '/api/v1/sessions'
+      const data = await this.request<{ sessions: Session[] }>('GET', path)
       return data.sessions ?? []
     } catch (err) {
       if (err instanceof ApiError && err.code === 'not_found') return []
