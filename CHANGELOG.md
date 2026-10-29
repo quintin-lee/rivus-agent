@@ -19,6 +19,7 @@
 - **安全**：按客户端限流（`AGENT_RATE_LIMIT_RPM`，默认关闭；429 + Retry-After）、常量时间 Bearer 比较、四个安全响应头。
 - **会话重命名**：`PATCH /api/v1/sessions/{id}`（属主校验，空标题 400）+ 前端行内改名（铅笔入口，Enter/blur 提交、Esc 取消）。
 - **会话搜索**：`GET /api/v1/sessions?q=`（标题大小写不敏感子串过滤）+ 前端 200ms 防抖搜索框。
+- **运行目标搜索**：`GET /api/v1/runs?q=`（goal 大小写不敏感子串过滤）+ 前端运行历史搜索框（200ms 防抖）。
 - **MCP 通知推送**：`tools/list_changed` 通知经 SSE 长连接实时拉取，工具列表即时刷新（30 秒 Reconciler 兜底）。
 - **列表分页**：会话与运行列表支持 `limit` / `offset`（服务端钳制：sessions ≤200、runs ≤100）+ 前端「加载更多」。
 - **pprof 开关**：`AGENT_PPROF` 独立控制 `/debug/pprof` 暴露（未设置时跟随认证门控）。

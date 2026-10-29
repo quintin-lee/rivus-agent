@@ -12,6 +12,7 @@ List runs: with `session_id`, lists runs of that session; omitting `session_id` 
 | `status` | string | no | Filter by run status (one of queued/running/waiting_approval/paused/succeeded/failed/cancelled/timed_out); invalid values return 400 |
 | `limit` | int | no | Page size, default 50 |
 | `offset` | int | no | Pagination offset (skips the N newest, combine with `limit`), default 0 |
+| `q` | string | no | Case-insensitive substring filter on the goal (omit to list all) |
 
 **Response** `200`: `{"runs": [Run]}` with `Run` fields:
 
