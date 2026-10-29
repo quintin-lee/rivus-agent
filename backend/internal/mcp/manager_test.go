@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -266,4 +267,98 @@ func TestCallTimeout(t *testing.T) {
 	}
 	close(release) // 释放阻塞的 WriteLine，让底层 goroutine 退出
 	time.Sleep(20 * time.Millisecond)
+}
+
+// pushTransport：完整 JSON-RPC 假服务器；响应前先吐出 inject 队列的通知行，
+// tools/list 依次返回 tools 队列中的工具集（耗尽后重复最后一个）。
+type pushTransport struct {
+	mu      sync.Mutex
+	toolsQ  [][]string
+	inject  [][]byte
+	pending *jsonRequest
+	toolIdx int
+}
+
+var _ Transport = (*pushTransport)(nil)
+
+func newPushTransport(toolsSets [][]string) *pushTransport {
+	return &pushTransport{toolsQ: toolsSets}
+}
+
+func (t *pushTransport) enqueueNotification(line string) {
+	t.mu.Lock()
+	t.inject = append(t.inject, []byte(line))
+	t.mu.Unlock()
+}
+
+func (t *pushTransport) WriteLine(p []byte) error {
+	var req jsonRequest
+	if err := json.Unmarshal(p, &req); err != nil {
+		return err
+	}
+	t.mu.Lock()
+	t.pending = &req
+	t.mu.Unlock()
+	return nil
+}
+
+func (t *pushTransport) ReadLine() ([]byte, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.inject) > 0 {
+		line := t.inject[0]
+		t.inject = t.inject[1:]
+		return line, nil
+	}
+	req := t.pending
+	if req == nil {
+		return nil, fmt.Errorf("pushTransport: read before write")
+	}
+	t.pending = nil
+	switch req.Method {
+	case "initialize":
+		return []byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"protocolVersion":"2024-11-05","capabilities":{}}}`, req.ID)), nil
+	case "tools/list":
+		set := t.toolsQ[t.toolIdx]
+		if t.toolIdx < len(t.toolsQ)-1 {
+			t.toolIdx++
+		}
+		tools := make([]string, 0, len(set))
+		for _, n := range set {
+			tools = append(tools, fmt.Sprintf(`{"name":%q,"description":"push tool"}`, n))
+		}
+		return []byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"tools":[%s]}}`, req.ID, strings.Join(tools, ","))), nil
+	case "tools/call":
+		return []byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"content":[{"type":"text","text":"ok"}]}}`, req.ID)), nil
+	default:
+		return nil, fmt.Errorf("pushTransport: unknown method %q", req.Method)
+	}
+}
+
+func (t *pushTransport) Stop() error { return nil }
+
+func TestToolsListChangedNotificationRefreshesStatus(t *testing.T) {
+	pt := newPushTransport([][]string{{"read"}, {"read", "write"}})
+	m := NewManager(&oneShotFactory{tt: pt})
+	if err := m.SpawnAll(context.Background(), []ServerSpec{{Name: "fs", Command: "npx"}}); err != nil {
+		t.Fatal(err)
+	}
+	if st := m.Status(); len(st) != 1 || len(st[0].Tools) != 1 {
+		t.Fatalf("initial Status = %+v", st)
+	}
+	pt.enqueueNotification(`{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}`)
+	if _, err := m.Call(context.Background(), "fs", "ping", nil); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		st := m.Status()
+		if len(st) == 1 && len(st[0].Tools) == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("tools not refreshed: %+v", st)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

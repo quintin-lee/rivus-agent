@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -104,6 +105,13 @@ func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 		m.setStatus(s, "error", "tools/list: "+err.Error())
 		return
 	}
+	// 服务器推送 notifications/tools/list_changed 时立即重列工具（比 30s Reconciler 更快）。
+	c.SetNotificationHandler(func(method string, params json.RawMessage) {
+		if method != "notifications/tools/list_changed" {
+			return
+		}
+		go m.relistTools(context.Background(), s)
+	})
 	m.mu.Lock()
 	m.clis[s.Name] = c
 	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, Status: "up", Tools: tools}
@@ -213,6 +221,38 @@ func (m *Manager) setStatus(s ServerSpec, status, errMsg string) {
 		e.Err = errMsg
 	}
 	m.status[s.Name] = e
+}
+
+// relistTools 在收到 tools/list_changed 通知后重列工具并刷新状态。
+// 与进行中的 rpc 共享 client 锁（排队等待）；工具集未变化时跳过写入（通知风暴防护）。
+func (m *Manager) relistTools(ctx context.Context, s ServerSpec) {
+	c, ok := m.clientFor(s.Name)
+	if !ok {
+		return
+	}
+	tools, err := c.ListTools(ctx)
+	if err != nil {
+		m.setStatus(s, "error", "tools/list: "+err.Error())
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if entry, ok := m.status[s.Name]; ok && sameTools(entry.Tools, tools) {
+		return
+	}
+	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, Status: "up", Tools: tools}
+}
+
+func sameTools(a, b []Tool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Description != b[i].Description {
+			return false
+		}
+	}
+	return true
 }
 
 // StopAll stops every connection and clears all status. Per-server failures are
