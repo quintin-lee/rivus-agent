@@ -45,7 +45,7 @@ lint 门禁含 `eslint-plugin-react-hooks`：`rules-of-hooks` 为 error（挡门
 
 ```text
 src/
-  components/   # 对话、Run 卡片、审批卡片、会话记忆弹窗、子 agent 执行树、工具调用明细、流式打字指示器、终态失败重新运行、运行历史弹窗、运行详情弹窗（步骤/工具调用/审批聚合）、主题切换（light/dark/system，无闪烁）、语言切换（中/EN）、错误边界（App 根 + 消息区，可重试兜底）等
+  components/   # 对话、Run 卡片、审批卡片、会话记忆弹窗、子 agent 执行树、工具调用明细、流式打字指示器、终态失败重新运行、运行历史弹窗、运行详情弹窗（步骤/工具调用/审批聚合）、主题切换（light/dark/system，无闪烁）、语言切换（中/EN）、错误边界（App 根 + 消息区，可重试兜底）、会话搜索框（200ms 防抖，q 参数过滤）等
   store/        # Zustand 状态
   lib/          # API/SSE 客户端与工具函数
   App.tsx       # 根布局

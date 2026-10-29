@@ -64,4 +64,8 @@ docs/api/system.md 与 docs/en/api/system.md：新增 `## GET /metrics/prometheu
 
 ## 7. 执行偏差
 
-（执行后回写）
+- 计划期已知并声明：LIKE 通配符（`%`/`_`）不转义（参数化已防 SQL 注入，通配符仅影响匹配广度）；SessionList 刷新按钮保持当前过滤（`loadSessions(query || undefined)`）。
+- 挂载首跑去重：SessionList 的 query-effect 挂载时会以 `undefined` 触发一次 loadSessions，与 `App.tsx` 已有的初始全量加载重复——用 `useRef(firstRun)` 跳过挂载首跑，仅 query 真正变化时拉取。
+- store 接口类型同步：`loadSessions` 实现加可选参后，接口声明需同步为 `(q?: string) => Promise<void>`（tsc TS2554 抓到）。
+- 计划中 store 单测表用例 `{"miss returns empty", "zzz", {}}` 缺类型标注，实际写为 `[]string{}`。
+- Task 1 文档对齐零偏差：一次通过（28/28 行数，4 文件 prometheus/pprof 命中）。
