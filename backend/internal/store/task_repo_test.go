@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -146,7 +147,7 @@ func TestListRunsByOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runs, err := tasks.ListRunsByOwner(ctx, "u1", "", 100)
+	runs, err := tasks.ListRunsByOwner(ctx, "u1", "", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +172,7 @@ func TestListRunsByOwner(t *testing.T) {
 	}
 
 	// limit 钳制
-	small, err := tasks.ListRunsByOwner(ctx, "u1", "", 0)
+	small, err := tasks.ListRunsByOwner(ctx, "u1", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +198,7 @@ func TestListRunsFilterByStatus(t *testing.T) {
 	setupRun(t, tasks, ses, "run_gone", domain.RunCancelled)
 
 	// owner 分支：status 过滤
-	got, err := tasks.ListRunsByOwner(ctx, "u1", string(domain.RunFailed), 0)
+	got, err := tasks.ListRunsByOwner(ctx, "u1", string(domain.RunFailed), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +206,7 @@ func TestListRunsFilterByStatus(t *testing.T) {
 		t.Fatalf("owner failed filter = %v, want [run_bad]", ids(got))
 	}
 	// owner 分支：空 status = 不过滤
-	got, err = tasks.ListRunsByOwner(ctx, "u1", "", 0)
+	got, err = tasks.ListRunsByOwner(ctx, "u1", "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,14 +214,14 @@ func TestListRunsFilterByStatus(t *testing.T) {
 		t.Fatalf("owner no filter = %d runs, want 3", len(got))
 	}
 	// session 分支：status 过滤 + 空参
-	got, err = tasks.ListRunsBySession(ctx, "u1", ses, string(domain.RunCancelled), 0)
+	got, err = tasks.ListRunsBySession(ctx, "u1", ses, string(domain.RunCancelled), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].ID != "run_gone" {
 		t.Fatalf("session cancelled filter = %v, want [run_gone]", ids(got))
 	}
-	got, err = tasks.ListRunsBySession(ctx, "u1", ses, "", 0)
+	got, err = tasks.ListRunsBySession(ctx, "u1", ses, "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +301,7 @@ func TestListSessionsSearch(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := tasks.ListSessions(ctx, "u1", tc.q)
+			got, err := tasks.ListSessions(ctx, "u1", tc.q, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -319,5 +320,47 @@ func TestListSessionsSearch(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestListSessionsOffset(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	for i := 1; i <= 5; i++ {
+		if _, err := tasks.CreateSession(ctx, "u1", fmt.Sprintf("ses-%02d", i)); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond) // ms 精度：确保 updated_at 递增可分页
+	}
+	// page 1: limit 2 offset 0
+	got, err := tasks.ListSessions(ctx, "u1", "", 2, 0)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("page1: n=%d err=%v", len(got), err)
+	}
+	if got[0].Title != "ses-05" {
+		t.Fatalf("page1 first = %q, want ses-05 (updated_at DESC)", got[0].Title)
+	}
+	// page 2
+	got, err = tasks.ListSessions(ctx, "u1", "", 2, 2)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("page2: n=%d err=%v", len(got), err)
+	}
+	if got[0].Title != "ses-03" {
+		t.Fatalf("page2 first = %q, want ses-03", got[0].Title)
+	}
+	// page 3: last one
+	got, err = tasks.ListSessions(ctx, "u1", "", 2, 4)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("page3: n=%d err=%v", len(got), err)
+	}
+	// beyond
+	got, err = tasks.ListSessions(ctx, "u1", "", 2, 5)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("beyond: n=%d err=%v", len(got), err)
 	}
 }

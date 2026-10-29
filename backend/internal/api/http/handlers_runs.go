@@ -26,9 +26,15 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	offset := 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			offset = n
+		}
+	}
 	// session_id 缺省 = 跨会话历史（仅顶层 run）；存在 = 会话内列表（保持原行为）
 	if sessionID == "" {
-		runs, err := s.tasks.ListRunsByOwner(r.Context(), owner, status, limit)
+		runs, err := s.tasks.ListRunsByOwner(r.Context(), owner, status, limit, offset)
 		if err != nil {
 			writeErr(w, 500, "internal", "list runs failed", true)
 			return
@@ -36,7 +42,7 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"runs": runs})
 		return
 	}
-	runs, err := s.tasks.ListRunsBySession(r.Context(), owner, sessionID, status, limit)
+	runs, err := s.tasks.ListRunsBySession(r.Context(), owner, sessionID, status, limit, offset)
 	if err != nil {
 		if err == domain.ErrForbidden || err == domain.ErrBadRequest {
 			writeErr(w, 404, "not_found", "session not found", false)

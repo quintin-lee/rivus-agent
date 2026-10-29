@@ -202,7 +202,7 @@ func BenchmarkListRunsByOwner(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := tasks.ListRunsByOwner(ctx, "u1", "", 50); err != nil {
+		if _, err := tasks.ListRunsByOwner(ctx, "u1", "", 50, 0); err != nil {
 			b.Fatal(err)
 		}
 	}

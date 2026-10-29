@@ -83,7 +83,13 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
-	sessions, err := s.tasks.ListSessions(r.Context(), ownerOf(r), r.URL.Query().Get("q"))
+	offset := 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			offset = n
+		}
+	}
+	sessions, err := s.tasks.ListSessions(r.Context(), ownerOf(r), r.URL.Query().Get("q"), 50, offset)
 	if err != nil {
 		writeErr(w, 500, "internal", "list sessions failed", true)
 		return
