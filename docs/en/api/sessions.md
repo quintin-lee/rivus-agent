@@ -25,7 +25,7 @@ curl -X POST localhost:8080/api/v1/sessions -d '{"title":"demo"}'
 
 List sessions for the current owner.
 
-**Query params**: `q` (optional) — case-insensitive substring match on the title; omit to list all.
+**Query params**: `q` (optional) — case-insensitive substring match on the title; omit to list all. `offset` (optional, default 0) — pagination offset; `limit` is server-clamped to 1..200, default 50.
 
 **Response** `200`: `{"sessions": [SessionInfo]}` with `SessionInfo` fields:
 

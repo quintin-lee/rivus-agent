@@ -40,4 +40,9 @@ R19 通知靠请求响应流搭车；本批给 http 型 transport 加独立 GET 
 
 ## 6. 执行偏差
 
-（执行后回写）
+- 批1 store：同毫秒建档导致 `updated_at` 并列、分页边界不稳定——store/集成测试建档间 `time.Sleep(2ms)`；runs 分页首稿断言方向写反（offset 跳过的是**最新** N 条），已修正。
+- 批1 前端：RunsHistoryDialog 测试的 prop 是 `open` 而非 `runId`；测试 run() 工厂接收 `Partial<Run>` 对象；异步断言用 `waitFor` 而非 `act`。
+- 批2：`applyEnv` 是包级函数（`applyEnv(&c)`）而非方法；pprof 拨测需带有效 Bearer Token 才能区分「未注册 404」与「注册但 401」（auth 中间件先于 mux 运行，`AGENT_PPROF=true`+空 token 时 auth 关闭、直接 200）。
+- 批3 MCP SSE（设计演化）：放弃整体改写为合并队列，保留 POST 请求-响应配对语义（9 个既有 http 测试零修改）——新增后台 GET 长连接 goroutine（`Accept: text/event-stream`，SSE data 帧入 `notes` chan cap 64，满则丢弃；流断开 5s 重试，Stop 关闭）+ `ReadLine` 顶部非阻塞排水一条通知后再走配对逻辑；与 R19 `rpcLocked` 读循环（跳过 ID=0 行继续等响应）天然兼容。通知投递是惰性的（下一次 rpc/ReadLine 时排出），30s Reconciler 兜底。
+- 批3 过滤器：`isNotificationPayload`（`method!="" && id==0`）严格过滤——TestHTTPTransportSSEResponse 的假服务器在 GET 上镜像 SSE 响应帧（id≠0/无 method），无过滤会污染队列导致响应错乱（该测试抓到）。
+- 验收第 2 条实测修正：`AGENT_PPROF=true`+无 token → 200（空 token 即关闭认证，R6 语义），非 401。

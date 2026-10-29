@@ -11,6 +11,7 @@ Run 是一次任务执行。模式 `react`（ReAct 工具循环，缺省）或 `
 | `session_id` | string | 否 | 会话 ID；提供时仅列该会话（含子 run），缺失时跨会话顶层历史 |
 | `status` | string | 否 | 按运行状态过滤（queued/running/waiting_approval/paused/succeeded/failed/cancelled/timed_out 之一）；非法值返回 400 |
 | `limit` | int | 否 | 返回条数，缺省 50 |
+| `offset` | int | 否 | 分页偏移（跳过最新 N 条，与 `limit` 组合翻页），缺省 0 |
 
 **响应** `200`：`{"runs": [Run]}`，`Run` 字段：
 
