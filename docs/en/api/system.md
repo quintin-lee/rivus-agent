@@ -54,6 +54,21 @@ Common metrics:
 curl localhost:8080/metrics
 ```
 
+## GET /metrics/prometheus
+
+Exposes the same data as `/metrics` (expvar) in Prometheus text format (`text/plain; version=0.0.4`): counters are emitted directly and Map metrics are expanded to `name{key="..."}`. Auth required (same as `/metrics`).
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/metrics/prometheus
+```
+
+```text
+# TYPE rate_limited_total counter
+rate_limited_total 0
+```
+
+Suitable for direct scraping by a Prometheus server; built-in expvar metrics (`cmdline`, `memstats`) are not emitted.
+
 ## GET /version
 
 Build version info (auth-exempt). The triple is injected via `-ldflags -X`; without injection it reads `dev` / `unknown` / `unknown`.
@@ -71,3 +86,4 @@ curl localhost:8080/version
 - `/healthz` and `/readyz` are explicitly allowed through the auth middleware, no Bearer token needed
 - `/version` is also auth-exempt and returns the injected build triple; inject locally with `make build VERSION=v1.2.3`
 - The backend healthcheck in `docker-compose.yml` is based on `/healthz`
+- `/debug/pprof/*` (index / cmdline / profile / symbol / trace) is registered only when `AGENT_AUTH_TOKEN` is configured; deployments without auth return 404 for these paths. Named profiles (heap, goroutine, etc.) are covered by the index handler, e.g. `GET /debug/pprof/heap?debug=1`

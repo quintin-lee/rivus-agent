@@ -138,6 +138,12 @@ docker compose up -d
 | GET | `/readyz` | 就绪检查 |
 | GET | `/metrics` | expvar 指标（含延迟直方图桶） |
 | GET | `/version` | 构建版本信息（免认证） |
+| GET | `/metrics/prometheus` | Prometheus 文本格式指标（与 /metrics 同数据，需认证） |
+| GET | `/debug/pprof/` | pprof 索引（仅认证开启时注册） |
+| GET | `/debug/pprof/cmdline` | pprof cmdline（仅认证开启时注册） |
+| GET | `/debug/pprof/profile` | pprof CPU profile（仅认证开启时注册） |
+| GET | `/debug/pprof/symbol` | pprof symbol（仅认证开启时注册） |
+| GET | `/debug/pprof/trace` | pprof trace（仅认证开启时注册） |
 
 ## 配置
 

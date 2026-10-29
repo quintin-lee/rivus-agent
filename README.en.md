@@ -139,6 +139,12 @@ docker compose up -d
 | GET | `/readyz` | Readiness check |
 | GET | `/metrics` | expvar metrics (includes latency histogram buckets) |
 | GET | `/version` | Build version info (auth-exempt) |
+| GET | `/metrics/prometheus` | Prometheus text-format metrics (same data as /metrics, auth required) |
+| GET | `/debug/pprof/` | pprof index (registered only when auth is enabled) |
+| GET | `/debug/pprof/cmdline` | pprof cmdline (registered only when auth is enabled) |
+| GET | `/debug/pprof/profile` | pprof CPU profile (registered only when auth is enabled) |
+| GET | `/debug/pprof/symbol` | pprof symbol (registered only when auth is enabled) |
+| GET | `/debug/pprof/trace` | pprof trace (registered only when auth is enabled) |
 
 ## Configuration
 
