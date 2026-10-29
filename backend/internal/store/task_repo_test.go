@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"testing"
+	"time"
 
 	"rivus-agent-backend/internal/domain"
 )
@@ -232,4 +235,42 @@ func ids(runs []domain.Run) []string {
 		out = append(out, r.ID)
 	}
 	return out
+}
+
+func TestRenameSession(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	ses, err := tasks.CreateSession(ctx, "u1", "old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, uaBefore, err := tasks.GetSession(ctx, "u1", ses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Millisecond) // ms 精度：确保 updated_at 可观测推进
+	if err := tasks.RenameSession(ctx, "u1", ses, "new-title"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	_, title, _, uaAfter, err := tasks.GetSession(ctx, "u1", ses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title != "new-title" {
+		t.Fatalf("title = %q, want new-title", title)
+	}
+	if uaAfter < uaBefore {
+		t.Fatalf("updated_at went backwards: %d < %d", uaAfter, uaBefore)
+	}
+	if err := tasks.RenameSession(ctx, "someone-else", ses, "x"); err != domain.ErrForbidden {
+		t.Fatalf("owner mismatch err = %v", err)
+	}
+	if err := tasks.RenameSession(ctx, "u1", "ses_missing", "x"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing err = %v", err)
+	}
 }

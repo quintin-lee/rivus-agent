@@ -92,6 +92,17 @@ func (r *TaskRepo) DeleteSession(ctx context.Context, ownerID, sessionID string)
 	return tx.Commit()
 }
 
+// RenameSession 更新会话标题（属主校验沿用 GetSession，updated_at 推进到 now）。
+func (r *TaskRepo) RenameSession(ctx context.Context, ownerID, sessionID, title string) error {
+	if _, _, _, _, err := r.GetSession(ctx, ownerID, sessionID); err != nil {
+		return err
+	}
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE sessions SET title = ?, updated_at = ? WHERE id = ? AND owner_id = ?`,
+		title, nowMs(), sessionID, ownerID)
+	return err
+}
+
 func (r *TaskRepo) ListSessions(ctx context.Context, ownerID string) ([]domain.SessionInfo, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, title, created_at, updated_at FROM sessions WHERE owner_id = ? ORDER BY updated_at DESC`,
