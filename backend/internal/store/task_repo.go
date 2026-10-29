@@ -3,7 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -104,9 +107,33 @@ func (r *TaskRepo) RenameSession(ctx context.Context, ownerID, sessionID, title 
 	return err
 }
 
-// ListSessions 按 owner 列出会话；q 非空时按标题大小写不敏感过滤（LIKE 子串匹配）。
+// EncodeCursor 将排序键与行 ID 编码为不透明游标（base64url of "sortValue:id"）。
+func EncodeCursor(sortValue int64, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d:%s", sortValue, id)))
+}
+
+// DecodeCursor 解码游标；无效输入返回错误（handler 层转 400）。
+func DecodeCursor(s string) (int64, string, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return 0, "", err
+	}
+	str := string(raw)
+	i := strings.IndexByte(str, ':')
+	if i <= 0 {
+		return 0, "", fmt.Errorf("malformed cursor")
+	}
+	v, err := strconv.ParseInt(str[:i], 10, 64)
+	if err != nil {
+		return 0, "", err
+	}
+	return v, str[i+1:], nil
+}
+
+// ListSessions 按 owner 列出会话；q 非空时按标题大小写不敏感过滤（LIKE 子串匹配）；
+// cursor 非空时按 (updated_at, id) 游标翻页（忽略 offset）。
 // limit ≤0→50、>200→200；offset 为分页偏移，负数按 0 处理。
-func (r *TaskRepo) ListSessions(ctx context.Context, ownerID, q string, limit, offset int) ([]domain.SessionInfo, error) {
+func (r *TaskRepo) ListSessions(ctx context.Context, ownerID, q string, limit, offset int, cursor string) ([]domain.SessionInfo, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -121,6 +148,15 @@ func (r *TaskRepo) ListSessions(ctx context.Context, ownerID, q string, limit, o
 	if term := strings.ToLower(strings.TrimSpace(q)); term != "" {
 		query += ` AND LOWER(title) LIKE '%' || ? || '%'`
 		args = append(args, term)
+	}
+	if cursor != "" {
+		sortVal, lastID, err := DecodeCursor(cursor)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cursor: %w", err)
+		}
+		offset = 0
+		query += ` AND (updated_at < ? OR (updated_at = ? AND id < ?))`
+		args = append(args, sortVal, sortVal, lastID)
 	}
 	query += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
@@ -245,7 +281,7 @@ func (r *TaskRepo) ListChildrenByRun(ctx context.Context, parentRunID string) ([
 	return out, rows.Err()
 }
 
-func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, status, q string, limit, offset int) ([]domain.Run, error) {
+func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, status, q string, limit, offset int, cursor string) ([]domain.Run, error) {
 	if _, _, _, _, err := r.GetSession(ctx, ownerID, sessionID); err != nil {
 		return nil, err
 	}
@@ -268,6 +304,15 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, st
 	}
 	if offset < 0 {
 		offset = 0
+	}
+	if cursor != "" {
+		sortVal, lastID, err := DecodeCursor(cursor)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cursor: %w", err)
+		}
+		offset = 0
+		query += ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+		args = append(args, sortVal, sortVal, lastID)
 	}
 	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
@@ -310,7 +355,7 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, st
 
 // ListRunsByOwner 返回该 owner 全部顶层 run（排除子 agent run），跨会话，按创建时间倒序。
 // status 非空时仅返回该状态的 run。
-func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID, status, q string, limit, offset int) ([]domain.Run, error) {
+func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID, status, q string, limit, offset int, cursor string) ([]domain.Run, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -330,6 +375,15 @@ func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID, status, q strin
 	}
 	if offset < 0 {
 		offset = 0
+	}
+	if cursor != "" {
+		sortVal, lastID, err := DecodeCursor(cursor)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cursor: %w", err)
+		}
+		offset = 0
+		query += ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+		args = append(args, sortVal, sortVal, lastID)
 	}
 	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)

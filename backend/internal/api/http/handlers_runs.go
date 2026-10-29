@@ -10,6 +10,7 @@ import (
 
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/service"
+	"rivus-agent-backend/internal/store"
 )
 
 func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
@@ -32,17 +33,29 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
+	cursor := r.URL.Query().Get("cursor")
+	if cursor != "" {
+		if _, _, err := store.DecodeCursor(cursor); err != nil {
+			writeErr(w, 400, "bad_request", "invalid cursor", false)
+			return
+		}
+	}
 	// session_id 缺省 = 跨会话历史（仅顶层 run）；存在 = 会话内列表（保持原行为）
 	if sessionID == "" {
-		runs, err := s.tasks.ListRunsByOwner(r.Context(), owner, status, r.URL.Query().Get("q"), limit, offset)
+		runs, err := s.tasks.ListRunsByOwner(r.Context(), owner, status, r.URL.Query().Get("q"), limit, offset, cursor)
 		if err != nil {
 			writeErr(w, 500, "internal", "list runs failed", true)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"runs": runs})
+		resp := map[string]any{"runs": runs}
+		if len(runs) == limit {
+			last := runs[len(runs)-1]
+			resp["next_cursor"] = store.EncodeCursor(last.CreatedAt, last.ID)
+		}
+		writeJSON(w, 200, resp)
 		return
 	}
-	runs, err := s.tasks.ListRunsBySession(r.Context(), owner, sessionID, status, r.URL.Query().Get("q"), limit, offset)
+	runs, err := s.tasks.ListRunsBySession(r.Context(), owner, sessionID, status, r.URL.Query().Get("q"), limit, offset, cursor)
 	if err != nil {
 		if err == domain.ErrForbidden || err == domain.ErrBadRequest {
 			writeErr(w, 404, "not_found", "session not found", false)
@@ -51,7 +64,12 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "internal", "list runs failed", true)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"runs": runs})
+	resp := map[string]any{"runs": runs}
+	if len(runs) == limit {
+		last := runs[len(runs)-1]
+		resp["next_cursor"] = store.EncodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, 200, resp)
 }
 
 type createRunReq struct {

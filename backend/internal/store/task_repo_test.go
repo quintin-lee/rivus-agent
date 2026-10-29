@@ -148,7 +148,7 @@ func TestListRunsByOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runs, err := tasks.ListRunsByOwner(ctx, "u1", "", "", 100, 0)
+	runs, err := tasks.ListRunsByOwner(ctx, "u1", "", "", 100, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestListRunsByOwner(t *testing.T) {
 	}
 
 	// limit 钳制
-	small, err := tasks.ListRunsByOwner(ctx, "u1", "", "", 0, 0)
+	small, err := tasks.ListRunsByOwner(ctx, "u1", "", "", 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestListRunsFilterByStatus(t *testing.T) {
 	setupRun(t, tasks, ses, "run_gone", domain.RunCancelled)
 
 	// owner 分支：status 过滤
-	got, err := tasks.ListRunsByOwner(ctx, "u1", string(domain.RunFailed), "", 0, 0)
+	got, err := tasks.ListRunsByOwner(ctx, "u1", string(domain.RunFailed), "", 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestListRunsFilterByStatus(t *testing.T) {
 		t.Fatalf("owner failed filter = %v, want [run_bad]", ids(got))
 	}
 	// owner 分支：空 status = 不过滤
-	got, err = tasks.ListRunsByOwner(ctx, "u1", "", "", 0, 0)
+	got, err = tasks.ListRunsByOwner(ctx, "u1", "", "", 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,14 +215,14 @@ func TestListRunsFilterByStatus(t *testing.T) {
 		t.Fatalf("owner no filter = %d runs, want 3", len(got))
 	}
 	// session 分支：status 过滤 + 空参
-	got, err = tasks.ListRunsBySession(ctx, "u1", ses, string(domain.RunCancelled), "", 0, 0)
+	got, err = tasks.ListRunsBySession(ctx, "u1", ses, string(domain.RunCancelled), "", 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].ID != "run_gone" {
 		t.Fatalf("session cancelled filter = %v, want [run_gone]", ids(got))
 	}
-	got, err = tasks.ListRunsBySession(ctx, "u1", ses, "", "", 0, 0)
+	got, err = tasks.ListRunsBySession(ctx, "u1", ses, "", "", 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ func TestListSessionsSearch(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := tasks.ListSessions(ctx, "u1", tc.q, 0, 0)
+			got, err := tasks.ListSessions(ctx, "u1", tc.q, 0, 0, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -339,7 +339,7 @@ func TestListSessionsOffset(t *testing.T) {
 		time.Sleep(2 * time.Millisecond) // ms 精度：确保 updated_at 递增可分页
 	}
 	// page 1: limit 2 offset 0
-	got, err := tasks.ListSessions(ctx, "u1", "", 2, 0)
+	got, err := tasks.ListSessions(ctx, "u1", "", 2, 0, "")
 	if err != nil || len(got) != 2 {
 		t.Fatalf("page1: n=%d err=%v", len(got), err)
 	}
@@ -347,7 +347,7 @@ func TestListSessionsOffset(t *testing.T) {
 		t.Fatalf("page1 first = %q, want ses-05 (updated_at DESC)", got[0].Title)
 	}
 	// page 2
-	got, err = tasks.ListSessions(ctx, "u1", "", 2, 2)
+	got, err = tasks.ListSessions(ctx, "u1", "", 2, 2, "")
 	if err != nil || len(got) != 2 {
 		t.Fatalf("page2: n=%d err=%v", len(got), err)
 	}
@@ -355,12 +355,12 @@ func TestListSessionsOffset(t *testing.T) {
 		t.Fatalf("page2 first = %q, want ses-03", got[0].Title)
 	}
 	// page 3: last one
-	got, err = tasks.ListSessions(ctx, "u1", "", 2, 4)
+	got, err = tasks.ListSessions(ctx, "u1", "", 2, 4, "")
 	if err != nil || len(got) != 1 {
 		t.Fatalf("page3: n=%d err=%v", len(got), err)
 	}
 	// beyond
-	got, err = tasks.ListSessions(ctx, "u1", "", 2, 5)
+	got, err = tasks.ListSessions(ctx, "u1", "", 2, 5, "")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("beyond: n=%d err=%v", len(got), err)
 	}
@@ -402,7 +402,7 @@ func TestListRunsSearch(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name+"/owner", func(t *testing.T) {
-			got, err := tasks.ListRunsByOwner(ctx, "u1", "", tc.q, 0, 0)
+			got, err := tasks.ListRunsByOwner(ctx, "u1", "", tc.q, 0, 0, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -411,7 +411,7 @@ func TestListRunsSearch(t *testing.T) {
 			}
 		})
 		t.Run(tc.name+"/session", func(t *testing.T) {
-			got, err := tasks.ListRunsBySession(ctx, "u1", ses, "", tc.q, 0, 0)
+			got, err := tasks.ListRunsBySession(ctx, "u1", ses, "", tc.q, 0, 0, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -419,5 +419,115 @@ func TestListRunsSearch(t *testing.T) {
 				t.Fatalf("session search %q = %v, want %v", tc.q, ids(got), tc.want)
 			}
 		})
+	}
+}
+
+func TestSessionsCursorPagination(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	for i := 1; i <= 4; i++ {
+		if _, err := tasks.CreateSession(ctx, "u1", fmt.Sprintf("p%d", i)); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond) // updated_at ms 精度：保证游标键严格递减
+	}
+	all, err := tasks.ListSessions(ctx, "u1", "", 0, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAll := []string{"p4", "p3", "p2", "p1"}
+	for i, s := range all {
+		if s.Title != wantAll[i] {
+			t.Fatalf("full order[%d] = %s, want %s", i, s.Title, wantAll[i])
+		}
+	}
+
+	page1, err := tasks.ListSessions(ctx, "u1", "", 2, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page1) != 2 || page1[0].Title != "p4" || page1[1].Title != "p3" {
+		t.Fatalf("page1 = %v", page1)
+	}
+
+	cur := EncodeCursor(page1[1].UpdatedAt, page1[1].ID)
+	page2, err := tasks.ListSessions(ctx, "u1", "", 2, 0, cur)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page2) != 2 || page2[0].Title != "p2" || page2[1].Title != "p1" {
+		t.Fatalf("page2 = %v", page2)
+	}
+
+	if sv, id, err := DecodeCursor(cur); err != nil || id != page1[1].ID || sv != page1[1].UpdatedAt {
+		t.Fatalf("cursor roundtrip = %d,%s,%v", sv, id, err)
+	}
+	if _, _, err := DecodeCursor("!!!bad"); err == nil {
+		t.Fatal("invalid cursor should error")
+	}
+}
+
+func TestRunsCursorPagination(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	ses, err := tasks.CreateSession(ctx, "u1", "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := func(id string) {
+		run := &domain.Run{ID: id, SessionID: ses, OwnerID: "u1", Status: domain.RunSucceeded,
+			Mode: "react", Goal: "g",
+			Budget:  domain.Budget{MaxDurationSeconds: 60, MaxModelCalls: 5, MaxToolCalls: 5, MaxIterations: 3, MaxOutputBytes: 1000},
+			Attempt: 1}
+		if err := tasks.CreateRun(ctx, run); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond) // created_at ms 精度
+	}
+	mk("run_c1")
+	mk("run_c2")
+	mk("run_c3")
+
+	page1, err := tasks.ListRunsByOwner(ctx, "u1", "", "", 2, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page1) != 2 || page1[0].ID != "run_c3" {
+		t.Fatalf("runs page1 = %v", ids(page1))
+	}
+	cur := EncodeCursor(page1[1].CreatedAt, page1[1].ID)
+	page2, err := tasks.ListRunsByOwner(ctx, "u1", "", "", 2, 0, cur)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page2) != 1 || page2[0].ID != "run_c1" {
+		t.Fatalf("runs page2 = %v", ids(page2))
+	}
+
+	// 会话内列表同样支持
+	page1s, err := tasks.ListRunsBySession(ctx, "u1", ses, "", "", 2, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page1s) != 2 || page1s[0].ID != "run_c3" {
+		t.Fatalf("session page1 = %v", ids(page1s))
+	}
+	cur2 := EncodeCursor(page1s[1].CreatedAt, page1s[1].ID)
+	page2s, err := tasks.ListRunsBySession(ctx, "u1", ses, "", "", 2, 0, cur2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page2s) != 1 || page2s[0].ID != "run_c1" {
+		t.Fatalf("session page2 = %v", ids(page2s))
 	}
 }

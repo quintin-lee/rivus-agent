@@ -8,6 +8,7 @@ import (
 
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/service"
+	"rivus-agent-backend/internal/store"
 )
 
 type createSessionReq struct {
@@ -83,18 +84,36 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
 	offset := 0
 	if v := r.URL.Query().Get("offset"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			offset = n
 		}
 	}
-	sessions, err := s.tasks.ListSessions(r.Context(), ownerOf(r), r.URL.Query().Get("q"), 50, offset)
+	cursor := r.URL.Query().Get("cursor")
+	if cursor != "" {
+		if _, _, err := store.DecodeCursor(cursor); err != nil {
+			writeErr(w, 400, "bad_request", "invalid cursor", false)
+			return
+		}
+	}
+	sessions, err := s.tasks.ListSessions(r.Context(), ownerOf(r), r.URL.Query().Get("q"), limit, offset, cursor)
 	if err != nil {
 		writeErr(w, 500, "internal", "list sessions failed", true)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"sessions": sessions})
+	resp := map[string]any{"sessions": sessions}
+	if limit > 0 && len(sessions) == limit {
+		last := sessions[len(sessions)-1]
+		resp["next_cursor"] = store.EncodeCursor(last.UpdatedAt, last.ID)
+	}
+	writeJSON(w, 200, resp)
 }
 
 func (s *Server) handleListMemories(w http.ResponseWriter, r *http.Request) {
