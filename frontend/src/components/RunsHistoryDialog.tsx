@@ -53,6 +53,7 @@ export function RunsHistoryDialog({
   const [statusFilter, setStatusFilter] = useState('')
   const [searchDraft, setSearchDraft] = useState('')
   const [query, setQuery] = useState('')
+  const [runsCursor, setRunsCursor] = useState('')
 
   const statusChips: [string, string][] = [
     ['', t('runs.filterAll')],
@@ -66,7 +67,15 @@ export function RunsHistoryDialog({
     setLoading(true)
     setError('')
     try {
-      setRuns(await api.listRuns(undefined, 50, statusFilter || undefined, 0, query || undefined))
+      const page = await api.listRunsPage(
+        undefined,
+        50,
+        statusFilter || undefined,
+        query || undefined,
+        undefined,
+      )
+      setRuns(page.items)
+      setRunsCursor(page.nextCursor)
     } catch (e) {
       setError(e instanceof Error ? e.message : t('common.loadFailed'))
     } finally {
@@ -75,17 +84,25 @@ export function RunsHistoryDialog({
   }, [statusFilter, query])
 
   const loadMore = useCallback(async () => {
+    if (!runsCursor) return
     setLoading(true)
     setError('')
     try {
-      const more = await api.listRuns(undefined, 50, statusFilter || undefined, runs.length, query || undefined)
-      setRuns((prev) => [...prev, ...more])
+      const page = await api.listRunsPage(
+        undefined,
+        50,
+        statusFilter || undefined,
+        query || undefined,
+        runsCursor,
+      )
+      setRuns((prev) => [...prev, ...page.items])
+      setRunsCursor(page.nextCursor)
     } catch (e) {
       setError(e instanceof Error ? e.message : t('common.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, runs.length, query])
+  }, [statusFilter, query, runsCursor])
 
   useEffect(() => {
     if (open) void load()

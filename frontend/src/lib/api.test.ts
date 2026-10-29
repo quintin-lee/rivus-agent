@@ -113,3 +113,31 @@ describe('ApiClient', () => {
     const [url] = f.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/v1/runs?session_id=s1&limit=50&status=succeeded')
   })
+
+describe('paged endpoints (cursor)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('listSessionsPage builds url and returns {items,nextCursor}', async () => {
+    const f = mockFetch(200, { sessions: [{ session_id: 's1' }], next_cursor: 'MTcwOnMx' })
+    vi.stubGlobal('fetch', f)
+    const page = await api.listSessionsPage(undefined, 'MTcwOnMx')
+    const [url] = f.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/sessions?limit=50&cursor=MTcwOnMx')
+    expect(page.items).toHaveLength(1)
+    expect(page.nextCursor).toBe('MTcwOnMx')
+  })
+
+  it('listRunsPage keeps params and parses next_cursor', async () => {
+    const f = mockFetch(200, { runs: [{ id: 'r1' }], next_cursor: 'MTcwOnIx' })
+    vi.stubGlobal('fetch', f)
+    const page = await api.listRunsPage('s1', 50, 'failed', 'alpha', 'MTcwOnIx')
+    const [url] = f.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(
+      '/api/v1/runs?session_id=s1&limit=50&status=failed&q=alpha&cursor=MTcwOnIx',
+    )
+    expect(page.items).toHaveLength(1)
+    expect(page.nextCursor).toBe('MTcwOnIx')
+  })
+})

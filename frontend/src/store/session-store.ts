@@ -6,9 +6,11 @@ import { useRunStore } from '@/store/run-store'
 interface SessionState {
   sessions: Session[]
   activeSessionId: string | null
+  sessionsCursor: string
   createSession: (title: string) => Promise<void>
   switchSession: (id: string) => void
-  loadSessions: (q?: string, offset?: number) => Promise<void>
+  loadSessions: (q?: string) => Promise<void>
+  loadMoreSessions: (q?: string) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
 }
@@ -16,6 +18,7 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set, get) => ({
   sessions: [],
   activeSessionId: null,
+  sessionsCursor: '',
 
   createSession: async (title) => {
     const res = await api.createSession(title)
@@ -41,14 +44,21 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     })
   },
 
-  loadSessions: async (q?: string, offset = 0) => {
-    const sessions = await api.listSessions(q, offset)
+  loadSessions: async (q?: string) => {
+    const page = await api.listSessionsPage(q || undefined, undefined)
     set((state) => ({
-      sessions: offset > 0 ? [...state.sessions, ...sessions] : sessions,
-      activeSessionId:
-        offset > 0
-          ? state.activeSessionId
-          : state.activeSessionId ?? sessions[0]?.session_id ?? null,
+      sessions: page.items,
+      sessionsCursor: page.nextCursor,
+      activeSessionId: state.activeSessionId ?? page.items[0]?.session_id ?? null,
+    }))
+  },
+
+  loadMoreSessions: async (q?: string) => {
+    if (!get().sessionsCursor) return
+    const page = await api.listSessionsPage(q || undefined, get().sessionsCursor)
+    set((state) => ({
+      sessions: [...state.sessions, ...page.items],
+      sessionsCursor: page.nextCursor,
     }))
   },
 

@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { useUiStore } from '@/store/ui-store'
 import type { Run } from '@/lib/types'
 
-vi.mock('@/lib/api', () => ({ api: { listRuns: vi.fn() } }))
+vi.mock('@/lib/api', () => ({ api: { listRunsPage: vi.fn() } }))
 
 describe('Header theme toggle', () => {
   beforeEach(() => {
@@ -27,7 +27,7 @@ describe('Header theme toggle', () => {
 
 describe('Header run-history entry', () => {
   it('opens the run history dialog from the header button', async () => {
-    vi.mocked(api.listRuns).mockResolvedValue([
+    vi.mocked(api.listRunsPage).mockResolvedValue({ items: [
       {
         id: 'r1',
         session_id: 's1',
@@ -40,7 +40,7 @@ describe('Header run-history entry', () => {
         created_at: 1,
         updated_at: 1,
       } as Run,
-    ])
+    ], nextCursor: '' })
     render(<Header />)
     fireEvent.click(screen.getByRole('button', { name: /运行历史/ }))
     await waitFor(() => expect(screen.getByText(/历史目标/)).toBeTruthy())

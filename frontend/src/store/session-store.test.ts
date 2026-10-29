@@ -3,13 +3,13 @@ import { useSessionStore } from '@/store/session-store'
 import { useRunStore } from '@/store/run-store'
 import type { Session } from '@/lib/types'
 
-const { createSession, listSessions, deleteSession } = vi.hoisted(() => ({
+const { createSession, listSessionsPage, deleteSession } = vi.hoisted(() => ({
   createSession: vi.fn().mockResolvedValue({ session_id: 's-new' }),
-  listSessions: vi.fn().mockResolvedValue([]),
+  listSessionsPage: vi.fn().mockResolvedValue({ items: [], nextCursor: '' }),
   deleteSession: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('@/lib/api', () => ({ api: { createSession, listSessions, deleteSession } }))
+vi.mock('@/lib/api', () => ({ api: { createSession, listSessionsPage, deleteSession } }))
 
 function mkSession(id: string, title: string): Session {
   return { session_id: id, title, created_at: 0, updated_at: 0 }
@@ -19,7 +19,7 @@ describe('session-store', () => {
   beforeEach(() => {
     useSessionStore.setState({ sessions: [], activeSessionId: null })
     createSession.mockClear()
-    listSessions.mockClear()
+    listSessionsPage.mockClear()
   })
 
   it('createSession adds the session and sets it active', async () => {
@@ -50,7 +50,7 @@ describe('session-store', () => {
 
   it('loadSessions keeps existing activeSessionId when set', async () => {
     useSessionStore.setState({ activeSessionId: 'keep' })
-    listSessions.mockResolvedValueOnce([mkSession('x', 'X'), mkSession('y', 'Y')])
+    listSessionsPage.mockResolvedValueOnce({ items: [mkSession('x', 'X'), mkSession('y', 'Y')], nextCursor: '' })
     await useSessionStore.getState().loadSessions()
     expect(useSessionStore.getState().activeSessionId).toBe('keep')
     expect(useSessionStore.getState().sessions).toHaveLength(2)
@@ -58,14 +58,14 @@ describe('session-store', () => {
 
   it('loadSessions falls back to first session when none active', async () => {
     useSessionStore.setState({ activeSessionId: null })
-    listSessions.mockResolvedValueOnce([mkSession('x', 'X'), mkSession('y', 'Y')])
+    listSessionsPage.mockResolvedValueOnce({ items: [mkSession('x', 'X'), mkSession('y', 'Y')], nextCursor: '' })
     await useSessionStore.getState().loadSessions()
     expect(useSessionStore.getState().activeSessionId).toBe('x')
   })
 
   it('loadSessions leaves activeSessionId null when list is empty', async () => {
     useSessionStore.setState({ activeSessionId: null })
-    listSessions.mockResolvedValueOnce([])
+    listSessionsPage.mockResolvedValueOnce({ items: [], nextCursor: '' })
     await useSessionStore.getState().loadSessions()
     expect(useSessionStore.getState().activeSessionId).toBeNull()
     expect(useSessionStore.getState().sessions).toEqual([])

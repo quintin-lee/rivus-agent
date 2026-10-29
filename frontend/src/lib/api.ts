@@ -111,6 +111,42 @@ class ApiClient {
     }
   }
 
+  // 游标分页：next_cursor 为空表示没有更多页。
+  async listSessionsPage(q?: string, cursor?: string): Promise<{ items: Session[]; nextCursor: string }> {
+    try {
+      let path = '/api/v1/sessions?limit=50'
+      if (q) path = `${path}&q=${encodeURIComponent(q)}`
+      if (cursor) path = `${path}&cursor=${encodeURIComponent(cursor)}`
+      const data = await this.request<{ sessions: Session[]; next_cursor?: string }>('GET', path)
+      return { items: data.sessions ?? [], nextCursor: data.next_cursor ?? '' }
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'not_found') return { items: [], nextCursor: '' }
+      throw err
+    }
+  }
+
+  async listRunsPage(
+    sessionId?: string,
+    limit = 50,
+    status?: string,
+    q?: string,
+    cursor?: string,
+  ): Promise<{ items: Run[]; nextCursor: string }> {
+    try {
+      let path = sessionId
+        ? `/api/v1/runs?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`
+        : `/api/v1/runs?limit=${limit}`
+      if (status) path = `${path}&status=${encodeURIComponent(status)}`
+      if (q) path = `${path}&q=${encodeURIComponent(q)}`
+      if (cursor) path = `${path}&cursor=${encodeURIComponent(cursor)}`
+      const data = await this.request<{ runs: Run[]; next_cursor?: string }>('GET', path)
+      return { items: data.runs ?? [], nextCursor: data.next_cursor ?? '' }
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'not_found') return { items: [], nextCursor: '' }
+      throw err
+    }
+  }
+
   async listMemories(sessionId: string, limit = 200): Promise<Memory[]> {
     try {
       const data = await this.request<{ memories: Memory[] }>(

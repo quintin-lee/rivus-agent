@@ -37,6 +37,7 @@ export function SessionList() {
   const createSession = useSessionStore((s) => s.createSession)
   const switchSession = useSessionStore((s) => s.switchSession)
   const loadSessions = useSessionStore((s) => s.loadSessions)
+  const loadMoreSessions = useSessionStore((s) => s.loadMoreSessions)
   const deleteSession = useSessionStore((s) => s.deleteSession)
   const renameSession = useSessionStore((s) => s.renameSession)
 
@@ -243,7 +244,7 @@ export function SessionList() {
           })}
           {sessions.length > 0 && sessions.length % 50 === 0 && (
             <button
-              onClick={() => void loadSessions(query || undefined, sessions.length)}
+              onClick={() => void loadMoreSessions(query || undefined)}
               className="w-full rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               {t('common.loadMore')}

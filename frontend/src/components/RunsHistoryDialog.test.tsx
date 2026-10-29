@@ -7,6 +7,7 @@ import type { Run } from '@/lib/types'
 vi.mock('@/lib/api', () => ({
   api: {
     listRuns: vi.fn(),
+    listRunsPage: vi.fn(),
     getRun: vi.fn(),
     getEvents: vi.fn(),
     listApprovals: vi.fn(),
@@ -30,41 +31,45 @@ function run(over: Partial<Run> = {}): Run {
 }
 
 describe('RunsHistoryDialog', () => {
-  beforeEach(() => vi.mocked(api.listRuns).mockReset())
+  beforeEach(() => {
+    vi.mocked(api.listRuns).mockReset()
+    vi.mocked(api.listRunsPage).mockReset()
+    vi.mocked(api.listRunsPage).mockResolvedValue({ items: [], nextCursor: '' })
+  })
 
   it('lists owner-wide runs on open (no session filter)', async () => {
-    vi.mocked(api.listRuns).mockResolvedValue([run(), run({ goal: '第二个目标', status: 'failed' })])
+    vi.mocked(api.listRunsPage).mockResolvedValue({ items: [run(), run({ goal: '第二个目标', status: 'failed' })], nextCursor: '' })
     render(<RunsHistoryDialog open onOpenChange={() => {}} />)
     await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
     expect(screen.getByText(/第二个目标/)).toBeTruthy()
-    expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 0, undefined)
+    expect(api.listRunsPage).toHaveBeenCalledWith(undefined, 50, undefined, undefined, undefined)
   })
 
   it('shows empty state', async () => {
-    vi.mocked(api.listRuns).mockResolvedValue([])
+    vi.mocked(api.listRunsPage).mockResolvedValue({ items: [], nextCursor: '' })
     render(<RunsHistoryDialog open onOpenChange={() => {}} />)
     await waitFor(() => expect(screen.getByText(/无运行记录/)).toBeTruthy())
   })
 
   it('shows error with retry', async () => {
-    vi.mocked(api.listRuns).mockRejectedValueOnce(new Error('boom'))
+    vi.mocked(api.listRunsPage).mockRejectedValueOnce(new Error('boom'))
     render(<RunsHistoryDialog open onOpenChange={() => {}} />)
     await waitFor(() => expect(screen.getByText(/boom|加载失败/)).toBeTruthy())
-    vi.mocked(api.listRuns).mockResolvedValue([run()])
+    vi.mocked(api.listRunsPage).mockResolvedValue({ items: [run()], nextCursor: '' })
     fireEvent.click(screen.getByRole('button', { name: /重试/ }))
     await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
   })
 
   it('refetches with status when a filter chip is clicked', async () => {
-    vi.mocked(api.listRuns).mockResolvedValue([run({ status: 'failed' })])
+    vi.mocked(api.listRunsPage).mockResolvedValue({ items: [run({ status: 'failed' })], nextCursor: '' })
     render(<RunsHistoryDialog open onOpenChange={() => {}} />)
     await waitFor(() => expect(screen.getByText(/整理周报/)).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: '失败' }))
-    await waitFor(() => expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, 'failed', 0, undefined))
+    await waitFor(() => expect(api.listRunsPage).toHaveBeenCalledWith(undefined, 50, 'failed', undefined, undefined))
   })
 
   it('opens the run detail dialog when a row is clicked', async () => {
-    vi.mocked(api.listRuns).mockResolvedValue([run()])
+    vi.mocked(api.listRunsPage).mockResolvedValue({ items: [run()], nextCursor: '' })
     vi.mocked(api.getRun).mockResolvedValue({ run: run(), steps: [] })
     vi.mocked(api.getEvents).mockResolvedValue([])
     vi.mocked(api.listApprovals).mockResolvedValue([])
@@ -76,15 +81,16 @@ describe('RunsHistoryDialog', () => {
   })
 })
 
-it('shows load-more on full page and fetches next offset', async () => {
+it('shows load-more on full page and fetches next cursor', async () => {
   const many = Array.from({ length: 50 }, (_, i) => run({ id: `r${i}` }))
-  vi.mocked(api.listRuns).mockResolvedValue(many)
+  vi.mocked(api.listRunsPage).mockResolvedValue({ items: many, nextCursor: 'c0' })
   render(<RunsHistoryDialog open onOpenChange={vi.fn()} />)
   await vi.waitFor(() => expect(screen.getByText('加载更多')).toBeTruthy())
-  vi.mocked(api.listRuns).mockClear()
+  vi.mocked(api.listRunsPage).mockResolvedValue({ items: [], nextCursor: '' })
   fireEvent.click(screen.getByText('加载更多'))
-  await waitFor(() => expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 50, undefined))
-  expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 50, undefined)
+  await waitFor(() =>
+    expect(api.listRunsPage).toHaveBeenCalledWith(undefined, 50, undefined, undefined, 'c0'),
+  )
 })
 
 it('debounces search input and reloads with q', async () => {
@@ -95,7 +101,7 @@ it('debounces search input and reloads with q', async () => {
     await vi.advanceTimersByTimeAsync(250)
   })
   await vi.waitFor(() =>
-    expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 0, 'alpha'),
+    expect(api.listRunsPage).toHaveBeenCalledWith(undefined, 50, undefined, 'alpha', undefined),
   )
   vi.useRealTimers()
 })
@@ -112,7 +118,7 @@ it('reloads without q when search cleared', async () => {
     await vi.advanceTimersByTimeAsync(250)
   })
   await vi.waitFor(() =>
-    expect(api.listRuns).toHaveBeenLastCalledWith(undefined, 50, undefined, 0, undefined),
+    expect(api.listRunsPage).toHaveBeenLastCalledWith(undefined, 50, undefined, undefined, undefined),
   )
   vi.useRealTimers()
 })

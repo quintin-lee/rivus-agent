@@ -125,20 +125,20 @@ it('reloads without q when search cleared', async () => {
   vi.useRealTimers()
 })
 
-it('shows load-more on full page and fetches next offset', async () => {
-  const loadSessions = vi.fn().mockResolvedValue(undefined)
+it('shows load-more on full page and fetches next cursor', async () => {
+  const loadMoreSessions = vi.fn().mockResolvedValue(undefined)
   const many = Array.from({ length: 50 }, (_, i) => ({
     session_id: `s${i}`,
     title: `S${i}`,
     created_at: '2025-01-01T00:00:00Z',
   }))
-  seedStores({ sessions: many, loadSessions })
+  seedStores({ sessions: many, loadMoreSessions })
   render(<SessionList />)
   const btn = screen.getByText('加载更多')
   await act(async () => {
     fireEvent.click(btn)
   })
-  expect(loadSessions).toHaveBeenCalledWith(undefined, 50)
+  expect(loadMoreSessions).toHaveBeenCalledWith(undefined)
 })
 
 it('hides load-more when page is not full', () => {
