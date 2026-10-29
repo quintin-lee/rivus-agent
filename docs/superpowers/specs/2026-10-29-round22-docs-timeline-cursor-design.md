@@ -61,4 +61,10 @@ RunDetailDialog 已拉取 events（`getEvents(runId, 0)`），新增「时间线
 
 ## 8. 执行偏差
 
-（执行后回写）
+- 批1：EN 版 runs.md 的 curl `?q=` 示例首稿遗漏（zh 有 en 无），补提交 b83271f；grep 校验 1/1。
+- 批2（store）：行值比较按计划用展开 OR 形式；`EncodeCursor`/`DecodeCursor` 导出（测试直接使用，非法 cursor 报错经 `fmt.Errorf` 包装）；store 老 offset 参数保留（cursor 非空时 offset 置 0，向后兼容）。
+- 批2（handler）：**修复 R20 遗留真 bug**——sessions 列表 limit 参数从未解析（硬编码 50），文档承诺 1..200 未兑现；本批顺带修复（limit n>0 生效 + next_cursor 判断从硬编码 50 改为 limit）。cursor 解码失败 → 400 bad_request。
+- 批3（时间线）：`timelineLabel = t('timeline.' + type)`，未知类型由 t() key 兜底回退为原始事件类型字符串；事件最多显示最近 50 条（计数仍为全量）；新增本地 relTime 副本（与 RunsHistoryDialog/MemoriesDialog 同模式，不跨组件抽象）。
+- 批3（前端游标）：**初始加载也必须走 *Page 方法**——若首页仍用旧 listRuns/listSessions（无 next_cursor），第 2 页游标为空会重复拉取首页数据。因此 RunsHistoryDialog 的 load 效果与 session-store 的 loadSessions 均切换到 listRunsPage/listSessionsPage，旧数组版方法保留仅作兼容。loadMoreSessions 在 sessionsCursor 为空时 no-op（末页后按钮点击不重复请求）；RunsHistoryDialog 加载更多按钮条件追加 `&& runsCursor`。
+- 测试适配：RunsHistoryDialog 8 个测试全量迁移到 listRunsPage mock（{items, nextCursor} 形状，断言改为 5 参 (undefined,50,status,q,cursor)）；session-store.test 的 listSessions mock → listSessionsPage；Header.test 的 listRuns → listRunsPage（Header 内 RunsHistoryDialog 联动）；SessionList load-more 断言 → loadMoreSessions(undefined)。
+- 5 个既有 load-more/搜索测试断言随签名升级（vitest 186→192）。
