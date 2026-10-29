@@ -22,6 +22,22 @@ interface ToolCallRow {
   output?: string
 }
 
+// 事件时间线标签：未知类型回退为原始事件类型字符串（t() 的 key 兜底语义）。
+function timelineLabel(type: AgentEvent['event_type']): string {
+  return t(`timeline.${type}`)
+}
+
+function relTime(ts: number): string {
+  if (!ts) return ''
+  const diff = Date.now() - ts
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return t('time.justNow')
+  if (m < 60) return t('time.minAgo', { n: m })
+  const h = Math.floor(m / 60)
+  if (h < 24) return t('time.hourAgo', { n: h })
+  return t('time.dayAgo', { n: Math.floor(h / 24) })
+}
+
 function parseToolCalls(events: AgentEvent[]): ToolCallRow[] {
   const rows: ToolCallRow[] = []
   for (const ev of events) {
@@ -199,6 +215,31 @@ export function RunDetailDialog({
                       {ap.reason && (
                         <span className="truncate text-muted-foreground/70">{ap.reason}</span>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                {t('timeline.title')}
+                {events.length > 0 && (
+                  <span className="font-normal text-muted-foreground/70">
+                    {t('timeline.eventCount', { n: events.length })}
+                  </span>
+                )}
+              </div>
+              {events.length === 0 ? (
+                <div className="text-xs text-muted-foreground/70">{t('timeline.empty')}</div>
+              ) : (
+                <div className="relative flex flex-col gap-2 pl-4">
+                  <span className="absolute left-1.5 top-1 h-[calc(100%-0.5rem)] w-px bg-border" />
+                  {events.slice(-50).map((ev) => (
+                    <div key={ev.seq} className="relative flex items-center gap-2 text-xs">
+                      <span className="absolute -left-4 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border border-border bg-card" />
+                      <span className="font-medium">{timelineLabel(ev.event_type)}</span>
+                      <span className="text-muted-foreground/70">{relTime(ev.created_at)}</span>
                     </div>
                   ))}
                 </div>

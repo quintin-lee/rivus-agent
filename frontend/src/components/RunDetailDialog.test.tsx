@@ -91,4 +91,36 @@ describe('RunDetailDialog', () => {
     expect(api.getEvents).not.toHaveBeenCalled()
     expect(api.listApprovals).not.toHaveBeenCalled()
   })
+
+  it('renders event timeline with labels and count', async () => {
+    vi.mocked(api.getRun).mockResolvedValue({ run: run(), steps: [] })
+    vi.mocked(api.listApprovals).mockResolvedValue([])
+    const ev = (seq: number, type: AgentEvent['event_type']): AgentEvent => ({
+      seq,
+      run_id: 'r1abcdef',
+      event_type: type,
+      payload_json: '{}',
+      sensitivity: 'normal',
+      created_at: 1700000001000 + seq,
+    })
+    vi.mocked(api.getEvents).mockResolvedValue([
+      ev(1, 'run.started'),
+      ev(2, 'tool.completed'),
+      ev(3, 'budget.consumed'),
+    ])
+    render(<RunDetailDialog runId="r1abcdef" onOpenChange={() => {}} />)
+    await waitFor(() => expect(screen.getByText('运行开始')).toBeTruthy())
+    expect(screen.getByText('工具完成')).toBeTruthy()
+    expect(screen.getByText('预算消耗')).toBeTruthy()
+    expect(screen.getByText('共 3 条事件')).toBeTruthy()
+  })
+
+  it('renders empty timeline without count', async () => {
+    vi.mocked(api.getRun).mockResolvedValue({ run: run(), steps: [] })
+    vi.mocked(api.listApprovals).mockResolvedValue([])
+    vi.mocked(api.getEvents).mockResolvedValue([])
+    render(<RunDetailDialog runId="r1abcdef" onOpenChange={() => {}} />)
+    await waitFor(() => expect(screen.getByText('（无事件）')).toBeTruthy())
+    expect(screen.queryByText(/共 \d+ 条事件/)).toBeNull()
+  })
 })
