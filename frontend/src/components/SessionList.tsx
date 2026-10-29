@@ -241,6 +241,14 @@ export function SessionList() {
               </div>
             )
           })}
+          {sessions.length > 0 && sessions.length % 50 === 0 && (
+            <button
+              onClick={() => void loadSessions(query || undefined, sessions.length)}
+              className="w-full rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {t('common.loadMore')}
+            </button>
+          )}
         </div>
       </div>
 

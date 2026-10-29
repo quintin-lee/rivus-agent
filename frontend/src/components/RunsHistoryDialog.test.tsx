@@ -75,3 +75,14 @@ describe('RunsHistoryDialog', () => {
     await waitFor(() => expect(api.getRun).toHaveBeenCalledWith('r1abcdef'))
   })
 })
+
+it('shows load-more on full page and fetches next offset', async () => {
+  const many = Array.from({ length: 50 }, (_, i) => run({ id: `r${i}` }))
+  vi.mocked(api.listRuns).mockResolvedValue(many)
+  render(<RunsHistoryDialog open onOpenChange={vi.fn()} />)
+  await vi.waitFor(() => expect(screen.getByText('加载更多')).toBeTruthy())
+  vi.mocked(api.listRuns).mockClear()
+  fireEvent.click(screen.getByText('加载更多'))
+  await waitFor(() => expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 50))
+  expect(api.listRuns).toHaveBeenCalledWith(undefined, 50, undefined, 50)
+})

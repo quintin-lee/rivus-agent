@@ -83,9 +83,10 @@ class ApiClient {
     return this.request<Session>('PATCH', `/api/v1/sessions/${encodeURIComponent(id)}`, { title })
   }
 
-  async listSessions(q?: string): Promise<Session[]> {
+  async listSessions(q?: string, offset = 0): Promise<Session[]> {
     try {
-      const path = q ? `/api/v1/sessions?q=${encodeURIComponent(q)}` : '/api/v1/sessions'
+      let path = q ? `/api/v1/sessions?q=${encodeURIComponent(q)}` : '/api/v1/sessions'
+      if (offset > 0) path = `${path}&offset=${offset}`
       const data = await this.request<{ sessions: Session[] }>('GET', path)
       return data.sessions ?? []
     } catch (err) {
@@ -94,13 +95,14 @@ class ApiClient {
     }
   }
 
-  async listRuns(sessionId?: string, limit = 50, status?: string): Promise<Run[]> {
+  async listRuns(sessionId?: string, limit = 50, status?: string, offset = 0): Promise<Run[]> {
     try {
-      const path = sessionId
+      let path = sessionId
         ? `/api/v1/runs?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`
         : `/api/v1/runs?limit=${limit}`
-      const finalPath = status ? `${path}&status=${encodeURIComponent(status)}` : path
-      const data = await this.request<{ runs: Run[] }>('GET', finalPath)
+      if (status) path = `${path}&status=${encodeURIComponent(status)}`
+      if (offset > 0) path = `${path}&offset=${offset}`
+      const data = await this.request<{ runs: Run[] }>('GET', path)
       return data.runs ?? []
     } catch (err) {
       if (err instanceof ApiError && err.code === 'not_found') return []

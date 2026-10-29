@@ -72,6 +72,19 @@ export function RunsHistoryDialog({
     }
   }, [statusFilter])
 
+  const loadMore = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const more = await api.listRuns(undefined, 50, statusFilter || undefined, runs.length)
+      setRuns((prev) => [...prev, ...more])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('common.loadFailed'))
+    } finally {
+      setLoading(false)
+    }
+  }, [statusFilter, runs.length])
+
   useEffect(() => {
     if (open) void load()
   }, [open, load])
@@ -151,6 +164,14 @@ export function RunsHistoryDialog({
               </div>
             </div>
           ))}
+          {runs.length > 0 && runs.length % 50 === 0 && (
+            <button
+              onClick={() => void loadMore()}
+              className="w-full rounded border border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {t('common.loadMore')}
+            </button>
+          )}
         </div>
       </DialogContent>
       <RunDetailDialog runId={detailRunId} onOpenChange={(v) => !v && setDetailRunId(null)} />
