@@ -48,4 +48,9 @@ README 计数 32→34（工具级 21 + agent 级 13）zh/en。
 
 ## 8. 执行偏差
 
-（执行后回写）
+- 命名冲突：`ListRunsBySession`/`ListRunsByOwner` 的搜索参数 `q` 与函数内既有 SQL 构建局部变量 `q` 重名（`:=` 重声明编译错），局部变量重命名为 `query`（两函数内）。
+- `h.CreateRun` 返回 `(id, code, body)` 三值——evals 场景解构顺序两次写反（vet 抓到 `code != 201` 类型不匹配），以 `_, code, _ :=` 修正。
+- RunsHistoryDialog 防抖未复制 SessionList 的 `useRef(firstRun)` 跳挂载首跑：该弹窗仅在 `open` 时 fetch，query 变化经 `load` 依赖自动重拉，挂载首跑重复问题不存在。
+- 既有 3 个 RunsHistoryDialog 测试断言旧 3/4 参 `listRuns` 签名，随第 5 参上线路径更新为 `(undefined, 50, …, 0/50, undefined)`。
+- 搜索框用原生 `<input>` + Tailwind 类（与 Dialog 内既有 chips 样式一致），未引入新 UI 组件。
+- 批1/批3 文档与场景一次通过，零偏差。
