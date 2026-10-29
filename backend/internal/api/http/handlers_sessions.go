@@ -83,7 +83,7 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
-	sessions, err := s.tasks.ListSessions(r.Context(), ownerOf(r))
+	sessions, err := s.tasks.ListSessions(r.Context(), ownerOf(r), r.URL.Query().Get("q"))
 	if err != nil {
 		writeErr(w, 500, "internal", "list sessions failed", true)
 		return

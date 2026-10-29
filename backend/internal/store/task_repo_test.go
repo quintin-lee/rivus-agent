@@ -274,3 +274,50 @@ func TestRenameSession(t *testing.T) {
 		t.Fatalf("missing err = %v", err)
 	}
 }
+
+func TestListSessionsSearch(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	for _, title := range []string{"Alpha 项目", "beta notes", "GAMMA"} {
+		if _, err := tasks.CreateSession(ctx, "u1", title); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := []struct {
+		name string
+		q    string
+		want []string
+	}{
+		{"blank q returns all", "   ", []string{"Alpha 项目", "beta notes", "GAMMA"}},
+		{"case-insensitive hit", "alpha", []string{"Alpha 项目"}},
+		{"uppercase term hits lowercase", "BETA", []string{"beta notes"}},
+		{"miss returns empty", "zzz", []string{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tasks.ListSessions(ctx, "u1", tc.q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %d sessions (%v), want %d", len(got), got, len(tc.want))
+			}
+			for _, s := range got {
+				ok := false
+				for _, w := range tc.want {
+					if s.Title == w {
+						ok = true
+					}
+				}
+				if !ok {
+					t.Fatalf("unexpected session %q", s.Title)
+				}
+			}
+		})
+	}
+}

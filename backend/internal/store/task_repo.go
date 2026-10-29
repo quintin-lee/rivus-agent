@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"rivus-agent-backend/internal/domain"
@@ -103,10 +104,16 @@ func (r *TaskRepo) RenameSession(ctx context.Context, ownerID, sessionID, title 
 	return err
 }
 
-func (r *TaskRepo) ListSessions(ctx context.Context, ownerID string) ([]domain.SessionInfo, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, title, created_at, updated_at FROM sessions WHERE owner_id = ? ORDER BY updated_at DESC`,
-		ownerID)
+// ListSessions 按 owner 列出会话；q 非空时按标题大小写不敏感过滤（LIKE 子串匹配）。
+func (r *TaskRepo) ListSessions(ctx context.Context, ownerID, q string) ([]domain.SessionInfo, error) {
+	query := `SELECT id, title, created_at, updated_at FROM sessions WHERE owner_id = ?`
+	args := []any{ownerID}
+	if term := strings.ToLower(strings.TrimSpace(q)); term != "" {
+		query += ` AND LOWER(title) LIKE '%' || ? || '%'`
+		args = append(args, term)
+	}
+	query += ` ORDER BY updated_at DESC`
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
