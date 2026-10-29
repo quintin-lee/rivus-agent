@@ -79,6 +79,10 @@ class ApiClient {
     await this.request('DELETE', `/api/v1/sessions/${encodeURIComponent(id)}`)
   }
 
+  async renameSession(id: string, title: string): Promise<Session> {
+    return this.request<Session>('PATCH', `/api/v1/sessions/${encodeURIComponent(id)}`, { title })
+  }
+
   async listSessions(): Promise<Session[]> {
     try {
       const data = await this.request<{ sessions: Session[] }>('GET', '/api/v1/sessions')

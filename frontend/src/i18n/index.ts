@@ -29,6 +29,7 @@ const zh: Record<string, string> = {
   'sessionlist.noSessions': '暂无会话',
   'sessionlist.noRuns': '暂无运行',
   'sessionlist.memoriesTitle': '会话记忆',
+  'sessionlist.renameTitle': '重命名会话',
   'sessionlist.deleteTitle': '删除会话',
   'sessionlist.deleteConfirmTitle': '删除会话？',
   'sessionlist.deleteConfirmBody':
@@ -98,6 +99,7 @@ const en: Record<string, string> = {
   'sessionlist.noSessions': 'No sessions',
   'sessionlist.noRuns': 'No runs',
   'sessionlist.memoriesTitle': 'Session memories',
+  'sessionlist.renameTitle': 'Rename session',
   'sessionlist.deleteTitle': 'Delete session',
   'sessionlist.deleteConfirmTitle': 'Delete session?',
   'sessionlist.deleteConfirmBody':

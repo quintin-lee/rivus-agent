@@ -10,6 +10,7 @@ interface SessionState {
   switchSession: (id: string) => void
   loadSessions: () => Promise<void>
   deleteSession: (id: string) => Promise<void>
+  renameSession: (id: string, title: string) => Promise<void>
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -67,5 +68,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         runHistory: [],
       })
     }
+  },
+
+  renameSession: async (id, title) => {
+    const s = await api.renameSession(id, title)
+    set((state) => ({
+      sessions: state.sessions.map((x) =>
+        x.session_id === id ? { ...x, title: s.title, updated_at: s.updated_at } : x,
+      ),
+    }))
   },
 }))

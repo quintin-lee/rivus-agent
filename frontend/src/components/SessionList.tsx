@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, FolderOpen, Trash2, RefreshCw, Brain } from 'lucide-react'
+import { Plus, FolderOpen, Trash2, RefreshCw, Brain, Pencil } from 'lucide-react'
 import { useSessionStore } from '@/store/session-store'
 import { useRunStore } from '@/store/run-store'
 import { api } from '@/lib/api'
@@ -38,6 +38,7 @@ export function SessionList() {
   const switchSession = useSessionStore((s) => s.switchSession)
   const loadSessions = useSessionStore((s) => s.loadSessions)
   const deleteSession = useSessionStore((s) => s.deleteSession)
+  const renameSession = useSessionStore((s) => s.renameSession)
 
   const runHistory = useRunStore((s) => s.runHistory)
   const activateRun = useRunStore((s) => s.activateRun)
@@ -53,6 +54,21 @@ export function SessionList() {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [memoriesTarget, setMemoriesTarget] = useState<{ id: string; title: string } | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+
+  function startRename(id: string, title: string) {
+    setRenamingId(id)
+    setRenameDraft(title)
+  }
+
+  async function commitRename() {
+    if (!renamingId) return
+    const title = renameDraft.trim()
+    setRenamingId(null)
+    if (!title) return // 空标题视为取消
+    await renameSession(renamingId, title)
+  }
 
   async function openDelete(id: string) {
     setDeleteTarget(id)
@@ -148,16 +164,37 @@ export function SessionList() {
                   active ? 'bg-muted' : 'hover:bg-muted/50',
                 )}
               >
+                {renamingId === s.session_id ? (
+                  <Input
+                    autoFocus
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void commitRename()
+                      if (e.key === 'Escape') setRenamingId(null)
+                    }}
+                    onBlur={() => void commitRename()}
+                    className="h-6 text-xs"
+                  />
+                ) : (
+                  <button
+                    onClick={() => switchSession(s.session_id)}
+                    className={cn(
+                      'min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-xs',
+                      active
+                        ? 'font-medium text-foreground'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {s.title || s.session_id}
+                  </button>
+                )}
                 <button
-                  onClick={() => switchSession(s.session_id)}
-                  className={cn(
-                    'min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-xs',
-                    active
-                      ? 'font-medium text-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
+                  onClick={() => startRename(s.session_id, s.title || s.session_id)}
+                  title={t('sessionlist.renameTitle')}
+                  className="hidden h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground group-hover:flex"
                 >
-                  {s.title || s.session_id}
+                  <Pencil className="h-3 w-3" />
                 </button>
                 <button
                   onClick={() => setMemoriesTarget({ id: s.session_id, title: s.title })}

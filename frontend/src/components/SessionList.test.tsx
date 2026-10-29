@@ -21,6 +21,7 @@ function seedStores(overrides: Partial<Parameters<typeof useSessionStore.setStat
     switchSession: vi.fn(),
     loadSessions: vi.fn().mockResolvedValue(undefined),
     deleteSession: vi.fn().mockResolvedValue(undefined),
+    renameSession: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as Parameters<typeof useSessionStore.setState>[0])
 
@@ -72,3 +73,23 @@ describe('SessionList', () => {
     expect(createSession).toHaveBeenCalledWith('New One')
   })
 })
+
+  it('renames a session inline: pencil opens input, enter commits', async () => {
+    const renameSession = vi.fn().mockResolvedValue(undefined)
+    seedStores({ renameSession })
+    render(<SessionList />)
+    fireEvent.click(screen.getAllByTitle('重命名会话')[0])
+    const input = screen.getByDisplayValue('Session One')
+    fireEvent.change(input, { target: { value: 'New Name' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await vi.waitFor(() => expect(renameSession).toHaveBeenCalledWith('s1', 'New Name'))
+  })
+
+  it('esc cancels inline rename without committing', () => {
+    seedStores()
+    render(<SessionList />)
+    fireEvent.click(screen.getAllByTitle('重命名会话')[0])
+    fireEvent.keyDown(screen.getByDisplayValue('Session One'), { key: 'Escape' })
+    expect(useSessionStore.getState().renameSession).not.toHaveBeenCalled()
+    expect(screen.getByText('Session One')).toBeTruthy()
+  })
