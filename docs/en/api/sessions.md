@@ -25,6 +25,8 @@ curl -X POST localhost:8080/api/v1/sessions -d '{"title":"demo"}'
 
 List sessions for the current owner.
 
+**Query params**: `q` (optional) — case-insensitive substring match on the title; omit to list all.
+
 **Response** `200`: `{"sessions": [SessionInfo]}` with `SessionInfo` fields:
 
 | Field | Type | Description |
@@ -36,6 +38,7 @@ List sessions for the current owner.
 
 ```bash
 curl localhost:8080/api/v1/sessions
+curl "localhost:8080/api/v1/sessions?q=refactor"
 ```
 
 ## GET /api/v1/sessions/{id}

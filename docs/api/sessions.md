@@ -25,6 +25,8 @@ curl -X POST localhost:8080/api/v1/sessions -d '{"title":"demo"}'
 
 当前 owner 的会话列表。
 
+**Query 参数**：`q`（可选）——按标题大小写不敏感子串匹配（`LOWER(title) LIKE`）；省略返回全部。
+
 **响应** `200`：`{"sessions": [SessionInfo]}`，`SessionInfo` 字段：
 
 | 字段 | 类型 | 说明 |
@@ -36,6 +38,7 @@ curl -X POST localhost:8080/api/v1/sessions -d '{"title":"demo"}'
 
 ```bash
 curl localhost:8080/api/v1/sessions
+curl "localhost:8080/api/v1/sessions?q=重构"
 ```
 
 ## GET /api/v1/sessions/{id}

@@ -17,6 +17,8 @@
 - **运维**：`agentd export -session` 单会话 JSON 导出；`agentd backup -o` 在线快照备份（`VACUUM INTO`）；启动时打印 DB 统计、停机时 WAL checkpoint + 日志化关闭；`GET /version` 构建信息（免鉴权）。
 - **前端**：暗色主题三态切换（无闪烁预注入脚本）；中/EN 界面语言切换（极简 i18n 机制）；会话记忆弹窗、跨会话运行历史弹窗（状态筛选 chips）、运行详情弹窗（步骤/工具调用/审批）、子 agent 执行树与工具调用明细卡片、流式打字指示器；ErrorBoundary 错误边界。
 - **安全**：按客户端限流（`AGENT_RATE_LIMIT_RPM`，默认关闭；429 + Retry-After）、常量时间 Bearer 比较、四个安全响应头。
+- **会话重命名**：`PATCH /api/v1/sessions/{id}`（属主校验，空标题 400）+ 前端行内改名（铅笔入口，Enter/blur 提交、Esc 取消）。
+- **会话搜索**：`GET /api/v1/sessions?q=`（标题大小写不敏感子串过滤）+ 前端 200ms 防抖搜索框。
 
 ### Changed
 
