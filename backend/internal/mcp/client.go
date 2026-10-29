@@ -24,50 +24,84 @@ type Tool struct {
 type Client struct {
 	transport Transport
 	id        int32
+	onNotify  func(method string, params json.RawMessage)
 
 	mu sync.Mutex // serializes the one-in-flight write→read pair
 }
 
 func NewClient(t Transport) *Client { return &Client{transport: t} }
 
+// SetNotificationHandler 注册服务器通知回调（可为 nil）。回调在 rpc 释放锁之后调用，
+// 因此回调内不得重入同一 Client 的 rpc（会与自身死锁）。
+func (c *Client) SetNotificationHandler(fn func(method string, params json.RawMessage)) {
+	c.onNotify = fn
+}
+
 func (c *Client) nextID() int { return int(atomic.AddInt32(&c.id, 1)) }
 
-// rpc sends one JSON-RPC request and returns its response body (the "result" field).
+// mcpNotification 是一次收到的服务器通知（有 method 无 id 的 JSON-RPC 行）。
+type mcpNotification struct {
+	method string
+	params json.RawMessage
+}
+
+// rpc 发送一个请求并返回响应 result；途中收到的通知行先缓存，释放锁后统一分发。
 func (c *Client) rpc(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	result, notes, err := c.rpcLocked(ctx, method, params)
+	for _, n := range notes {
+		if c.onNotify != nil {
+			c.onNotify(n.method, n.params)
+		}
+	}
+	return result, err
+}
+
+func (c *Client) rpcLocked(ctx context.Context, method string, params any) (json.RawMessage, []mcpNotification, error) {
 	id := c.nextID()
 	req, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err := c.transport.WriteLine(req); err != nil {
-		return nil, fmt.Errorf("mcp write %s: %w", method, err)
+		return nil, nil, fmt.Errorf("mcp write %s: %w", method, err)
 	}
-	// ReadLine may return the last response line together with io.EOF when
-	// the server closes the stream; that data is still a valid response, so
-	// only error when there is no data at all.
-	line, readErr := c.transport.ReadLine()
-	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return nil, fmt.Errorf("mcp server disconnected reading %s: %w", method, readErr)
+	var notes []mcpNotification
+	// 循环读取：通知行（有 method 无 id；本客户端请求 id 从 1 递增）跳过并缓存，
+	// 直到读到与请求 id 匹配的响应为止。
+	for {
+		// ReadLine may return the last response line together with io.EOF when
+		// the server closes the stream; that data is still a valid response, so
+		// only error when there is no data at all.
+		line, readErr := c.transport.ReadLine()
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return nil, nil, fmt.Errorf("mcp server disconnected reading %s: %w", method, readErr)
+		}
+		var resp struct {
+			ID     int             `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+			Err    *struct {
+				Message string `json:"message"`
+			} `json:"error"`
+			Result json.RawMessage `json:"result"`
+		}
+		if err := json.Unmarshal(line, &resp); err != nil {
+			return nil, nil, fmt.Errorf("mcp unmarshal %s: %w", method, err)
+		}
+		if resp.Method != "" && resp.ID == 0 {
+			notes = append(notes, mcpNotification{method: resp.Method, params: resp.Params})
+			continue
+		}
+		if resp.Err != nil {
+			return nil, nil, fmt.Errorf("mcp %s: %s", method, resp.Err.Message)
+		}
+		if resp.ID != id {
+			return nil, nil, fmt.Errorf("mcp %s: response id %d does not match request id %d", method, resp.ID, id)
+		}
+		return resp.Result, notes, nil
 	}
-	var resp struct {
-		ID  int `json:"id"`
-		Err *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-		Result json.RawMessage `json:"result"`
-	}
-	if err := json.Unmarshal(line, &resp); err != nil {
-		return nil, fmt.Errorf("mcp unmarshal %s: %w", method, err)
-	}
-	if resp.Err != nil {
-		return nil, fmt.Errorf("mcp %s: %s", method, resp.Err.Message)
-	}
-	if resp.ID != id {
-		return nil, fmt.Errorf("mcp %s: response id %d does not match request id %d", method, resp.ID, id)
-	}
-	return resp.Result, nil
 }
 
 func (c *Client) Initialize(ctx context.Context) error {
