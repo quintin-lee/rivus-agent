@@ -41,4 +41,7 @@ README 评估计数 36→38（工具级 24 + agent 级 14），场景文件列�
 
 ## 6. 执行偏差
 
-（执行后回写）
+- 根 README「特性」列表原本没有任何 MCP 条目（设计假设存在「MCP 特性行」不成立）——改为新增整条「MCP 集成」（stdio/HTTP、tools/list_changed 热刷新、OAuth client-credentials），OAuth 随条目自然提及。
+- overview.md「分页」小节末句过时（宣称前端按 offset 递增——R22 已切换游标分页）：顺带改写为 next_cursor/cursor 语义，并并入搜索小节前的分页段。
+- eval 两个场景为 PostCheck 断言型（R19/R21 先例），直接 GREEN 属预期，不设人为 RED；场景签名以 scenarios_round25_test.go 实测为准（Script 返回幂等键字符串、PostCheck 四参）。
+- 其余零偏差：CHANGELOG/搜索小节/README 计数均一次通过。
