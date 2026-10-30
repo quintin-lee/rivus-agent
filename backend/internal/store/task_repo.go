@@ -496,6 +496,15 @@ func intOr(n sql.NullInt64) int64 {
 // PruneRuns 删除早于 cutoff（updated_at < cutoffMs）的终态 run 及其子 run，
 // FK 级联清空 run_steps / agent_events / approvals；active run 永不删除；
 // memories 挂在 session 上不受影响。返回删除的 run 数。
+// CountPrunable 统计会被 PruneRuns 清理的 run 数（同条件，dry-run 用）。
+func (r *TaskRepo) CountPrunable(ctx context.Context, cutoffMs int64) (int64, error) {
+	var n int64
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM runs WHERE status IN ('succeeded','failed','cancelled','timed_out') AND updated_at < ?`,
+		cutoffMs).Scan(&n)
+	return n, err
+}
+
 func (r *TaskRepo) PruneRuns(ctx context.Context, cutoffMs int64) (int64, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id FROM runs WHERE status IN ('succeeded','failed','cancelled','timed_out') AND updated_at < ?`,

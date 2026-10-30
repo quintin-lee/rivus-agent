@@ -22,6 +22,10 @@ func main() {
 		runBackup(os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "prune" {
+		runPrune(os.Args[2:])
+		return
+	}
 	runServe()
 }
 
