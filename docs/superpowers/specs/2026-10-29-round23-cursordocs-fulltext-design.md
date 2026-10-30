@@ -57,4 +57,7 @@ AND (LOWER(goal) LIKE '%' || ? || '%'
 
 ## 7. 执行偏差
 
-（执行后回写）
+- 计划自查笔记 3「占位符变更零测试改动」不成立：RunsHistoryDialog 两个防抖测试以 `getByPlaceholderText('搜索目标…')` 精确断言旧文案 → 同步更新为新文案后 192/192 通过。
+- 集成测试落地为独立 `TestRunResultSearch`（而非扩展 TestRunGoalSearch）：`fixturePayload` 不写 result_json，直接经 `h.Tasks.SetResult(ctx, id, ...)` 注入后 `?q=` 命中断言，与既有测试解耦。
+- store 单测：新增 `run_c`（goal 不含关键词、result 含 `SECRET-RESULT-MARKER`）后，`blank q returns all` 期望由 `[run_b, run_a]` 更新为 `[run_c, run_b, run_a]`（updated_at 倒序）。
+- 批1（文档 + CHANGELOG）零偏差：4 文件 cursor 提及 2/2/2/2，CHANGELOG 2 条目。
