@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ToolCallsCard } from '@/components/Messages/ToolCallsCard'
 import { useUiStore } from '@/store/ui-store'
@@ -15,6 +15,16 @@ describe('ToolCallsCard', () => {
     fireEvent.click(screen.getByRole('button'))
     expect(screen.getByText(/file_search/)).toBeTruthy()
     expect(screen.getByText(/http_fetch/)).toBeTruthy()
+  })
+
+
+  it('copies tool output to clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    render(<ToolCallsCard message={{ kind: 'system-tools', id: 'x', runId: 'r1', calls }} />)
+    fireEvent.click(screen.getByRole('button'))
+    fireEvent.click(screen.getAllByLabelText('复制')[0])
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('line1\nline2'))
   })
 
   it('returns null for empty calls', () => {

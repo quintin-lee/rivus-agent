@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { RunDetailDialog } from '@/components/RunDetailDialog'
 import { api } from '@/lib/api'
 import type { Run, Step, AgentEvent, Approval } from '@/lib/types'
@@ -54,6 +54,18 @@ const approval: Approval = {
 }
 
 describe('RunDetailDialog', () => {
+  it('copies the run id from the header', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    vi.mocked(api.getRun).mockResolvedValue({ run: run(), steps: [] })
+    vi.mocked(api.getEvents).mockResolvedValue([])
+    vi.mocked(api.listApprovals).mockResolvedValue([])
+    render(<RunDetailDialog runId="r1abcdef" onOpenChange={() => {}} />)
+    await waitFor(() => expect(api.getRun).toHaveBeenCalled())
+    fireEvent.click(screen.getByLabelText('复制'))
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('r1abcdef'))
+  })
+
   beforeEach(() => {
     vi.mocked(api.getRun).mockReset()
     vi.mocked(api.getEvents).mockReset()

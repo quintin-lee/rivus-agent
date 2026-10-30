@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { CopyButton } from '@/components/CopyButton'
 
 // 工具调用明细：tool.completed 事件的 payload（R5 载荷增强，args/output）。
 interface ToolCallRow {
@@ -107,6 +108,12 @@ export function RunDetailDialog({
       <DialogContent className="max-h-[80vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t('rundetail.title')}</DialogTitle>
+          {runId && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <code className="truncate">{runId}</code>
+              <CopyButton text={runId} />
+            </div>
+          )}
           <DialogDescription />
         </DialogHeader>
 

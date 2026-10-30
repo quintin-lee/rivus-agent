@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Wrench } from 'lucide-react'
+import { CopyButton } from '@/components/CopyButton'
 import { t } from '@/i18n'
 import { useUiStore } from '@/store/ui-store'
 
@@ -35,9 +36,12 @@ export function ToolCallsCard({ message }: { message: ToolsMessage }) {
                 </pre>
               )}
               {c.output && (
-                <pre className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-all text-[10px] text-foreground/80">
-                  {c.output}
-                </pre>
+                <div className="relative mt-1">
+                  <CopyButton text={c.output} />
+                  <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all pr-6 text-[10px] text-foreground/80">
+                    {c.output}
+                  </pre>
+                </div>
               )}
             </div>
           ))}
