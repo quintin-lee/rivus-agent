@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -51,10 +52,92 @@ type httpTransport struct {
 	notes    chan []byte
 	stopCh   chan struct{}
 	stopOnce sync.Once
+
+	oauthMu      sync.Mutex
+	oauthToken   string
+	oauthExpires time.Time
 }
 
 const httpNoteQueueCap = 64
 const httpStreamRetry = 5 * time.Second
+
+// oauthRefreshSkew: refresh the token when less than this remains.
+const oauthRefreshSkew = 30 * time.Second
+
+// ensureToken returns a valid bearer token, fetching a new one via the
+// client-credentials grant when absent or about to expire.
+func (t *httpTransport) ensureToken(ctx context.Context) (string, error) {
+	t.oauthMu.Lock()
+	if t.oauthToken != "" && time.Until(t.oauthExpires) > oauthRefreshSkew {
+		tok := t.oauthToken
+		t.oauthMu.Unlock()
+		return tok, nil
+	}
+	t.oauthMu.Unlock()
+
+	cfg := t.spec.OAuth
+	form := url.Values{
+		"grant_type":    {"client_credentials"},
+		"client_id":     {cfg.ClientID},
+		"client_secret": {cfg.ClientSecret},
+	}
+	if len(cfg.Scopes) > 0 {
+		form.Set("scope", strings.Join(cfg.Scopes, " "))
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("mcp http %s: oauth token request: %w", t.spec.Name, err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for k, v := range t.spec.Headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("mcp http %s: oauth token fetch: %w", t.spec.Name, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("mcp http %s: oauth token body: %w", t.spec.Name, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("mcp http %s: oauth token status %d: %s", t.spec.Name, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var tr struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.Unmarshal(body, &tr); err != nil || tr.AccessToken == "" {
+		return "", fmt.Errorf("mcp http %s: oauth token response invalid: %w", t.spec.Name, err)
+	}
+	expires := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
+	if tr.ExpiresIn <= 0 {
+		expires = time.Now().Add(time.Hour)
+	}
+	t.oauthMu.Lock()
+	t.oauthToken = tr.AccessToken
+	t.oauthExpires = expires
+	t.oauthMu.Unlock()
+	return tr.AccessToken, nil
+}
+
+// applyAuth copies spec.Headers and overrides Authorization with the OAuth
+// bearer token when configured (explicit token beats static header).
+func (t *httpTransport) applyAuth(ctx context.Context, h map[string]string) error {
+	for k, v := range t.spec.Headers {
+		h[k] = v
+	}
+	if t.spec.OAuth == nil {
+		return nil
+	}
+	tok, err := t.ensureToken(ctx)
+	if err != nil {
+		return err
+	}
+	h["Authorization"] = "Bearer " + tok
+	return nil
+}
 
 func newHTTPTransport(client *http.Client, spec ServerSpec) (*httpTransport, error) {
 	t := &httpTransport{
@@ -120,7 +203,11 @@ func (t *httpTransport) streamOnce(ctx context.Context) bool {
 		return true
 	}
 	req.Header.Set("Accept", "text/event-stream")
-	for k, v := range t.spec.Headers {
+	headers := map[string]string{}
+	if err := t.applyAuth(ctx, headers); err != nil {
+		return true // 取令牌失败：按可重试错误处理，5s 后再试
+	}
+	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	resp, err := t.client.Do(req)
@@ -167,27 +254,41 @@ func (t *httpTransport) streamOnce(ctx context.Context) bool {
 }
 
 func (t *httpTransport) WriteLine(p []byte) error {
-	req, err := http.NewRequest(http.MethodPost, t.spec.URL, bytes.NewReader(p))
-	if err != nil {
-		return err
+	// OAuth：401 时失效缓存重取令牌并重试一次；仍 401 返回原错误。
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequest(http.MethodPost, t.spec.URL, bytes.NewReader(p))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		headers := map[string]string{}
+		if err := t.applyAuth(req.Context(), headers); err != nil {
+			return err
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		resp, err := t.client.Do(req)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode == http.StatusUnauthorized && t.spec.OAuth != nil && attempt == 0 {
+			t.oauthMu.Lock()
+			t.oauthToken = ""
+			t.oauthMu.Unlock()
+			_ = resp.Body.Close()
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+			_ = resp.Body.Close()
+			return fmt.Errorf("mcp http %s: status %d: %s", t.spec.Name, resp.StatusCode, strings.TrimSpace(string(b)))
+		}
+		t.resp = resp
+		t.read = false
+		return nil
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	for k, v := range t.spec.Headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		_ = resp.Body.Close()
-		return fmt.Errorf("mcp http %s: status %d: %s", t.spec.Name, resp.StatusCode, strings.TrimSpace(string(b)))
-	}
-	t.resp = resp
-	t.read = false
-	return nil
 }
 
 func (t *httpTransport) ReadLine() ([]byte, error) {
