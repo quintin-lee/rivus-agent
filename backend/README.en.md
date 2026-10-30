@@ -49,6 +49,8 @@ curl -X POST localhost:8080/api/v1/runs \
 
 Event stream: `GET /api/v1/runs/{id}/events` (SSE, supports replay after disconnect). The `tool.completed` event payload carries `args` / `output` summaries (each truncated at 1KB) for frontend tool-call detail rendering.
 
+Run list search: `GET /api/v1/runs?q=` matches both the goal and result_json, backed by a SQLite FTS5 trigram full-text index (≥3 bytes use phrase matching with automatic quote escaping; shorter terms fall back to LIKE with the same rowset).
+
 ## Configuration
 
 Secrets travel only via environment variables — never into the repo or the prompt:

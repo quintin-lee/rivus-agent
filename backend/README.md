@@ -49,6 +49,8 @@ curl -X POST localhost:8080/api/v1/runs \
 
 事件流：`GET /api/v1/runs/{id}/events`（SSE，支持断连后重放）。`tool.completed` 事件载荷含 `args` / `output` 摘要（各 1KB 截断），供前端工具调用明细展示。
 
+运行列表搜索：`GET /api/v1/runs?q=` 同时匹配目标（goal）与结果（result_json），底层为 SQLite FTS5 trigram 全文索引（≥3 字节走短语匹配，引号自动转义；更短词条回退 LIKE，同 rowset）。
+
 ## 配置
 
 密钥只走环境变量，不进仓库与 Prompt：
