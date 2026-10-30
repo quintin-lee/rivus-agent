@@ -71,4 +71,7 @@
 
 ## 8. 执行偏差
 
-（执行后回写）
+- 批1：runs 表列名为 `budget_json` 而非 `budget`（种子 INSERT 首版踩坑）；`CountPrunable` 按导出方法约定带 doc comment（golangci 要求）；SMOKE 用 `agentd export -session nosuch` 一次性建 schema 后再用 python 种子。
+- 批2：`TokenStore` 接口签名与 `*store.SettingsRepo` 的 Get/Set 完全一致——app 直接接线，无需适配器；回调服务器将授权 URL 打到 stderr；auth-code 测试对 TIME_WAIT 绑定竞态做了 ×5 重试（100ms 早失败探测）；`WriteLine` 401 失效时同步清除持久化 token（`clearStoredToken`）；`HTTPTransportFactory` 增加 `TokenStore` 字段而非改 `newHTTPTransport` 签名。
+- 批3：步骤列表区块本就存在——本批是加「步骤 x/y 已完成」计数头与包裹 div，非新建区块；既有 cancel 按钮测试断言由英文迁为中文（验证 i18n 行为）；`正在输入` aria-label 一并迁移（既有 zh 硬编码）；进度行（工具/模型）保持既有硬编码，超出本批范围；`StepStatus` import 未用移除（TS6196）。
+- 工作树中 `.gitignore` 有外来未提交改动（openviking），本批未触碰、未提交。
