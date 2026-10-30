@@ -178,6 +178,16 @@ func (r *TaskRepo) ListSessions(ctx context.Context, ownerID, q string, limit, o
 	return out, rows.Err()
 }
 
+// runsFTSQuery 生成 runs 全文过滤片段：≥3 字节词条走 FTS5 trigram 短语匹配（双引号转义），
+// 更短词条返回 ok=false 由调用方走 LIKE 兜底。两路返回同一行集。
+func runsFTSQuery(term string) (string, []any, bool) {
+	if len(term) < 3 {
+		return "", nil, false
+	}
+	phrase := `"` + strings.ReplaceAll(term, `"`, `""`) + `"`
+	return ` AND id IN (SELECT run_id FROM runs_fts WHERE runs_fts MATCH ?)`, []any{phrase}, true
+}
+
 // CreateRun 插入 Run；相同 (owner_id, idempotency_key) 返回已存在 Run（幂等）。
 func (r *TaskRepo) CreateRun(ctx context.Context, run *domain.Run) error {
 	cj, _ := json.Marshal(run.Constraints)
@@ -302,8 +312,13 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, st
 		args = append(args, status)
 	}
 	if term := strings.ToLower(strings.TrimSpace(q)); term != "" {
-		query += ` AND (LOWER(goal) LIKE '%' || ? || '%' OR LOWER(COALESCE(result_json,'')) LIKE '%' || ? || '%')`
-		args = append(args, term, term)
+		if ftsSQL, ftsArgs, ok := runsFTSQuery(term); ok {
+			query += ftsSQL
+			args = append(args, ftsArgs...)
+		} else {
+			query += ` AND (LOWER(goal) LIKE '%' || ? || '%' OR LOWER(COALESCE(result_json,'')) LIKE '%' || ? || '%')`
+			args = append(args, term, term)
+		}
 	}
 	if offset < 0 {
 		offset = 0
@@ -373,8 +388,13 @@ func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID, status, q strin
 		args = append(args, status)
 	}
 	if term := strings.ToLower(strings.TrimSpace(q)); term != "" {
-		query += ` AND (LOWER(goal) LIKE '%' || ? || '%' OR LOWER(COALESCE(result_json,'')) LIKE '%' || ? || '%')`
-		args = append(args, term, term)
+		if ftsSQL, ftsArgs, ok := runsFTSQuery(term); ok {
+			query += ftsSQL
+			args = append(args, ftsArgs...)
+		} else {
+			query += ` AND (LOWER(goal) LIKE '%' || ? || '%' OR LOWER(COALESCE(result_json,'')) LIKE '%' || ? || '%')`
+			args = append(args, term, term)
+		}
 	}
 	if offset < 0 {
 		offset = 0

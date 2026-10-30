@@ -536,3 +536,61 @@ func TestRunsCursorPagination(t *testing.T) {
 		t.Fatalf("session page2 = %v", ids(page2s))
 	}
 }
+
+func TestRunsFTSQuery(t *testing.T) {
+	if _, _, ok := runsFTSQuery("ab"); ok {
+		t.Fatal("short term should fall back to LIKE")
+	}
+	sql, args, ok := runsFTSQuery("alpha")
+	if !ok {
+		t.Fatal("long term should use FTS")
+	}
+	if !strings.Contains(sql, "runs_fts MATCH") {
+		t.Fatalf("sql = %q", sql)
+	}
+	if len(args) != 1 || args[0] != `"alpha"` {
+		t.Fatalf("args = %v", args)
+	}
+	_, args, _ = runsFTSQuery(`a"b`)
+	if args[0] != `"a""b"` {
+		t.Fatalf("quote not escaped: %v", args)
+	}
+}
+
+func TestListRunsSearchFTSParity(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	ses, err := tasks.CreateSession(ctx, "u1", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ftsRun(t, tasks, ses, "parity_1", "整理 Alpha 资料")
+	ftsRun(t, tasks, ses, "parity_2", `say "quoted" word`)
+	ftsRun(t, tasks, ses, "parity_3", "ab shortcut")
+
+	cases := []struct {
+		name string
+		q    string
+		want string
+	}{
+		{"cjk long term goes FTS", "理 alpha", "parity_1"},
+		{"quote-escaped phrase", `"quoted"`, "parity_2"},
+		{"short ascii falls back to LIKE", "ab", "parity_3"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tasks.ListRunsByOwner(ctx, "u1", "", tc.q, 50, 0, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 || got[0].ID != tc.want {
+				t.Fatalf("q=%q got %v, want [%s]", tc.q, got, tc.want)
+			}
+		})
+	}
+}

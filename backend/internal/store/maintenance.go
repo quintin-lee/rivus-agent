@@ -28,11 +28,12 @@ func Stats(db *sql.DB) (map[string]int64, error) {
 
 // Checkpoint 截断 WAL（TRUNCATE）并刷新查询规划器统计；用于优雅退出。
 func Checkpoint(db *sql.DB) error {
-	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
-		return fmt.Errorf("wal checkpoint: %w", err)
-	}
+	// optimize 先跑（FTS5 shadow 表的统计会写 WAL），再 TRUNCATE 才能真正截断。
 	if _, err := db.Exec("PRAGMA optimize"); err != nil {
 		return fmt.Errorf("optimize: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		return fmt.Errorf("wal checkpoint: %w", err)
 	}
 	return nil
 }
