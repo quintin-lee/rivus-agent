@@ -23,6 +23,8 @@
 - **MCP 通知推送**：`tools/list_changed` 通知经 SSE 长连接实时拉取，工具列表即时刷新（30 秒 Reconciler 兜底）。
 - **列表分页**：会话与运行列表支持 `limit` / `offset`（服务端钳制：sessions ≤200、runs ≤100）+ 前端「加载更多」。
 - **pprof 开关**：`AGENT_PPROF` 独立控制 `/debug/pprof` 暴露（未设置时跟随认证门控）。
+- **游标分页**：sessions/runs 列表 `next_cursor` 响应与 `cursor` 参数（深翻页免 OFFSET 扫描，无效游标 400）；顺带修复 sessions limit 参数未解析的问题。
+- **运行时间线**：运行详情弹窗事件时间线（14 类事件标签、`共 {n} 条事件` 计数、最近 50 条）。
 
 ### Changed
 

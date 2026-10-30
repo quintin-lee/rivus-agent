@@ -25,9 +25,9 @@ curl -X POST localhost:8080/api/v1/sessions -d '{"title":"demo"}'
 
 List sessions for the current owner.
 
-**Query params**: `q` (optional) — case-insensitive substring match on the title; omit to list all. `offset` (optional, default 0) — pagination offset; `limit` is server-clamped to 1..200, default 50.
+**Query params**: `q` (optional) — case-insensitive substring match on the title; omit to list all. `offset` (optional, default 0) — pagination offset; `limit` is server-clamped to 1..200, default 50. `cursor` (optional) — cursor pagination (value of `next_cursor` from the previous page), overrides `offset` when non-empty, invalid → 400.
 
-**Response** `200`: `{"sessions": [SessionInfo]}` with `SessionInfo` fields:
+**Response** `200`: `{"sessions": [SessionInfo]}` (when the result count equals `limit`, a `next_cursor` (base64url) is included — pass it as `cursor` on the next page request) with `SessionInfo` fields:
 
 | Field | Type | Description |
 |---|---|---|

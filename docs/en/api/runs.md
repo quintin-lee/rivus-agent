@@ -13,8 +13,9 @@ List runs: with `session_id`, lists runs of that session; omitting `session_id` 
 | `limit` | int | no | Page size, default 50 |
 | `offset` | int | no | Pagination offset (skips the N newest, combine with `limit`), default 0 |
 | `q` | string | no | Case-insensitive substring filter on the goal (omit to list all) |
+| `cursor` | string | no | Cursor pagination (value of `next_cursor` from the previous page); overrides `offset` when non-empty; invalid → 400 |
 
-**Response** `200`: `{"runs": [Run]}` with `Run` fields:
+**Response** `200`: `{"runs": [Run]}` (when the result count equals `limit`, a `next_cursor` (base64url) is included — pass it as `cursor` on the next page request) with `Run` fields:
 
 | Field | Type | Description |
 |---|---|---|
