@@ -3,6 +3,7 @@ import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { stepStatusClasses, statusBadgeClass, TERMINAL_RUN_STATUSES } from '@/lib/status'
 import type { Run, Step } from '@/lib/types'
+import { t } from '@/i18n'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 interface Props {
@@ -27,7 +28,7 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun, onRerunRun, pr
       await api.cancelRun(run.id)
       onRetryRun(run.id)
     } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : 'Cancel failed')
+      setActionError(e instanceof ApiError ? e.message : t('run.cancelFailed'))
     }
   }
 
@@ -48,13 +49,13 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun, onRerunRun, pr
                 className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
                 onClick={() => setConfirmOpen(true)}
               >
-                Cancel
+                {t('run.cancel')}
               </button>
               <DialogContent className="sm:max-w-[360px]">
                 <DialogHeader>
-                  <DialogTitle>Cancel this run?</DialogTitle>
+                  <DialogTitle>{t('run.cancelTitle')}</DialogTitle>
                   <DialogDescription>
-                    The run will stop and cannot be resumed from this UI.
+                    {t('run.cancelDesc')}
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
@@ -63,14 +64,14 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun, onRerunRun, pr
                     className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent"
                     onClick={() => setConfirmOpen(false)}
                   >
-                    Keep running
+                    {t('run.keepRunning')}
                   </button>
                   <button
                     type="button"
                     className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
                     onClick={() => void handleCancel()}
                   >
-                    Cancel run
+                    {t('run.cancelRun')}
                   </button>
                 </DialogFooter>
               </DialogContent>
@@ -82,7 +83,7 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun, onRerunRun, pr
               className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
               onClick={() => onRerunRun?.(run)}
             >
-              重新运行
+              {t('run.rerun')}
             </button>
           ) : null}
         </div>
@@ -94,7 +95,7 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun, onRerunRun, pr
           <p className="mt-1 max-h-40 overflow-hidden text-xs whitespace-pre-wrap text-foreground/80">
             {partialText}
           </p>
-          <span className="mt-1 inline-flex items-center gap-1" aria-label="正在输入">
+          <span className="mt-1 inline-flex items-center gap-1" aria-label={t('run.inputting')}>
             {[0, 150, 300].map((d) => (
               <span
                 key={d}
@@ -112,14 +113,22 @@ export function SystemStatusBubble({ run, steps = [], onRetryRun, onRerunRun, pr
         </p>
       )}
       {steps.length > 0 && (
-        <ol className="mt-2 space-y-1">
+        <div className="mt-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            {t('run.stepsProgress', {
+              done: steps.filter((s) => ['succeeded', 'failed', 'skipped'].includes(s.status)).length,
+              total: steps.length,
+            })}
+          </p>
+          <ol className="mt-1 space-y-1">
           {steps.map((s) => (
             <li key={s.id} className="flex items-center gap-2 text-xs">
               <span className={cn('h-2 w-2 rounded-full', stepStatusClasses[s.status])} />
               <span className="text-muted-foreground">{s.description}</span>
             </li>
-          ))}
-        </ol>
+            ))}
+          </ol>
+        </div>
       )}
     </div>
   )

@@ -37,8 +37,8 @@ describe('SystemStatusBubble', () => {
   it('renders a cancel button for an active (running) run and calls api.cancelRun', async () => {
     const onRetryRun = vi.fn()
     render(<SystemStatusBubble run={run('running')} onRetryRun={onRetryRun} />)
-    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
-    const confirmBtn = await screen.findByRole('button', { name: /cancel run/i })
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    const confirmBtn = await screen.findByRole('button', { name: '取消运行' })
     fireEvent.click(confirmBtn)
     expect(api.cancelRun).toHaveBeenCalledWith('r1')
   })
@@ -63,7 +63,7 @@ describe('SystemStatusBubble', () => {
 
   it('renders no action buttons for a succeeded run', () => {
     render(<SystemStatusBubble run={run('succeeded')} onRetryRun={vi.fn()} onRerunRun={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: '取消' })).toBeNull()
     expect(screen.queryByRole('button', { name: '重新运行' })).toBeNull()
   })
 
@@ -128,5 +128,29 @@ describe('SystemStatusBubble', () => {
     )
     expect(screen.queryByLabelText('正在输入')).toBeNull()
   })
-})
 
+  it('shows step progress count for terminal steps', () => {
+    const mk = (id: string, status: 'running' | 'succeeded' | 'failed' | 'pending') => ({
+      id,
+      run_id: 'r1',
+      step_index: 1,
+      description: id,
+      status,
+    })
+    render(
+      <SystemStatusBubble
+        run={run('running')}
+        steps={[mk('a', 'succeeded'), mk('b', 'failed'), mk('c', 'running'), mk('d', 'pending')]}
+        onRetryRun={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('步骤 2/4 已完成')).toBeTruthy()
+    expect(screen.getByText('a')).toBeTruthy()
+    expect(screen.getByText('d')).toBeTruthy()
+  })
+
+  it('hides step progress when there are no steps', () => {
+    render(<SystemStatusBubble run={run('running')} onRetryRun={vi.fn()} />)
+    expect(screen.queryByText(/步骤 \d+\/\d+/)).toBeNull()
+  })
+})
