@@ -492,3 +492,82 @@ func intOr(n sql.NullInt64) int64 {
 	}
 	return 0
 }
+
+// PruneRuns 删除早于 cutoff（updated_at < cutoffMs）的终态 run 及其子 run，
+// FK 级联清空 run_steps / agent_events / approvals；active run 永不删除；
+// memories 挂在 session 上不受影响。返回删除的 run 数。
+func (r *TaskRepo) PruneRuns(ctx context.Context, cutoffMs int64) (int64, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id FROM runs WHERE status IN ('succeeded','failed','cancelled','timed_out') AND updated_at < ?`,
+		cutoffMs)
+	if err != nil {
+		return 0, err
+	}
+	ids := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		ids[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
+	_ = rows.Close()
+
+	// 并入子 run：parent_run_id 无 FK，删父会留孤儿，需显式收集
+	for id := range ids {
+		kids, err := r.db.QueryContext(ctx, `SELECT id FROM runs WHERE parent_run_id = ?`, id)
+		if err != nil {
+			return 0, err
+		}
+		for kids.Next() {
+			var kid string
+			if err := kids.Scan(&kid); err != nil {
+				_ = kids.Close()
+				return 0, err
+			}
+			ids[kid] = true
+		}
+		if err := kids.Err(); err != nil {
+			_ = kids.Close()
+			return 0, err
+		}
+		_ = kids.Close()
+	}
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	all := make([]string, 0, len(ids))
+	for id := range ids {
+		all = append(all, id)
+	}
+	var pruned int64
+	const batch = 500
+	for i := 0; i < len(all); i += batch {
+		end := i + batch
+		if end > len(all) {
+			end = len(all)
+		}
+		b := all[i:end]
+		ph := strings.TrimSuffix(strings.Repeat("?,", len(b)), ",")
+		args := make([]any, len(b))
+		for j, id := range b {
+			args[j] = id
+		}
+		res, err := r.db.ExecContext(ctx, `DELETE FROM runs WHERE id IN (`+ph+`)`, args...)
+		if err != nil {
+			return pruned, err
+		}
+		nn, err := res.RowsAffected()
+		if err != nil {
+			return pruned, err
+		}
+		pruned += nn
+	}
+	return pruned, nil
+}

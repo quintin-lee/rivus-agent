@@ -594,3 +594,94 @@ func TestListRunsSearchFTSParity(t *testing.T) {
 		})
 	}
 }
+
+func TestPruneRuns(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	tasks := NewTaskRepo(db)
+	ses, err := tasks.CreateSession(ctx, "u1", "prune-ses")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seed := func(id, status string, parent string) {
+		run := &domain.Run{ID: id, SessionID: ses, OwnerID: "u1", Status: domain.RunStatus(status),
+			Mode: "react", Goal: "g-" + id, ParentRunID: parent,
+			Budget:  domain.Budget{MaxDurationSeconds: 60, MaxModelCalls: 5, MaxToolCalls: 5, MaxIterations: 3, MaxOutputBytes: 1000},
+			Attempt: 1}
+		if err := tasks.CreateRun(ctx, run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("run_old", "succeeded", "")
+	seed("run_new", "succeeded", "")
+	seed("run_act", "running", "")
+	seed("run_p", "failed", "")
+	seed("run_c", "succeeded", "run_p")
+
+	events := NewEventRepo(db)
+	if _, err := events.Append(ctx, "run_old", domain.EvtRunStarted, "{}", "normal"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tasks.CreateSteps(ctx, "run_old", []domain.Step{{ID: "st1", Index: 0, Description: "d", Status: domain.StepSucceeded}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := events.Append(ctx, "run_p", domain.EvtRunStarted, "{}", "normal"); err != nil {
+		t.Fatal(err)
+	}
+
+	// 回拨“旧”runs 的 updated_at 到固定小值（CreateRun 内部写 nowMs，不可注入）
+	for _, id := range []string{"run_old", "run_p", "run_c", "run_act"} {
+		if _, err := db.ExecContext(ctx, `UPDATE runs SET updated_at = 1000 WHERE id = ?`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// run_new 保持 nowMs（远大于 cutoff=2000）
+
+	// 记忆挂在 session 上，应不受 prune 影响
+	memories := NewMemoryRepo(db)
+	if err := memories.Write(ctx, &domain.Memory{SessionID: ses, OwnerID: "u1", Content: "keep-me"}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := tasks.PruneRuns(ctx, 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Fatalf("pruned = %d, want 3 (run_old, run_p, run_c)", n)
+	}
+	for _, gone := range []string{"run_old", "run_p", "run_c"} {
+		if _, err := tasks.GetRun(ctx, "u1", gone); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("%s should be pruned, err = %v", gone, err)
+		}
+	}
+	for _, keep := range []string{"run_new", "run_act"} {
+		if _, err := tasks.GetRun(ctx, "u1", keep); err != nil {
+			t.Fatalf("%s should survive, err = %v", keep, err)
+		}
+	}
+	var cnt int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agent_events WHERE run_id IN ('run_old','run_p')`).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 0 {
+		t.Fatalf("events cascade failed, %d rows left", cnt)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM run_steps WHERE run_id = 'run_old'`).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 0 {
+		t.Fatalf("steps cascade failed, %d rows left", cnt)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_memories WHERE session_id = ?`, ses).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 1 {
+		t.Fatalf("memory should survive prune, got %d", cnt)
+	}
+}
