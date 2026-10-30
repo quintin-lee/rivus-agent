@@ -3,8 +3,8 @@ package buildinfo
 import "testing"
 
 func TestDefaults(t *testing.T) {
-	if Version != "dev" {
-		t.Errorf("Version default = %q, want dev", Version)
+	if Version != "0.1.0" {
+		t.Errorf("Version default = %q, want 0.1.0", Version)
 	}
 	if Commit != "unknown" {
 		t.Errorf("Commit default = %q, want unknown", Commit)
