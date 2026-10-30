@@ -16,6 +16,19 @@ type Config struct {
 	SkillsDir         string `yaml:"skills_dir"`
 	WorkspaceDir      string `yaml:"workspace_dir"`
 	KnowledgeDir      string `yaml:"knowledge_dir"`
+
+	// S3 配置
+	S3Endpoint        string   `yaml:"s3_endpoint"`           // S3 兼容端点 (如 MinIO, Ceph, AWS S3)
+	S3Region          string   `yaml:"s3_region"`             // 区域
+	S3Bucket          string   `yaml:"s3_bucket"`             // 存储桶名称
+	S3AccessKeyID     string   `yaml:"s3_access_key_id"`      // 访问密钥 (通过 env 注入，yaml 标记 "-")
+	S3SecretAccessKey   string  `yaml:"s3_secret_access_key" ` // 秘密密钥 (通过 env 注入)
+	S3UseSSL          bool     `yaml:"s3_use_ssl"`            // 是否使用 SSL
+	S3DisableForcePathStyle bool `yaml:"s3_force_path_style"` // 是否使用路径风格风格
+
+	// S3 存储路径映射
+	S3WorkspacePrefix   string   `yaml:"s3_workspace_prefix"` // 工作区前缀
+	S3KnowledgePrefix   string   `yaml:"s3_knowledge_prefix"` // 知识库前缀
 	WorkerConcurrency int    `yaml:"worker_concurrency"`
 
 	// HTTPFetchAllowlist 限制 http_fetch 工具可访问的域名（精确匹配 host）；
@@ -59,6 +72,13 @@ func Default() Config {
 		WorkspaceDir:      "./workspace",
 		KnowledgeDir:      "./knowledge",
 		WorkerConcurrency: 1,
+		S3Endpoint:        "",
+		S3Region:          "",
+		S3Bucket:          "",
+		S3UseSSL:          false,
+		S3DisableForcePathStyle: false,
+		S3WorkspacePrefix:  "",
+		S3KnowledgePrefix:  "",
 		ModelProvider:     "openai_compat",
 		ModelName:         "gpt-4o-mini",
 		ModelBaseURL:      "https://api.openai.com/v1",
@@ -107,6 +127,35 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("AGENT_KNOWLEDGE_DIR"); v != "" {
 		c.KnowledgeDir = v
+	}
+	if v := os.Getenv("AGENT_S3_ENDPOINT"); v != "" {
+		c.S3Endpoint = v
+	}
+	if v := os.Getenv("AGENT_S3_REGION"); v != "" {
+		c.S3Region = v
+	}
+	if v := os.Getenv("AGENT_S3_BUCKET"); v != "" {
+		c.S3Bucket = v
+	}
+	if v := os.Getenv("AGENT_S3_ACCESS_KEY_ID"); v != "" {
+		c.S3AccessKeyID = v
+	}
+	if v := os.Getenv("AGENT_S3_SECRET_ACCESS_KEY"); v != "" {
+		c.S3SecretAccessKey = v
+	}
+	if v := os.Getenv("AGENT_S3_USE_SSL"); v != "" {
+		b, _ := strconv.ParseBool(v)
+		c.S3UseSSL = b
+	}
+	if v := os.Getenv("AGENT_S3_DISABLE_FORCE_PATH_STYLE"); v != "" {
+		b, _ := strconv.ParseBool(v)
+		c.S3DisableForcePathStyle = b
+	}
+	if v := os.Getenv("AGENT_S3_WORKSPACE_PREFIX"); v != "" {
+		c.S3WorkspacePrefix = v
+	}
+	if v := os.Getenv("AGENT_S3_KNOWLEDGE_PREFIX"); v != "" {
+		c.S3KnowledgePrefix = v
 	}
 	if v := os.Getenv("AGENT_HTTP_FETCH_ALLOWLIST"); v != "" {
 		var out []string
