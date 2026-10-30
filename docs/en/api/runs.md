@@ -12,7 +12,7 @@ List runs: with `session_id`, lists runs of that session; omitting `session_id` 
 | `status` | string | no | Filter by run status (one of queued/running/waiting_approval/paused/succeeded/failed/cancelled/timed_out); invalid values return 400 |
 | `limit` | int | no | Page size, default 50 |
 | `offset` | int | no | Pagination offset (skips the N newest, combine with `limit`), default 0 |
-| `q` | string | no | Case-insensitive substring filter on the goal (omit to list all) |
+| `q` | string | no | Case-insensitive substring filter over goal or result_json (omit to list all) |
 | `cursor` | string | no | Cursor pagination (value of `next_cursor` from the previous page); overrides `offset` when non-empty; invalid → 400 |
 
 **Response** `200`: `{"runs": [Run]}` (when the result count equals `limit`, a `next_cursor` (base64url) is included — pass it as `cursor` on the next page request) with `Run` fields:

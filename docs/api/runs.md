@@ -12,7 +12,7 @@ Run 是一次任务执行。模式 `react`（ReAct 工具循环，缺省）或 `
 | `status` | string | 否 | 按运行状态过滤（queued/running/waiting_approval/paused/succeeded/failed/cancelled/timed_out 之一）；非法值返回 400 |
 | `limit` | int | 否 | 返回条数，缺省 50 |
 | `offset` | int | 否 | 分页偏移（跳过最新 N 条，与 `limit` 组合翻页），缺省 0 |
-| `q` | string | 否 | 按目标（goal）大小写不敏感子串过滤，省略=不过滤 |
+| `q` | string | 否 | 按目标或结果（goal / result_json）大小写不敏感子串过滤，省略=不过滤 |
 | `cursor` | string | 否 | 游标翻页（上一页响应 `next_cursor` 的值）；非空时覆盖 `offset`；无效返回 400 |
 
 **响应** `200`：`{"runs": [Run]}`（结果数等于 limit 时附 `next_cursor`（base64url），作为下一页请求的 `cursor` 传入），`Run` 字段：
