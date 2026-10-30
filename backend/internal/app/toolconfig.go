@@ -78,7 +78,7 @@ func (p *toolConfigProvider) SaveTools(ctx context.Context, in httpapi.ToolConfi
 	}
 	servers, err := mcpServersFromIn(in)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", httpapi.ErrInvalidToolConfig, err)
 	}
 	if err := p.settings.Set(ctx, mcp.KeyMCP_servers, marshalJSON(servers)); err != nil {
 		return err

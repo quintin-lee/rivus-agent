@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 )
 
@@ -59,11 +60,18 @@ func (s *Server) handleUpdateTools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.tools.SaveTools(r.Context(), in); err != nil {
+		if errors.Is(err, ErrInvalidToolConfig) {
+			writeErr(w, http.StatusBadRequest, "bad_request", err.Error(), false)
+			return
+		}
 		writeErr(w, http.StatusInternalServerError, "internal", "tools save failed", true)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{})
 }
+
+// ErrInvalidToolConfig 表示工具配置载荷未通过校验（映射 400 而非 500）。
+var ErrInvalidToolConfig = errors.New("invalid tool config")
 
 type updateModelSettingsReq struct {
 	Provider string `json:"provider"`

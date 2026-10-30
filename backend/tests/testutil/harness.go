@@ -22,6 +22,7 @@ import (
 	"rivus-agent-backend/internal/config"
 	"rivus-agent-backend/internal/domain"
 	"rivus-agent-backend/internal/eventshub"
+	"rivus-agent-backend/internal/mcp"
 	"rivus-agent-backend/internal/runtime"
 	"rivus-agent-backend/internal/service"
 	"rivus-agent-backend/internal/skill"
@@ -186,6 +187,20 @@ func (p *stubToolProvider) GetToolsStatus(context.Context) (httpapi.ToolStatus, 
 }
 
 func (p *stubToolProvider) SaveTools(_ context.Context, in httpapi.ToolConfigIn) error {
+	// 忠实模拟真 provider 契约：载荷校验失败 → 400（经 ErrInvalidToolConfig 包装）。
+	specs := make([]mcp.ServerSpec, 0, len(in.MCPServers))
+	for _, s := range in.MCPServers {
+		var oauth *mcp.OAuthConfig
+		if s.OAuth != nil {
+			oauth = &mcp.OAuthConfig{TokenURL: s.OAuth.TokenURL, ClientID: s.OAuth.ClientID,
+				ClientSecret: s.OAuth.ClientSecret, Scopes: s.OAuth.Scopes}
+		}
+		specs = append(specs, mcp.ServerSpec{Name: s.Name, Command: s.Command, Args: s.Args,
+			Type: s.Type, URL: s.URL, Headers: s.Headers, OAuth: oauth})
+	}
+	if err := mcp.ValidateSpecs(specs); err != nil {
+		return fmt.Errorf("%w: %v", httpapi.ErrInvalidToolConfig, err)
+	}
 	p.save(in)
 	p.status.Skills.Enabled = in.SkillsEnabled
 	p.status.MCP.Enabled = in.MCPEnabled
