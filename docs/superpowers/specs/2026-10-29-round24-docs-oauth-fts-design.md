@@ -104,4 +104,10 @@ migrate v3→v4：建表 + 一次性回填 `INSERT INTO runs_fts(run_id, text) S
 
 ## 8. 执行偏差
 
-（执行后回写）
+- **Checkpoint 顺序回归（重要发现）**：FTS 提交后 TestStatsAndCheckpoint 失败——`Checkpoint()` 原顺序 `wal_checkpoint(TRUNCATE)` → `PRAGMA optimize`，FTS5 存在时 optimize 会对 shadow 表做统计并写 WAL，发生在 TRUNCATE 之后导致 wal_bytes≠0。用探针测试 + stash 二分定位（回填语句与建表均非元凶）。修复：optimize 先于 TRUNCATE（4cd1e88）。
+- **ftsRun helper 带 ses 参数**：CreateSession 自行生成 ID，FTS 测试必须用返回值建 run（FK 约束）。
+- **TestListRunsSearchFTSParity 复用 ftsRun**：mkRun 是 TestListRunsSearch 的闭包内函数，不可跨测试使用。
+- **TestRunsFTSQuery**：短词条分支 `sql, args` 未使用（!ok 路径）→ 改为 `_, _, ok :=`。
+- **OAuth 测试（Task 3）**：`httptest.NewServer(nil)` 先建后赋 handler → EOF panic；先定义 handler 闭包再 NewServer。
+- **FTS 等价用例在设计上无法区分路径**（trigram 子串 ≈ LIKE 子串，行集相同）：以 runsFTSQuery 单测（ok/转义/短词）+ 等价回归（CJK/引号/短词）双保险替代。
+- 批1（e9716cc）、Task 2（656bcca）、Task 4（1b94987）零偏差。
