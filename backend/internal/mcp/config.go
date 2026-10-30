@@ -26,6 +26,9 @@ type OAuthConfig struct {
 	ClientID     string   `json:"client_id"`
 	ClientSecret string   `json:"client_secret"`
 	Scopes       []string `json:"scopes,omitempty"`
+	// AuthorizeURL 非空时走授权码模式：本地 RedirectPort 回调收取 code。
+	AuthorizeURL string `json:"authorize_url,omitempty"`
+	RedirectPort int    `json:"redirect_port,omitempty"`
 }
 
 // ServerSpec is one configured MCP server: a stdio child process or a remote
@@ -88,6 +91,9 @@ func ValidateSpecs(specs []ServerSpec) error {
 			if s.OAuth != nil {
 				if s.OAuth.TokenURL == "" || s.OAuth.ClientID == "" || s.OAuth.ClientSecret == "" {
 					return fmt.Errorf("server %q: oauth requires token_url, client_id and client_secret", s.Name)
+				}
+				if s.OAuth.AuthorizeURL != "" && s.OAuth.RedirectPort <= 0 {
+					return fmt.Errorf("server %q: oauth authorize_url requires redirect_port", s.Name)
 				}
 			}
 		default:

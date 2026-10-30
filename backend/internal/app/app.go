@@ -111,7 +111,9 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	a.skillLoader = skill.NewLoader(cfg.SkillsDir)
 	_ = a.skillLoader.Refresh()
-	a.manager = mcp.NewManager(mcp.NewSpecTransportFactory())
+	sf := mcp.NewSpecTransportFactory()
+	sf.HTTP.TokenStore = settings
+	a.manager = mcp.NewManager(sf)
 	// config.yaml 有 mcp 段 = yaml 权威：写穿 settings（每次启动重放）。
 	if cfg.MCP != nil {
 		if err := a.applyMCPConfig(ctx, settings, registry, cfg.MCP.Enabled, mcpSpecsFromYaml(cfg.MCP.Servers)); err != nil {

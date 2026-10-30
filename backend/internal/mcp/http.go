@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -21,14 +23,22 @@ const httpCallTimeout = 35 * time.Second
 // HTTPTransportFactory builds HTTP transports for remote MCP servers
 // (Streamable-HTTP: one POST per JSON-RPC request; the reply is either a JSON
 // body or a text/event-stream whose data payload carries the response).
-type HTTPTransportFactory struct{ client *http.Client }
+type HTTPTransportFactory struct {
+	client     *http.Client
+	TokenStore TokenStore
+}
 
 func NewHTTPTransportFactory() *HTTPTransportFactory {
 	return &HTTPTransportFactory{client: &http.Client{Timeout: httpCallTimeout}}
 }
 
 func (f *HTTPTransportFactory) New(_ context.Context, spec ServerSpec) (Transport, error) {
-	return newHTTPTransport(f.client, spec)
+	tt, err := newHTTPTransport(f.client, spec)
+	if err != nil {
+		return nil, err
+	}
+	tt.tokenStore = f.TokenStore
+	return tt, nil
 }
 
 // NewHTTPTransport builds a standalone HTTP transport with the default client
@@ -56,7 +66,23 @@ type httpTransport struct {
 	oauthMu      sync.Mutex
 	oauthToken   string
 	oauthExpires time.Time
+	tokenStore   TokenStore
 }
+
+// TokenStore 持久化 OAuth 令牌（生产实现为 *store.SettingsRepo，测试用 map 假实现）。
+type TokenStore interface {
+	Get(ctx context.Context, key string) (string, bool, error)
+	Set(ctx context.Context, key, val string) error
+}
+
+type oauthStored struct {
+	AccessToken string `json:"access_token"`
+	ExpiresAt   int64  `json:"expires_at"`
+}
+
+const oauthStorePrefix = "mcp:oauth:"
+
+func (t *httpTransport) oauthKey() string { return oauthStorePrefix + t.spec.Name }
 
 const httpNoteQueueCap = 64
 const httpStreamRetry = 5 * time.Second
@@ -64,8 +90,9 @@ const httpStreamRetry = 5 * time.Second
 // oauthRefreshSkew: refresh the token when less than this remains.
 const oauthRefreshSkew = 30 * time.Second
 
-// ensureToken returns a valid bearer token, fetching a new one via the
-// client-credentials grant when absent or about to expire.
+// ensureToken returns a valid bearer token: in-memory cache first, then the
+// persisted store, then the OAuth flow (authorization-code when AuthorizeURL
+// is set, client-credentials otherwise).
 func (t *httpTransport) ensureToken(ctx context.Context) (string, error) {
 	t.oauthMu.Lock()
 	if t.oauthToken != "" && time.Until(t.oauthExpires) > oauthRefreshSkew {
@@ -75,18 +102,83 @@ func (t *httpTransport) ensureToken(ctx context.Context) (string, error) {
 	}
 	t.oauthMu.Unlock()
 
+	if tok, exp, ok := t.loadStoredToken(ctx); ok {
+		t.oauthMu.Lock()
+		t.oauthToken = tok
+		t.oauthExpires = exp
+		t.oauthMu.Unlock()
+		return tok, nil
+	}
+
 	cfg := t.spec.OAuth
-	form := url.Values{
-		"grant_type":    {"client_credentials"},
-		"client_id":     {cfg.ClientID},
-		"client_secret": {cfg.ClientSecret},
+	var (
+		tok string
+		exp time.Time
+		err error
+	)
+	if cfg.AuthorizeURL != "" {
+		tok, exp, err = t.authCodeToken(ctx, cfg)
+	} else {
+		form := url.Values{
+			"grant_type":    {"client_credentials"},
+			"client_id":     {cfg.ClientID},
+			"client_secret": {cfg.ClientSecret},
+		}
+		if len(cfg.Scopes) > 0 {
+			form.Set("scope", strings.Join(cfg.Scopes, " "))
+		}
+		tok, exp, err = t.fetchToken(ctx, form)
 	}
-	if len(cfg.Scopes) > 0 {
-		form.Set("scope", strings.Join(cfg.Scopes, " "))
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", fmt.Errorf("mcp http %s: oauth token request: %w", t.spec.Name, err)
+		return "", err
+	}
+	t.oauthMu.Lock()
+	t.oauthToken = tok
+	t.oauthExpires = exp
+	t.oauthMu.Unlock()
+	t.persistToken(ctx, tok, exp)
+	return tok, nil
+}
+
+func (t *httpTransport) loadStoredToken(ctx context.Context) (string, time.Time, bool) {
+	if t.tokenStore == nil {
+		return "", time.Time{}, false
+	}
+	raw, ok, err := t.tokenStore.Get(ctx, t.oauthKey())
+	if err != nil || !ok {
+		return "", time.Time{}, false
+	}
+	var st oauthStored
+	if json.Unmarshal([]byte(raw), &st) != nil || st.AccessToken == "" {
+		return "", time.Time{}, false
+	}
+	exp := time.UnixMilli(st.ExpiresAt)
+	if time.Until(exp) <= oauthRefreshSkew {
+		return "", time.Time{}, false
+	}
+	return st.AccessToken, exp, true
+}
+
+func (t *httpTransport) persistToken(ctx context.Context, tok string, exp time.Time) {
+	if t.tokenStore == nil {
+		return
+	}
+	b, _ := json.Marshal(oauthStored{AccessToken: tok, ExpiresAt: exp.UnixMilli()})
+	_ = t.tokenStore.Set(ctx, t.oauthKey(), string(b))
+}
+
+func (t *httpTransport) clearStoredToken(ctx context.Context) {
+	if t.tokenStore == nil {
+		return
+	}
+	_ = t.tokenStore.Set(ctx, t.oauthKey(), "")
+}
+
+// fetchToken POSTs an OAuth token request and parses the access_token.
+func (t *httpTransport) fetchToken(ctx context.Context, form url.Values) (string, time.Time, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.spec.OAuth.TokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("mcp http %s: oauth token request: %w", t.spec.Name, err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	for k, v := range t.spec.Headers {
@@ -94,32 +186,90 @@ func (t *httpTransport) ensureToken(ctx context.Context) (string, error) {
 	}
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("mcp http %s: oauth token fetch: %w", t.spec.Name, err)
+		return "", time.Time{}, fmt.Errorf("mcp http %s: oauth token fetch: %w", t.spec.Name, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("mcp http %s: oauth token body: %w", t.spec.Name, err)
+		return "", time.Time{}, fmt.Errorf("mcp http %s: oauth token body: %w", t.spec.Name, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("mcp http %s: oauth token status %d: %s", t.spec.Name, resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", time.Time{}, fmt.Errorf("mcp http %s: oauth token status %d: %s", t.spec.Name, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var tr struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
 	if err := json.Unmarshal(body, &tr); err != nil || tr.AccessToken == "" {
-		return "", fmt.Errorf("mcp http %s: oauth token response invalid: %w", t.spec.Name, err)
+		return "", time.Time{}, fmt.Errorf("mcp http %s: oauth token response invalid: %w", t.spec.Name, err)
 	}
 	expires := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
 	if tr.ExpiresIn <= 0 {
 		expires = time.Now().Add(time.Hour)
 	}
-	t.oauthMu.Lock()
-	t.oauthToken = tr.AccessToken
-	t.oauthExpires = expires
-	t.oauthMu.Unlock()
-	return tr.AccessToken, nil
+	return tr.AccessToken, expires, nil
+}
+
+// authCodeToken runs the interactive authorization-code flow: local callback
+// listener, authorize URL on stderr, code exchange at the token endpoint.
+func (t *httpTransport) authCodeToken(ctx context.Context, cfg *OAuthConfig) (string, time.Time, error) {
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", cfg.RedirectPort))
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("mcp http %s: oauth callback listen: %w", t.spec.Name, err)
+	}
+	codeCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/callback" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if e := r.URL.Query().Get("error"); e != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			errCh <- fmt.Errorf("oauth authorize error: %s", e)
+			return
+		}
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			errCh <- fmt.Errorf("oauth callback missing code")
+			return
+		}
+		_, _ = fmt.Fprint(w, "已收到授权码，可关闭此页面。")
+		codeCh <- code
+	})}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+
+	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", cfg.RedirectPort)
+	q := url.Values{
+		"response_type": {"code"},
+		"client_id":     {cfg.ClientID},
+		"redirect_uri":  {redirectURI},
+	}
+	if len(cfg.Scopes) > 0 {
+		q.Set("scope", strings.Join(cfg.Scopes, " "))
+	}
+	fmt.Fprintf(os.Stderr, "mcp %s: 请在浏览器中打开以下链接完成授权：\n%s\n", t.spec.Name, cfg.AuthorizeURL+"?"+q.Encode())
+
+	var code string
+	select {
+	case code = <-codeCh:
+	case err := <-errCh:
+		return "", time.Time{}, fmt.Errorf("mcp http %s: %w", t.spec.Name, err)
+	case <-ctx.Done():
+		return "", time.Time{}, fmt.Errorf("mcp http %s: oauth authorize canceled: %w", t.spec.Name, ctx.Err())
+	case <-time.After(5 * time.Minute):
+		return "", time.Time{}, fmt.Errorf("mcp http %s: oauth authorize timed out", t.spec.Name)
+	}
+	form := url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {code},
+		"redirect_uri":  {redirectURI},
+		"client_id":     {cfg.ClientID},
+		"client_secret": {cfg.ClientSecret},
+	}
+	return t.fetchToken(ctx, form)
 }
 
 // applyAuth copies spec.Headers and overrides Authorization with the OAuth
@@ -277,6 +427,7 @@ func (t *httpTransport) WriteLine(p []byte) error {
 			t.oauthMu.Lock()
 			t.oauthToken = ""
 			t.oauthMu.Unlock()
+			t.clearStoredToken(req.Context())
 			_ = resp.Body.Close()
 			continue
 		}
