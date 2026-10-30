@@ -45,4 +45,10 @@ README zh/en 场景计数 34→36（工具级 22 + agent 级 14），scenarios_r
 
 ## 7. 执行偏差
 
-（执行后回写）
+- **ErrInvalidToolConfig 语义修复（产品级发现）**：设计假设 stdio+oauth PUT → 400，实测真路径返回 500 internal（handler 把一切 SaveTools 错误统一映射 500）。修复：httpapi 新增 `ErrInvalidToolConfig` 哨兵，app 层 mcpServersFromIn 校验失败时 %w 包装，handlePutTools errors.Is → 400 bad_request（含校验消息）。settings.md 中「缺任一 400」由此为真。
+- **Stub provider 忠实化**：tests/testutil stubToolProvider.SaveTools 现运行 mcp.ValidateSpecs（首版转换漏拷 OAuth 字段导致场景仍 200——补拷后 RED→GREEN）。
+- **evals oauth 场景**：需 `NewHarness: NewToolConfigHarness`（普通 harness 无 tools provider，PUT 直接 501）。
+- **聊天空状态已存在**：旧实现硬编码英文 "No tasks yet" 且无按钮——本批为「替换旧块」（i18n + CTA 按钮），并经 ui-store `newRunOpen` 让 ChatInputBar 的 NewRunDialog 成为双入口；设计稿"新增空状态"表述修正为"改造既有空状态"。
+- **RunDetailDialog 标题原本不显示 run ID**——本批新增 runId 行 + CopyButton（复制目标由此而来）。
+- **listApprovals mock** 返回 `Approval[]`（非包装对象）；http_fetch 等 3 个既有 ToolCallsCard 断言不变。
+- Task 1 文档零偏差（顺带修复 mcp.servers 行缺 R12 type/url 字段）。
