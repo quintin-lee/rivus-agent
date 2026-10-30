@@ -10,14 +10,15 @@ import (
 
 // StatusEntry is one configured MCP server's live state (feeds GET /settings/tools).
 type StatusEntry struct {
-	Name    string   `json:"name"`
-	Command string   `json:"command,omitempty"`
-	Args    []string `json:"args,omitempty"`
-	Type    string   `json:"type,omitempty"` // "" | "stdio" | "http"
-	URL     string   `json:"url,omitempty"`
-	Status  string   `json:"status"` // "up" | "error"
-	Err     string   `json:"err,omitempty"`
-	Tools   []Tool   `json:"tools"` // cached tools/list result
+	Name    string       `json:"name"`
+	Command string       `json:"command,omitempty"`
+	Args    []string     `json:"args,omitempty"`
+	Type    string       `json:"type,omitempty"` // "" | "stdio" | "http"
+	URL     string       `json:"url,omitempty"`
+	OAuth   *OAuthConfig `json:"oauth,omitempty"` // 配置回显用；client_secret 由上层脱敏
+	Status  string       `json:"status"`          // "up" | "error"
+	Err     string       `json:"err,omitempty"`
+	Tools   []Tool       `json:"tools"` // cached tools/list result
 }
 
 // Manager owns all live MCP server connections.
@@ -114,7 +115,7 @@ func (m *Manager) connect(ctx context.Context, s ServerSpec) {
 	})
 	m.mu.Lock()
 	m.clis[s.Name] = c
-	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, Status: "up", Tools: tools}
+	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, OAuth: s.OAuth, Status: "up", Tools: tools}
 	m.mu.Unlock()
 }
 
@@ -216,7 +217,7 @@ func (m *Manager) Status() []StatusEntry {
 func (m *Manager) setStatus(s ServerSpec, status, errMsg string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	e := StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, Status: status}
+	e := StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, OAuth: s.OAuth, Status: status}
 	if errMsg != "" {
 		e.Err = errMsg
 	}
@@ -240,7 +241,7 @@ func (m *Manager) relistTools(ctx context.Context, s ServerSpec) {
 	if entry, ok := m.status[s.Name]; ok && sameTools(entry.Tools, tools) {
 		return
 	}
-	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, Status: "up", Tools: tools}
+	m.status[s.Name] = StatusEntry{Name: s.Name, Command: s.Command, Args: s.Args, Type: s.Type, URL: s.URL, OAuth: s.OAuth, Status: "up", Tools: tools}
 }
 
 func sameTools(a, b []Tool) bool {

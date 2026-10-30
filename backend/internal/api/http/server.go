@@ -69,13 +69,22 @@ type MCPStatus struct {
 }
 
 type MCPServerInfo struct {
-	Name    string     `json:"name"`
-	Status  string     `json:"status"` // "up" | "down" | "error"
-	Command string     `json:"command"`
-	Args    []string   `json:"args,omitempty"`
-	Type    string     `json:"type,omitempty"`
-	URL     string     `json:"url,omitempty"`
-	Tools   []ToolInfo `json:"tools"`
+	Name    string        `json:"name"`
+	Status  string        `json:"status"` // "up" | "down" | "error"
+	Command string        `json:"command"`
+	Args    []string      `json:"args,omitempty"`
+	Type    string        `json:"type,omitempty"`
+	URL     string        `json:"url,omitempty"`
+	OAuth   *MCPOAuthInfo `json:"oauth,omitempty"`
+	Tools   []ToolInfo    `json:"tools"`
+}
+
+// MCPOAuthInfo 回显 OAuth 配置；绝不包含 client_secret（用 has_secret 代替）。
+type MCPOAuthInfo struct {
+	TokenURL  string   `json:"token_url"`
+	ClientID  string   `json:"client_id"`
+	Scopes    []string `json:"scopes,omitempty"`
+	HasSecret bool     `json:"has_secret"`
 }
 
 type ToolInfo struct {
@@ -97,6 +106,15 @@ type MCPServerIn struct {
 	Type    string            `json:"type,omitempty"` // "" | "stdio" | "http"
 	URL     string            `json:"url,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
+	OAuth   *MCPOAuthIn       `json:"oauth,omitempty"`
+}
+
+// MCPOAuthIn 接收 client-credentials 配置；仅在 PUT 载荷中出现。
+type MCPOAuthIn struct {
+	TokenURL     string   `json:"token_url"`
+	ClientID     string   `json:"client_id"`
+	ClientSecret string   `json:"client_secret"`
+	Scopes       []string `json:"scopes,omitempty"`
 }
 
 // Option configures an httpapi.Server. Existing 7-arg New(...) calls stay

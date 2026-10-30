@@ -53,7 +53,7 @@ func (p *toolConfigProvider) GetToolsStatus(ctx context.Context) (httpapi.ToolSt
 		}
 		st.MCP.Servers = append(st.MCP.Servers, httpapi.MCPServerInfo{
 			Name: e.Name, Status: e.Status, Command: e.Command, Args: e.Args,
-			Type: e.Type, URL: e.URL, Tools: infos,
+			Type: e.Type, URL: e.URL, OAuth: oauthInfo(e.OAuth), Tools: infos,
 		})
 	}
 	return st, nil
@@ -120,11 +120,25 @@ func boolStr(b bool) string {
 	return "false"
 }
 
+// oauthInfo 脱敏映射：client_secret 不回显，用 has_secret 代替。
+func oauthInfo(o *mcp.OAuthConfig) *httpapi.MCPOAuthInfo {
+	if o == nil {
+		return nil
+	}
+	return &httpapi.MCPOAuthInfo{TokenURL: o.TokenURL, ClientID: o.ClientID,
+		Scopes: o.Scopes, HasSecret: o.ClientSecret != ""}
+}
+
 func mcpServersFromIn(in httpapi.ToolConfigIn) ([]mcp.ServerSpec, error) {
 	out := make([]mcp.ServerSpec, 0, len(in.MCPServers))
 	for _, s := range in.MCPServers {
+		var oauth *mcp.OAuthConfig
+		if s.OAuth != nil {
+			oauth = &mcp.OAuthConfig{TokenURL: s.OAuth.TokenURL, ClientID: s.OAuth.ClientID,
+				ClientSecret: s.OAuth.ClientSecret, Scopes: s.OAuth.Scopes}
+		}
 		out = append(out, mcp.ServerSpec{Name: s.Name, Command: s.Command, Args: s.Args,
-			Type: s.Type, URL: s.URL, Headers: s.Headers})
+			Type: s.Type, URL: s.URL, Headers: s.Headers, OAuth: oauth})
 	}
 	if err := mcp.ValidateSpecs(out); err != nil {
 		return nil, err

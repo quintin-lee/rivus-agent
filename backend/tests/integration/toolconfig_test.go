@@ -216,3 +216,43 @@ func TestToolConfigHTTPMCPServerRoundtrip(t *testing.T) {
 		t.Fatal("headers must not be echoed via status API")
 	}
 }
+
+// TestToolConfigOAuthMCPServerRoundtrip: PUT accepts oauth client-credentials
+// for remote MCP servers; the recorded provider payload carries them; GET
+// status never echoes client_secret (has_secret flag instead — R12 headers
+// precedent).
+func TestToolConfigOAuthMCPServerRoundtrip(t *testing.T) {
+	h := testutil.NewToolConfigHarness(t)
+	const secret = "super-secret-client-secret"
+	body := map[string]any{
+		"skillsEnabled": true, "mcpEnabled": true,
+		"mcpServers": []any{map[string]any{
+			"name": "remote-oauth", "type": "http", "url": "http://127.0.0.1:9/mcp",
+			"oauth": map[string]any{
+				"token_url":     "http://127.0.0.1:9/token",
+				"client_id":     "rivus",
+				"client_secret": secret,
+				"scopes":        []string{"mcp:read"},
+			},
+		}},
+	}
+	code, out := h.Do("PUT", "/api/v1/settings/tools", body, nil)
+	if code != 200 {
+		t.Fatalf("PUT code=%d: %s", code, out)
+	}
+	got := h.SavedToolConfigs()
+	if len(got) != 1 || len(got[0].MCPServers) != 1 || got[0].MCPServers[0].OAuth == nil {
+		t.Fatalf("provider payload missing oauth: %+v", got)
+	}
+	o := got[0].MCPServers[0].OAuth
+	if o.TokenURL != "http://127.0.0.1:9/token" || o.ClientID != "rivus" || o.ClientSecret != secret || len(o.Scopes) != 1 {
+		t.Fatalf("recorded oauth shape wrong: %+v", o)
+	}
+	code, out = h.Do("GET", "/api/v1/settings/tools", nil, nil)
+	if code != 200 {
+		t.Fatalf("GET code=%d", code)
+	}
+	if strings.Contains(string(out), secret) {
+		t.Fatal("client_secret must not be echoed via status API")
+	}
+}
