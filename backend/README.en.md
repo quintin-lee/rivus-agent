@@ -145,13 +145,13 @@ v1 non-goals: non-fatal tool calls, server-initiated SSE notifications, OAuth, p
 
 ## Evals
 
-`tests/evals/` provides deterministic mock-model evaluation: 36 scenarios (22 tool-level + 14 agent-level) scored across three dimensions — **correctness / efficiency / stability** — and writes `eval-report.json` (pass rate + per-category summary, gitignored; uploaded as a CI artifact by the `evals` job).
+`tests/evals/` provides deterministic mock-model evaluation: 38 scenarios (24 tool-level + 14 agent-level) scored across three dimensions — **correctness / efficiency / stability** — and writes `eval-report.json` (pass rate + per-category summary, gitignored; uploaded as a CI artifact by the `evals` job).
 
 ```bash
 cd backend && make test-eval   # equivalent to go test ./tests/evals/ -count=1
 ```
 
-Adding a scenario: append `Run(t, Scenario{...})` in `scenarios_tool_test.go` / `scenarios_agent_test.go` / `scenarios_more_test.go` / `scenarios_round14_test.go, scenarios_round15_test.go, scenarios_round16_test.go, scenarios_round19_test.go, scenarios_round21_test.go / scenarios_round25_test.go` and it is picked up automatically (framework in `framework.go`: `Expect` declares three-dimension expectations, `Script` scripts the mock model, `MidRun`/`PostCheck` handle approvals and extra assertions).
+Adding a scenario: append `Run(t, Scenario{...})` in `scenarios_tool_test.go` / `scenarios_agent_test.go` / `scenarios_more_test.go` / `scenarios_round14_test.go, scenarios_round15_test.go, scenarios_round16_test.go, scenarios_round19_test.go, scenarios_round21_test.go, scenarios_round25_test.go, scenarios_round26_test.go` and it is picked up automatically (framework in `framework.go`: `Expect` declares three-dimension expectations, `Script` scripts the mock model, `MidRun`/`PostCheck` handle approvals and extra assertions).
 
 ## Test Layout
 
