@@ -3,7 +3,7 @@
 本项目的重要变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)，发布版本见 [Releases](../../releases)。
 
-## [Unreleased]
+## [0.1.0] - 2026-10-29
 
 ### Added
 
@@ -25,6 +25,8 @@
 - **pprof 开关**：`AGENT_PPROF` 独立控制 `/debug/pprof` 暴露（未设置时跟随认证门控）。
 - **游标分页**：sessions/runs 列表 `next_cursor` 响应与 `cursor` 参数（深翻页免 OFFSET 扫描，无效游标 400）；顺带修复 sessions limit 参数未解析的问题。
 - **运行时间线**：运行详情弹窗事件时间线（14 类事件标签、`共 {n} 条事件` 计数、最近 50 条）。
+- **MCP OAuth**：HTTP 型 MCP 服务器支持 client-credentials 令牌获取（缓存 + 30 秒提前刷新），401 自动重试一次；API 配置回显不含 client_secret（`has_secret` 代替）。
+- **运行全文索引**：runs 全文检索升级为 FTS5 trigram 索引（中文友好），≥3 字节搜索词走短语匹配，短词回退 LIKE；建库自动回填存量数据。
 
 ### Changed
 
@@ -40,3 +42,4 @@
 - 终态失败的「重试」按钮误用 resume（改为按原参数重新创建运行）。
 - http_fetch 域名白名单匹配剥离端口（与 `u.Hostname()` 语义一致）。
 - 运行预算未强制执行（事件循环后置门 + `budget.exceeded` 事件 + 三维度终止）。
+- WAL checkpoint 截断失效（`PRAGMA optimize` 在 FTS5 存在时于截断后写 WAL；已调整顺序）。
