@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -32,5 +33,31 @@ func TestRunGoalSearch(t *testing.T) {
 	code, body = h.Do("GET", "/api/v1/runs", nil, nil)
 	if code != 200 || !strings.Contains(string(body), "beta notes") {
 		t.Fatalf("no-q should return all: %d %s", code, body)
+	}
+}
+
+func TestRunResultSearch(t *testing.T) {
+	h := testutil.New(t)
+	ses := h.CreateSession("result-search-ses")
+	payload := fixturePayload(t, ses)
+	payload["goal"] = "gamma task"
+	id, code, _ := h.CreateRun(ses, payload, "rs-3")
+	if code != 201 {
+		t.Fatalf("create run code=%d", code)
+	}
+	if err := h.Tasks.SetResult(context.Background(), id, `{"summary":"RESULT-MARKER-X 报告"}`); err != nil {
+		t.Fatalf("set result: %v", err)
+	}
+
+	code, body := h.Do("GET", "/api/v1/runs?q=result-marker-x", nil, nil)
+	if code != 200 {
+		t.Fatalf("code=%d body=%s", code, body)
+	}
+	if !strings.Contains(string(body), "RESULT-MARKER-X") {
+		t.Fatalf("result_json hit expected: %s", body)
+	}
+	code, body = h.Do("GET", "/api/v1/runs?q=zzz-not-there", nil, nil)
+	if code != 200 || strings.Contains(string(body), "gamma task") {
+		t.Fatalf("miss should be empty: %d %s", code, body)
 	}
 }

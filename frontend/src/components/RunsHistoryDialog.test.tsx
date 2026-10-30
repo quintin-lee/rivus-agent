@@ -96,7 +96,7 @@ it('shows load-more on full page and fetches next cursor', async () => {
 it('debounces search input and reloads with q', async () => {
   vi.useFakeTimers()
   render(<RunsHistoryDialog open onOpenChange={() => {}} />)
-  fireEvent.change(screen.getByPlaceholderText('搜索目标…'), { target: { value: 'alpha' } })
+  fireEvent.change(screen.getByPlaceholderText('搜索目标或结果…'), { target: { value: 'alpha' } })
   await act(async () => {
     await vi.advanceTimersByTimeAsync(250)
   })
@@ -109,11 +109,11 @@ it('debounces search input and reloads with q', async () => {
 it('reloads without q when search cleared', async () => {
   vi.useFakeTimers()
   render(<RunsHistoryDialog open onOpenChange={() => {}} />)
-  fireEvent.change(screen.getByPlaceholderText('搜索目标…'), { target: { value: 'alpha' } })
+  fireEvent.change(screen.getByPlaceholderText('搜索目标或结果…'), { target: { value: 'alpha' } })
   await act(async () => {
     await vi.advanceTimersByTimeAsync(250)
   })
-  fireEvent.change(screen.getByPlaceholderText('搜索目标…'), { target: { value: '' } })
+  fireEvent.change(screen.getByPlaceholderText('搜索目标或结果…'), { target: { value: '' } })
   await act(async () => {
     await vi.advanceTimersByTimeAsync(250)
   })

@@ -299,8 +299,8 @@ func (r *TaskRepo) ListRunsBySession(ctx context.Context, ownerID, sessionID, st
 		args = append(args, status)
 	}
 	if term := strings.ToLower(strings.TrimSpace(q)); term != "" {
-		query += ` AND LOWER(goal) LIKE '%' || ? || '%'`
-		args = append(args, term)
+		query += ` AND (LOWER(goal) LIKE '%' || ? || '%' OR LOWER(COALESCE(result_json,'')) LIKE '%' || ? || '%')`
+		args = append(args, term, term)
 	}
 	if offset < 0 {
 		offset = 0
@@ -370,8 +370,8 @@ func (r *TaskRepo) ListRunsByOwner(ctx context.Context, ownerID, status, q strin
 		args = append(args, status)
 	}
 	if term := strings.ToLower(strings.TrimSpace(q)); term != "" {
-		query += ` AND LOWER(goal) LIKE '%' || ? || '%'`
-		args = append(args, term)
+		query += ` AND (LOWER(goal) LIKE '%' || ? || '%' OR LOWER(COALESCE(result_json,'')) LIKE '%' || ? || '%')`
+		args = append(args, term, term)
 	}
 	if offset < 0 {
 		offset = 0

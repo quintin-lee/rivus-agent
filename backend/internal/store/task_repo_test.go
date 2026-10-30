@@ -389,15 +389,20 @@ func TestListRunsSearch(t *testing.T) {
 	}
 	mkRun("run_a", "Alpha 任务")
 	mkRun("run_b", "beta notes")
+	mkRun("run_c", "gamma task")
+	if err := tasks.SetResult(ctx, "run_c", `{"summary":"SECRET-RESULT-MARKER 报告"}`); err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
 		name string
 		q    string
 		want []string
 	}{
-		{"blank q returns all", "   ", []string{"run_b", "run_a"}},
+		{"blank q returns all", "   ", []string{"run_c", "run_b", "run_a"}},
 		{"case-insensitive hit", "alpha", []string{"run_a"}},
 		{"uppercase term hits lowercase", "BETA", []string{"run_b"}},
+		{"result-only hit", "secret-result-marker", []string{"run_c"}},
 		{"miss returns empty", "zzz", []string{}},
 	}
 	for _, tc := range cases {
