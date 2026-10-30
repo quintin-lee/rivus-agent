@@ -4,6 +4,7 @@ import { useRunStore } from '@/store/run-store'
 import { isActiveRunStatus } from '@/lib/status'
 
 import { NewRunDialog } from '@/components/NewRunDialog'
+import { useUiStore } from '@/store/ui-store'
 
 export function ChatInputBar() {
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
@@ -14,7 +15,9 @@ export function ChatInputBar() {
   const cancelActiveRun = useRunStore((s) => s.cancelActiveRun)
   const pendingGoals = useRunStore((s) => s.pendingGoals)
   const [goal, setGoal] = useState('')
-  const [dialogOpen, setDialogOpen] = useState(false)
+  // 对话框开关经 ui-store：聊天空状态按钮为第二入口
+  const dialogOpen = useUiStore((s) => s.newRunOpen)
+  const setDialogOpen = useUiStore((s) => s.setNewRunOpen)
 
   const busy = pendingGoals.some((p) => p.status === 'pending')
 

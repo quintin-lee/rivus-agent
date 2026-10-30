@@ -1,11 +1,14 @@
 import { useMemo } from 'react'
 import { deriveMessages, type ChatMessage } from '@/lib/chat-messages'
+import { t } from '@/i18n'
+import { useUiStore } from '@/store/ui-store'
+import { Button } from '@/components/ui/button'
 import { groupEventsByRun } from '@/store/selectors'
 import { useRunStore } from '@/store/run-store'
 import type { Run } from '@/lib/types'
 import { UserBubble } from '@/components/Messages/UserBubble'
 import { AssistantBubble } from '@/components/Messages/AssistantBubble'
-import { Inbox } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import { SystemStatusBubble } from '@/components/Messages/SystemStatusBubble'
 import { SystemEventsBubble } from '@/components/Messages/SystemEventsBubble'
 import { ApprovalBubble } from '@/components/Messages/ApprovalBubble'
@@ -50,24 +53,23 @@ export function ChatMessageList() {
       budget: run.budget,
     })
   }
-  if (messages.length === 0) {
-    return (
-      <ErrorBoundary>
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card/50 p-8 text-center">
-          <Inbox className="h-5 w-5 text-muted-foreground/60" aria-hidden />
-          <p className="text-sm font-medium">No tasks yet</p>
-          <p className="text-xs text-muted-foreground">Describe a task below to start this session.</p>
-        </div>
-      </ErrorBoundary>
-    )
-  }
 
   return (
     <ErrorBoundary>
       <div className="flex flex-col gap-3">
-        {messages.map((m) => (
-          <Bubble key={m.id} message={m} onRetry={handleRetry} onRerunRun={handleRerun} />
-        ))}
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-6 py-10 text-center">
+            <Bot className="h-8 w-8 text-muted-foreground/60" />
+            <p className="text-xs text-muted-foreground">{t('chat.empty')}</p>
+            <Button size="sm" onClick={() => useUiStore.getState().setNewRunOpen(true)}>
+              {t('chat.emptyCta')}
+            </Button>
+          </div>
+        ) : (
+          messages.map((m) => (
+            <Bubble key={m.id} message={m} onRetry={handleRetry} onRerunRun={handleRerun} />
+          ))
+        )}
       </div>
     </ErrorBoundary>
   )

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ChatMessageList } from '@/components/ChatMessageList'
 import { useRunStore } from '@/store/run-store'
+import { useUiStore } from '@/store/ui-store'
 import { api } from '@/lib/api'
 import type { Run, AgentEvent, Step, PendingGoal } from '@/lib/types'
 
@@ -55,6 +56,14 @@ function seedStores(
 }
 
 describe('ChatMessageList', () => {
+  it('shows an empty state that opens the new-run dialog', () => {
+    seedStores(null, [], [], [])
+    render(<ChatMessageList />)
+    expect(screen.getByText('还没有运行，创建第一个试试')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '新建运行' }))
+    expect(useUiStore.getState().newRunOpen).toBe(true)
+  })
+
   beforeEach(() => {
     useRunStore.setState({
       activeRun: null,
@@ -100,7 +109,8 @@ describe('ChatMessageList', () => {
   it('renders a placeholder when there are no messages', () => {
     seedStores(null, [], [], [])
     render(<ChatMessageList />)
-    expect(screen.getByText(/no tasks yet/i)).toBeTruthy()
+    expect(screen.getByText('还没有运行，创建第一个试试')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '新建运行' })).toBeTruthy()
   })
 
   it('does not render the placeholder when messages exist', () => {

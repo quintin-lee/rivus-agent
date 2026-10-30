@@ -124,4 +124,12 @@ describe('lang', () => {
     useUiStore.getState().initLang()
     expect(useUiStore.getState().lang).toBe('zh')
   })
+
+  it('setNewRunOpen toggles dialog flag', () => {
+    expect(useUiStore.getState().newRunOpen).toBe(false)
+    useUiStore.getState().setNewRunOpen(true)
+    expect(useUiStore.getState().newRunOpen).toBe(true)
+    useUiStore.getState().setNewRunOpen(false)
+    expect(useUiStore.getState().newRunOpen).toBe(false)
+  })
 })

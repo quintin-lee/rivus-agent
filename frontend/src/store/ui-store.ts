@@ -36,6 +36,9 @@ interface UiState {
   setLang: (l: Lang) => void
   toggleLang: () => void
   initLang: () => void
+  // 新建运行对话框开关（Header 之外的第二入口：聊天空状态）
+  newRunOpen: boolean
+  setNewRunOpen: (v: boolean) => void
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
@@ -43,6 +46,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   apiReachable: true,
   theme: 'system',
   lang: 'zh',
+  newRunOpen: false,
   setSseStatus: (s) => set({ sseStatus: s }),
   setApiReachable: (b) => set({ apiReachable: b }),
   setTheme: (t) => {
@@ -91,5 +95,9 @@ export const useUiStore = create<UiState>((set, get) => ({
       // 忽略
     }
     set({ lang: l })
+  },
+
+  setNewRunOpen: (v) => {
+    set({ newRunOpen: v })
   },
 }))
