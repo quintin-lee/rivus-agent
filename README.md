@@ -9,6 +9,7 @@
 - **中断恢复**：SQLite Checkpoint 持久化 Eino 执行状态，启动时自动扫描孤儿 Run
 - **预算控制**：每 Run 的时间、模型调用数、工具调用数、迭代次数、输出大小均有上限
 - **安全治理**：工具权限分级（只读 / 写入 / 外部副作用 / 禁止）、参数审批绑定、敏感字段脱敏
+- **MCP 集成**：stdio / HTTP 服务器接入，`tools/list_changed` 热刷新，OAuth client-credentials 自动获取与刷新 token（`client_secret` 永不回显）
 - **SSE 事件流**：支持断连重放，按 `Last-Event-ID` 恢复
 
 ## 项目结构

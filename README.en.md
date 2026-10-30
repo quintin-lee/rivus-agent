@@ -9,6 +9,7 @@ A lightweight AI Agent service built on **Go + CloudWeGo Eino ADK**. Single proc
 - **Interrupt recovery**: SQLite Checkpoints persist Eino execution state; orphan Runs are scanned automatically at startup
 - **Budget control**: per-Run caps on duration, model calls, tool calls, iterations, and output size
 - **Security governance**: tiered tool permissions (read / write / external side-effect / denied), approval-bound arguments, sensitive-field redaction
+- **MCP integration**: stdio / HTTP servers, hot refresh via `tools/list_changed`, OAuth client-credentials with automatic token fetch and refresh (`client_secret` is never echoed)
 - **SSE event stream**: replay after disconnect, resume via `Last-Event-ID`
 
 ## Project Structure

@@ -3,6 +3,17 @@
 本项目的重要变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)，发布版本见 [Releases](../../releases)。
 
+## [Unreleased]
+
+### Added
+
+- **复制按钮**：工具调用输出与运行 ID 一键复制（带「已复制」反馈）。
+- **聊天空状态**：中英文文案与「新建运行」直达入口。
+
+### Fixed
+
+- 无效的 MCP 工具配置（如 stdio 服务器携带 OAuth）由 500 改为 400，错误信息直接可见。
+
 ## [0.1.0] - 2026-10-29
 
 ### Added

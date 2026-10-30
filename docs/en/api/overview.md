@@ -20,7 +20,18 @@ List endpoints accept `limit` / `offset` query parameters (`GET /api/v1/sessions
 | `GET /api/v1/sessions` | 50 | 200 | 0 |
 | `GET /api/v1/runs` | 50 | 100 | 0 |
 
-Results are always **newest first**; an out-of-range `offset` returns an empty list (`200` + empty array, not an error). The frontend uses a "Load more" button that increments offset by the current page size.
+Results are always **newest first**; an out-of-range `offset` returns an empty list (`200` + empty array, not an error). Both endpoints also support **cursor pagination**: the response carries `next_cursor` (base64url) to pass back as the `cursor` parameter for the next page, avoiding OFFSET scans on deep pages; a non-empty `cursor` overrides `offset`. The frontend uses a "Load more" button that pages via cursor.
+
+## Search
+
+List endpoints accept a `q` parameter for case-insensitive substring filtering:
+
+| Endpoint | Matches |
+|---|---|
+| `GET /api/v1/sessions?q=` | Session title |
+| `GET /api/v1/runs?q=` | Run goal and result (`result_json`) |
+
+For runs, a `q` term of ≥3 bytes uses SQLite FTS5 full-text phrase matching (trigram tokenizer, double quotes escaped automatically); shorter terms fall back to LIKE substring matching. Both paths return the same row set. MCP servers can be configured with OAuth client-credentials (see [settings.md](settings.md)); `client_secret` is write-only and never echoed.
 
 ## Authentication
 

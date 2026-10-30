@@ -20,7 +20,18 @@ Rivus Agent 后端 REST / SSE API 参考。Base URL：`http://localhost:8080`（
 | `GET /api/v1/sessions` | 50 | 200 | 0 |
 | `GET /api/v1/runs` | 50 | 100 | 0 |
 
-结果一律**最新在前**；`offset` 越界返回空列表（`200` + 空数组，非错误）。前端以「加载更多」按当前页大小递增 offset。
+结果一律**最新在前**；`offset` 越界返回空列表（`200` + 空数组，非错误）。两个端点同时支持**游标分页**：响应携带 `next_cursor`（base64url），作为下一页请求的 `cursor` 参数传入，深翻页免 OFFSET 扫描；`cursor` 非空时覆盖 `offset`。前端以「加载更多」按钮按游标逐页拉取。
+
+## 搜索
+
+列表端点支持 `q` 参数做大小写不敏感子串过滤：
+
+| 端点 | 匹配范围 |
+|---|---|
+| `GET /api/v1/sessions?q=` | 会话标题（title） |
+| `GET /api/v1/runs?q=` | 运行目标（goal）与结果（result_json） |
+
+runs 的 `q` 词长 ≥3 字节时走 SQLite FTS5 全文短语匹配（trigram 分词，双引号自动转义），更短词回退 LIKE 子串；两种路径返回同一行集。MCP 服务器可配置 OAuth client-credentials（见 [settings.md](settings.md)），`client_secret` 仅写入、查询永不回显。
 
 ## 认证
 
