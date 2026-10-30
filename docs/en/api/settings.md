@@ -13,8 +13,9 @@ Read Skills/MCP tool configuration plus live status per MCP server.
 | `skills.enabled` | bool | Whether the `invoke_skill` tool is registered |
 | `skills.available` | []object | Loaded skills: `{name, description}` |
 | `mcp.enabled` | bool | Whether the MCP server starts and exposes `mcp__` tools |
-| `mcp.servers` | []object | Per server: `{name, status, command, args?, tools}` |
+| `mcp.servers` | []object | Per server: `{name, status, command?, args?, type?, url?, oauth?, tools}` |
 | `mcp.servers[].status` | string | `up` / `down` / `error` |
+| `mcp.servers[].oauth` | object | OAuth echo: `{token_url, client_id, scopes?, has_secret}` — **client_secret is never echoed** (same rule as headers) |
 | `mcp.servers[].tools` | []object | Discovered tools: `{name, description}` |
 
 **Errors**: `501 tools_not_configured` (no Tools Provider configured server-side).
@@ -31,7 +32,8 @@ Persist the tool configuration and trigger a hot update (`Manager.Reconcile`): t
 |---|---|---|---|
 | `skillsEnabled` | bool | yes | Enable the Skill tool |
 | `mcpEnabled` | bool | yes | Enable MCP |
-| `mcpServers` | []object | no | stdio MCP server list: `{name, command, args?}` |
+| `mcpServers` | []object | no | MCP server list: stdio `{name, command, args?}` or http `{name, type:"http", url, headers?, oauth?}` |
+| `mcpServers[].oauth` | object | no | Only for `type:"http"`: `{token_url, client_id, client_secret, scopes?}` (client-credentials; all three required, 400 otherwise) |
 
 **Response** `200`: `{}`
 
@@ -40,6 +42,13 @@ Persist the tool configuration and trigger a hot update (`Manager.Reconcile`): t
 ```bash
 curl -X PUT localhost:8080/api/v1/settings/tools \
   -d '{"skillsEnabled":true,"mcpEnabled":true,"mcpServers":[{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}]}'
+
+With OAuth for an http-type server:
+
+```bash
+curl -X PUT localhost:8080/api/v1/settings/tools \
+  -d '{"skillsEnabled":true,"mcpEnabled":true,"mcpServers":[{"name":"remote","type":"http","url":"https://mcp.example.com/mcp","oauth":{"token_url":"https://auth.example.com/token","client_id":"rivus","client_secret":"***","scopes":["mcp:read"]}}]}'
+```
 ```
 
 ## GET /api/v1/settings/model

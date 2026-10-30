@@ -13,8 +13,9 @@
 | `skills.enabled` | bool | 是否注册 `invoke_skill` 工具 |
 | `skills.available` | []object | 已加载 Skill：`{name, description}` |
 | `mcp.enabled` | bool | 是否启动 MCP 服务器 + 暴露 `mcp__` 工具 |
-| `mcp.servers` | []object | 每服务器：`{name, status, command, args?, tools}` |
+| `mcp.servers` | []object | 每服务器：`{name, status, command?, args?, type?, url?, oauth?, tools}` |
 | `mcp.servers[].status` | string | `up` / `down` / `error` |
+| `mcp.servers[].oauth` | object | OAuth 回显：`{token_url, client_id, scopes?, has_secret}`——**client_secret 永不回显**（与 headers 同规则） |
 | `mcp.servers[].tools` | []object | 已发现工具：`{name, description}` |
 
 **错误**：`501 tools_not_configured`（服务端未配置 Tools Provider）。
@@ -31,7 +32,8 @@ curl localhost:8080/api/v1/settings/tools
 |---|---|---|---|
 | `skillsEnabled` | bool | 是 | 是否启用 Skill 工具 |
 | `mcpEnabled` | bool | 是 | 是否启用 MCP |
-| `mcpServers` | []object | 否 | stdio MCP 服务器列表：`{name, command, args?}` |
+| `mcpServers` | []object | 否 | MCP 服务器列表：stdio `{name, command, args?}` 或 http `{name, type:"http", url, headers?, oauth?}` |
+| `mcpServers[].oauth` | object | 否 | 仅 `type:"http"` 支持：`{token_url, client_id, client_secret, scopes?}`（client-credentials；三字段必填，缺任一 400） |
 
 **响应** `200`：`{}`
 
@@ -39,7 +41,14 @@ curl localhost:8080/api/v1/settings/tools
 
 ```bash
 curl -X PUT localhost:8080/api/v1/settings/tools \
-  -d '{"skillsEnabled":true,"mcpEnabled":true,"mcpServers":[{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}]}'
+  -d '{"skillsEnabled":true,"mcpEnabled":true,"mcpServers":[{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}]}'`
+
+带 OAuth 的 http 型服务器：
+
+```bash
+curl -X PUT localhost:8080/api/v1/settings/tools \
+  -d '{"skillsEnabled":true,"mcpEnabled":true,"mcpServers":[{"name":"remote","type":"http","url":"https://mcp.example.com/mcp","oauth":{"token_url":"https://auth.example.com/token","client_id":"rivus","client_secret":"***","scopes":["mcp:read"]}}]}'
+``
 ```
 
 ## GET /api/v1/settings/model
