@@ -192,7 +192,10 @@ func (r *TaskRepo) CreateRun(ctx context.Context, run *domain.Run) error {
 		run.ID, run.SessionID, run.OwnerID, string(run.Status), run.Mode, run.Goal,
 		string(cj), string(scj), string(bj), run.CheckpointID, run.Attempt, nullIfEmpty(run.IdempotencyKey),
 		nullIfEmpty(run.ParentRunID), nullInt(run.StartedAt), nullInt(run.FinishedAt), run.CreatedAt, run.UpdatedAt)
-	return err
+	if err != nil {
+		return err
+	}
+	return r.ftsUpsert(ctx, run.ID, run.Goal, "")
 }
 
 // FindByIdempotencyKey 命中幂等键时返回已存在 Run。
@@ -469,7 +472,22 @@ func (r *TaskRepo) SetCheckpointID(ctx context.Context, runID, cpid string) erro
 
 // SetResult 保存结构化结果与证据。
 func (r *TaskRepo) SetResult(ctx context.Context, runID, resultJSON string) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE runs SET result_json = ?, updated_at = ? WHERE id = ?`, resultJSON, nowMs(), runID)
+	if _, err := r.db.ExecContext(ctx, `UPDATE runs SET result_json = ?, updated_at = ? WHERE id = ?`, resultJSON, nowMs(), runID); err != nil {
+		return err
+	}
+	var goal string
+	if err := r.db.QueryRowContext(ctx, `SELECT goal FROM runs WHERE id = ?`, runID).Scan(&goal); err != nil {
+		return err
+	}
+	return r.ftsUpsert(ctx, runID, goal, resultJSON)
+}
+
+// ftsUpsert 同步 runs_fts 全文行：先删后插（goal 与 result 拼接，result 可空）。
+func (r *TaskRepo) ftsUpsert(ctx context.Context, runID, goal, result string) error {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM runs_fts WHERE run_id = ?`, runID); err != nil {
+		return err
+	}
+	_, err := r.db.ExecContext(ctx, `INSERT INTO runs_fts(run_id, text) VALUES(?, ?)`, runID, goal+" "+result)
 	return err
 }
 

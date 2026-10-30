@@ -88,6 +88,16 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		`INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(3, ?)`, time.Now().UnixMilli()); err != nil {
 		return err
 	}
+	// v4：runs_fts 全文索引（表建表走 schemaSQL IF NOT EXISTS；回填按 NOT EXISTS 幂等）。
+	if _, err := tx.ExecContext(ctx, `INSERT INTO runs_fts(run_id, text)
+		SELECT r.id, r.goal || ' ' || COALESCE(r.result_json, '') FROM runs r
+		WHERE NOT EXISTS (SELECT 1 FROM runs_fts f WHERE f.run_id = r.id)`); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(4, ?)`, time.Now().UnixMilli()); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

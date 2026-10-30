@@ -104,3 +104,10 @@ CREATE TABLE IF NOT EXISTS session_memories (
   FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_memories_session ON session_memories(session_id, created_at);
+
+-- v4：runs 全文索引（trigram 支持中文与子串；run_id UNINDEXED 用于回链）。
+CREATE VIRTUAL TABLE IF NOT EXISTS runs_fts USING fts5(
+  text,
+  run_id UNINDEXED,
+  tokenize = 'trigram'
+);
