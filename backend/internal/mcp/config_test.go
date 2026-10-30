@@ -96,3 +96,25 @@ func TestValidateSpecs(t *testing.T) {
 		t.Fatal("http spec without url must fail")
 	}
 }
+
+func TestValidateSpecsOAuth(t *testing.T) {
+	full := OAuthConfig{TokenURL: "https://idp/token", ClientID: "cid", ClientSecret: "sec"}
+	if err := ValidateSpecs([]ServerSpec{{Name: "a", Type: "http", URL: "http://127.0.0.1:1", OAuth: &full}}); err != nil {
+		t.Fatalf("valid oauth spec: %v", err)
+	}
+	cases := map[string]ServerSpec{
+		"missing token_url": {Name: "a", Type: "http", URL: "http://127.0.0.1:1",
+			OAuth: &OAuthConfig{ClientID: "cid", ClientSecret: "sec"}},
+		"missing client_id": {Name: "a", Type: "http", URL: "http://127.0.0.1:1",
+			OAuth: &OAuthConfig{TokenURL: "https://idp/token", ClientSecret: "sec"}},
+		"missing client_secret": {Name: "a", Type: "http", URL: "http://127.0.0.1:1",
+			OAuth: &OAuthConfig{TokenURL: "https://idp/token", ClientID: "cid"}},
+		"stdio with oauth": {Name: "a", Command: "x",
+			OAuth: &OAuthConfig{TokenURL: "https://idp/token", ClientID: "cid", ClientSecret: "sec"}},
+	}
+	for name, spec := range cases {
+		if err := ValidateSpecs([]ServerSpec{spec}); err == nil {
+			t.Fatalf("%s must fail", name)
+		}
+	}
+}

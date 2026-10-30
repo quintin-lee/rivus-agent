@@ -17,6 +17,17 @@ const (
 	KeyMCP_servers   = "mcp.servers"
 )
 
+// OAuthConfig enables the client-credentials flow for an http-type server:
+// the transport fetches a bearer token from TokenURL before each request
+// (cached until near expiry) and injects it as the Authorization header.
+// Only client_credentials is supported — the backend has no browser.
+type OAuthConfig struct {
+	TokenURL     string   `json:"token_url"`
+	ClientID     string   `json:"client_id"`
+	ClientSecret string   `json:"client_secret"`
+	Scopes       []string `json:"scopes,omitempty"`
+}
+
 // ServerSpec is one configured MCP server: a stdio child process or a remote
 // HTTP endpoint.
 type ServerSpec struct {
@@ -26,6 +37,7 @@ type ServerSpec struct {
 	Type    string            `json:"type,omitempty"` // "" | "stdio" | "http"
 	URL     string            `json:"url,omitempty"`  // http(s) endpoint for type=http
 	Headers map[string]string `json:"headers,omitempty"`
+	OAuth   *OAuthConfig      `json:"oauth,omitempty"`
 }
 
 // ToolConfig is the global tool configuration surfaced by /settings/tools.
@@ -73,8 +85,16 @@ func ValidateSpecs(specs []ServerSpec) error {
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 				return fmt.Errorf("server %q: invalid http url %q", s.Name, s.URL)
 			}
+			if s.OAuth != nil {
+				if s.OAuth.TokenURL == "" || s.OAuth.ClientID == "" || s.OAuth.ClientSecret == "" {
+					return fmt.Errorf("server %q: oauth requires token_url, client_id and client_secret", s.Name)
+				}
+			}
 		default:
 			return fmt.Errorf("server %q: unknown type %q", s.Name, s.Type)
+		}
+		if s.OAuth != nil && s.Type != "http" {
+			return fmt.Errorf("server %q: oauth is only supported for http servers", s.Name)
 		}
 	}
 	return nil
