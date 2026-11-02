@@ -20,26 +20,26 @@ func SetS3Client(c *s3.Client) {
 // s3Tools 返回已注册的 S3 工具定义
 var S3Tools = []tool.Definition{
 	{
-		Name: "s3_read",
+		Name:        "s3_read",
 		Description: "读取 S3 对象（只读）",
-		Version: "v1",
+		Version:     "v1",
 		InputSchema: `{"type":"object","properties":{"key":{"type":"string"},"max_bytes":{"type":"integer"}},"required":["key"]}`,
 		Risk:        tool.RiskRead, Approval: tool.ApprovalNever, Idempotent: true, TimeoutMs: 10000, MaxResultBytes: 32 * 1024,
 		Handler: s3Read,
 	},
 	{
-		Name: "s3_write",
+		Name:        "s3_write",
 		Description: "上传内容到 S3（受控写入，默认审约）",
-		Version: "v1",
+		Version:     "v1",
 		InputSchema: `{"type":"object","properties":{"key":{"type":"string"},"content":{"type":"string"},"max_bytes":{"type":"integer"}},"required":["key","content"]}`,
 		Risk:        tool.RiskWrite, Approval: tool.ApprovalConditional, Idempotent: false, TimeoutMs: 15000, MaxResultBytes: 4 * 1024,
 		Handler: s3Write,
 	},
 	{
-		Name: "s3_list",
+		Name:        "s3_list",
 		Description: "列出存储桶中的对象（只读）",
-		Version: "v1",
-		InputSchema: `{"type":"object","properties":{"prefix":{"type":"string"},"max_keys":{"type":"integer"}}`,
+		Version:     "v1",
+		InputSchema: `{"type":"object","properties":{"prefix":{"type":"string"},"max_keys":{"type":"integer"}},"required":[]}`,
 		Risk:        tool.RiskRead, Approval: tool.ApprovalNever, Idempotent: true, TimeoutMs: 10000, MaxResultBytes: 32 * 1024,
 		Handler: s3List,
 	},
@@ -48,8 +48,8 @@ var S3Tools = []tool.Definition{
 // s3Read 实现 - 读取 S3 对象
 func s3Read(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
-		Key    string `json:"key"`
-		MaxBytes int   `json:"max_bytes"`
+		Key      string `json:"key"`
+		MaxBytes int    `json:"max_bytes"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil || in.Key == "" {
 		return "", fmt.Errorf("invalid key")

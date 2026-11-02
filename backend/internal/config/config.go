@@ -11,24 +11,25 @@ import (
 
 // Config 是服务启动配置。密钥只走环境变量，不进仓库与 Prompt。
 type Config struct {
-	Addr              string `yaml:"addr"`
-	DBPath            string `yaml:"db_path"`
-	SkillsDir         string `yaml:"skills_dir"`
-	WorkspaceDir      string `yaml:"workspace_dir"`
-	KnowledgeDir      string `yaml:"knowledge_dir"`
+	Addr         string `yaml:"addr"`
+	DBPath       string `yaml:"db_path"`
+	SkillsDir    string `yaml:"skills_dir"`
+	WorkspaceDir string `yaml:"workspace_dir"`
+	KnowledgeDir string `yaml:"knowledge_dir"`
 
 	// S3 配置
-	S3Endpoint        string   `yaml:"s3_endpoint"`           // S3 兼容端点 (如 MinIO, Ceph, AWS S3)
-	S3Region          string   `yaml:"s3_region"`             // 区域
-	S3Bucket          string   `yaml:"s3_bucket"`             // 存储桶名称
-	S3AccessKeyID     string   `yaml:"s3_access_key_id"`      // 访问密钥 (通过 env 注入，yaml 标记 "-")
-	S3SecretAccessKey   string  `yaml:"s3_secret_access_key" ` // 秘密密钥 (通过 env 注入)
-	S3UseSSL          bool     `yaml:"s3_use_ssl"`            // 是否使用 SSL
-	S3DisableForcePathStyle bool `yaml:"s3_force_path_style"` // 是否使用路径风格风格
+	S3Endpoint    string `yaml:"s3_endpoint"` // S3 兼容端点 (如 MinIO, Ceph)
+	S3Region      string `yaml:"s3_region"`
+	S3Bucket      string `yaml:"s3_bucket"`
+	S3AccessKeyID string `yaml:"s3_access_key_id"`
+	// S3SecretAccessKey 只经 AGENT_S3_SECRET_ACCESS_KEY 注入，不落 yaml（yaml:"-"）。
+	S3SecretAccessKey string `yaml:"-"`
+	S3UseSSL          bool   `yaml:"s3_use_ssl"`
+	S3ForcePathStyle  bool   `yaml:"s3_force_path_style"` // MinIO/Ceph 需 path-style，默认 true
 
 	// S3 存储路径映射
-	S3WorkspacePrefix   string   `yaml:"s3_workspace_prefix"` // 工作区前缀
-	S3KnowledgePrefix   string   `yaml:"s3_knowledge_prefix"` // 知识库前缀
+	S3WorkspacePrefix string `yaml:"s3_workspace_prefix"` // 工作区前缀
+	S3KnowledgePrefix string `yaml:"s3_knowledge_prefix"` // 知识库前缀
 	WorkerConcurrency int    `yaml:"worker_concurrency"`
 
 	// HTTPFetchAllowlist 限制 http_fetch 工具可访问的域名（精确匹配 host）；
@@ -76,9 +77,9 @@ func Default() Config {
 		S3Region:          "",
 		S3Bucket:          "",
 		S3UseSSL:          false,
-		S3DisableForcePathStyle: false,
-		S3WorkspacePrefix:  "",
-		S3KnowledgePrefix:  "",
+		S3ForcePathStyle:  true,
+		S3WorkspacePrefix: "",
+		S3KnowledgePrefix: "",
 		ModelProvider:     "openai_compat",
 		ModelName:         "gpt-4o-mini",
 		ModelBaseURL:      "https://api.openai.com/v1",
@@ -147,9 +148,9 @@ func applyEnv(c *Config) {
 		b, _ := strconv.ParseBool(v)
 		c.S3UseSSL = b
 	}
-	if v := os.Getenv("AGENT_S3_DISABLE_FORCE_PATH_STYLE"); v != "" {
+	if v := os.Getenv("AGENT_S3_FORCE_PATH_STYLE"); v != "" {
 		b, _ := strconv.ParseBool(v)
-		c.S3DisableForcePathStyle = b
+		c.S3ForcePathStyle = b
 	}
 	if v := os.Getenv("AGENT_S3_WORKSPACE_PREFIX"); v != "" {
 		c.S3WorkspacePrefix = v

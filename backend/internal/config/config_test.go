@@ -1,9 +1,11 @@
 package config
 
 import (
-	"gopkg.in/yaml.v3"
 	"os"
+	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestWorkspaceAndFetchConfig(t *testing.T) {
@@ -114,5 +116,33 @@ func TestPprofConfig(t *testing.T) {
 	applyEnv(&c3)
 	if c3.Pprof != nil {
 		t.Fatalf("invalid env Pprof = %v, want nil", *c3.Pprof)
+	}
+}
+
+func TestS3Config(t *testing.T) {
+	c := Default()
+	if !c.S3ForcePathStyle {
+		t.Fatal("default s3_force_path_style must be true (MinIO/Ceph need path-style)")
+	}
+	t.Setenv("AGENT_S3_ENDPOINT", "http://localhost:9000")
+	t.Setenv("AGENT_S3_BUCKET", "rivus")
+	t.Setenv("AGENT_S3_SECRET_ACCESS_KEY", "super-secret")
+	t.Setenv("AGENT_S3_FORCE_PATH_STYLE", "false")
+	c2, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.S3Endpoint != "http://localhost:9000" || c2.S3Bucket != "rivus" {
+		t.Fatalf("env override failed: %+v", c2)
+	}
+	if c2.S3ForcePathStyle {
+		t.Fatal("AGENT_S3_FORCE_PATH_STYLE=false should disable path style")
+	}
+	out, err := yaml.Marshal(c2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(out); strings.Contains(got, "s3_secret_access_key") || strings.Contains(got, "super-secret") {
+		t.Fatalf("secret must not be serialized to yaml:\n%s", got)
 	}
 }

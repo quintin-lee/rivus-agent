@@ -5,16 +5,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/minio/minio-go"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 // Client S3 客户端封装
 type Client struct {
 	*minio.Client
-	endpoint   string
-	region     string
+	endpoint string
+	region   string
 	Bucket   string
-	useSSL     bool
+	useSSL   bool
 }
 
 // NewClient 初始化 S3 客户端
@@ -27,8 +28,13 @@ func NewClient(ctx context.Context) (*Client, error) {
 		useSSL = true // 默认使用 SSL
 	}
 
-	// minio-go v6+: New 使用 Endpoint, AccessKeyID, SecretAccessKey, UseSSL
-	c, err := minio.New(endpoint, accessKey, secretKey, useSSL)
+	// minio-go v7: New 使用 Options{Creds, Secure, Region}；BucketLookup 默认 Auto，
+	// 自定义端点自动走 path-style（MinIO/Ceph 无需额外配置）。
+	c, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+		Secure: useSSL,
+		Region: os.Getenv("AGENT_S3_REGION"),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("minio new client: %w", err)
 	}
