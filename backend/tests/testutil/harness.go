@@ -193,7 +193,8 @@ func (p *stubToolProvider) SaveTools(_ context.Context, in httpapi.ToolConfigIn)
 		var oauth *mcp.OAuthConfig
 		if s.OAuth != nil {
 			oauth = &mcp.OAuthConfig{TokenURL: s.OAuth.TokenURL, ClientID: s.OAuth.ClientID,
-				ClientSecret: s.OAuth.ClientSecret, Scopes: s.OAuth.Scopes}
+				ClientSecret: s.OAuth.ClientSecret, Scopes: s.OAuth.Scopes,
+				AuthorizeURL: s.OAuth.AuthorizeURL, RedirectPort: s.OAuth.RedirectPort}
 		}
 		specs = append(specs, mcp.ServerSpec{Name: s.Name, Command: s.Command, Args: s.Args,
 			Type: s.Type, URL: s.URL, Headers: s.Headers, OAuth: oauth})

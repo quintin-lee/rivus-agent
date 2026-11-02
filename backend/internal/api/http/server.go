@@ -81,10 +81,12 @@ type MCPServerInfo struct {
 
 // MCPOAuthInfo 回显 OAuth 配置；绝不包含 client_secret（用 has_secret 代替）。
 type MCPOAuthInfo struct {
-	TokenURL  string   `json:"token_url"`
-	ClientID  string   `json:"client_id"`
-	Scopes    []string `json:"scopes,omitempty"`
-	HasSecret bool     `json:"has_secret"`
+	TokenURL     string   `json:"token_url"`
+	ClientID     string   `json:"client_id"`
+	Scopes       []string `json:"scopes,omitempty"`
+	HasSecret    bool     `json:"has_secret"`
+	AuthorizeURL string   `json:"authorize_url,omitempty"`
+	RedirectPort int      `json:"redirect_port,omitempty"`
 }
 
 type ToolInfo struct {
@@ -109,12 +111,15 @@ type MCPServerIn struct {
 	OAuth   *MCPOAuthIn       `json:"oauth,omitempty"`
 }
 
-// MCPOAuthIn 接收 client-credentials 配置；仅在 PUT 载荷中出现。
+// MCPOAuthIn 接收 OAuth 配置（client-credentials 或授权码）；仅在 PUT 载荷中出现。
 type MCPOAuthIn struct {
 	TokenURL     string   `json:"token_url"`
 	ClientID     string   `json:"client_id"`
 	ClientSecret string   `json:"client_secret"`
 	Scopes       []string `json:"scopes,omitempty"`
+	// AuthorizeURL 非空表示授权码流程，需同时提供 RedirectPort>0。
+	AuthorizeURL string `json:"authorize_url,omitempty"`
+	RedirectPort int    `json:"redirect_port,omitempty"`
 }
 
 // Option configures an httpapi.Server. Existing 7-arg New(...) calls stay

@@ -126,7 +126,8 @@ func oauthInfo(o *mcp.OAuthConfig) *httpapi.MCPOAuthInfo {
 		return nil
 	}
 	return &httpapi.MCPOAuthInfo{TokenURL: o.TokenURL, ClientID: o.ClientID,
-		Scopes: o.Scopes, HasSecret: o.ClientSecret != ""}
+		Scopes: o.Scopes, HasSecret: o.ClientSecret != "",
+		AuthorizeURL: o.AuthorizeURL, RedirectPort: o.RedirectPort}
 }
 
 func mcpServersFromIn(in httpapi.ToolConfigIn) ([]mcp.ServerSpec, error) {
@@ -135,7 +136,8 @@ func mcpServersFromIn(in httpapi.ToolConfigIn) ([]mcp.ServerSpec, error) {
 		var oauth *mcp.OAuthConfig
 		if s.OAuth != nil {
 			oauth = &mcp.OAuthConfig{TokenURL: s.OAuth.TokenURL, ClientID: s.OAuth.ClientID,
-				ClientSecret: s.OAuth.ClientSecret, Scopes: s.OAuth.Scopes}
+				ClientSecret: s.OAuth.ClientSecret, Scopes: s.OAuth.Scopes,
+				AuthorizeURL: s.OAuth.AuthorizeURL, RedirectPort: s.OAuth.RedirectPort}
 		}
 		out = append(out, mcp.ServerSpec{Name: s.Name, Command: s.Command, Args: s.Args,
 			Type: s.Type, URL: s.URL, Headers: s.Headers, OAuth: oauth})
