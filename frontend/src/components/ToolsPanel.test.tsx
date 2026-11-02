@@ -12,14 +12,16 @@ const api = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({ api, ApiError: class ApiError extends Error {} }))
 const useUiStoreStore = { lang: 'zh' as 'zh' | 'en' }
 vi.mock('@/store/ui-store', () => ({
-  useUiStore: Object.assign((sel: any) => sel(useUiStoreStore), {
+  useUiStore: Object.assign((sel: (s: typeof useUiStoreStore) => unknown) => sel(useUiStoreStore), {
     getState: () => useUiStoreStore,
     setState: () => {},
   }),
 }))
 
-function savePayloads(): any[] {
-  return api.saveTools.mock.calls.map((c: any[]) => c[0])
+type SavePayload = { skillsEnabled: boolean; mcpEnabled: boolean; mcpServers: Array<Record<string, unknown>> }
+function lastSavePayload(): SavePayload {
+  const calls = api.saveTools.mock.calls as unknown as Array<[SavePayload]>
+  return calls[calls.length - 1][0]
 }
 
 beforeEach(() => {
@@ -55,11 +57,12 @@ describe('ToolsPanel MCP OAuth UI', () => {
     // 保存
     fireEvent.click(screen.getByRole('button', { name: /保存工具设置|save tool settings/i }))
     await new Promise((r) => setTimeout(r, 30))
-    const payload = savePayloads()[savePayloads().length - 1]!
-    expect(payload.mcpServers[0].type).toBe('http')
-    expect(payload.mcpServers[0].url).toBe('http://oauth.local/mcp')
-    expect(payload.mcpServers[0].oauth).toMatchObject({ token_url: 'http://oauth.local/token', client_id: 'cid', scopes: ['read', 'write'] })
-    expect(payload.mcpServers[0].oauth).not.toHaveProperty('client_secret')
+    const payload = lastSavePayload()
+    const srv0 = payload.mcpServers[0] as { type?: string; url?: string; oauth?: { token_url: string; client_id: string; client_secret?: string; scopes?: string[] } }
+    expect(srv0.type).toBe('http')
+    expect(srv0.url).toBe('http://oauth.local/mcp')
+    expect(srv0.oauth).toMatchObject({ token_url: 'http://oauth.local/token', client_id: 'cid', scopes: ['read', 'write'] })
+    expect(srv0.oauth).not.toHaveProperty('client_secret')
   })
 
   it('oauth unchecked → no oauth field in payload', async () => {
@@ -69,7 +72,7 @@ describe('ToolsPanel MCP OAuth UI', () => {
     fireEvent.change(names[0], { target: { value: 'plain' } })
     fireEvent.click(screen.getByRole('button', { name: /保存工具设置|save tool settings/i }))
     await new Promise((r) => setTimeout(r, 30))
-    const payload = savePayloads()[savePayloads().length - 1]!
+    const payload = lastSavePayload()
     expect(payload.mcpServers[0]).not.toHaveProperty('oauth')
   })
 
@@ -88,7 +91,8 @@ describe('ToolsPanel MCP OAuth UI', () => {
     fireEvent.change(fields[2], { target: { value: 'shhh' } })
     fireEvent.click(screen.getByRole('button', { name: /保存工具设置|save tool settings/i }))
     await new Promise((r) => setTimeout(r, 30))
-    const payload = savePayloads()[savePayloads().length - 1]!
-    expect(payload.mcpServers[0].oauth.client_secret).toBe('shhh')
+    const payload = lastSavePayload()
+    const srv = payload.mcpServers[0] as { oauth?: { client_secret?: string } }
+    expect(srv.oauth?.client_secret).toBe('shhh')
   })
 })
