@@ -15,7 +15,7 @@
 | `mcp.enabled` | bool | 是否启动 MCP 服务器 + 暴露 `mcp__` 工具 |
 | `mcp.servers` | []object | 每服务器：`{name, status, command?, args?, type?, url?, oauth?, tools}` |
 | `mcp.servers[].status` | string | `up` / `down` / `error` |
-| `mcp.servers[].oauth` | object | OAuth 回显：`{token_url, client_id, scopes?, has_secret}`——**client_secret 永不回显**（与 headers 同规则） |
+| `mcp.servers[].oauth` | object | OAuth 回显：`{token_url, client_id, scopes?, authorize_url?, redirect_port?, has_secret}`——**client_secret 永不回显**（与 headers 同规则）；带 `authorize_url` 表示授权码流程 |
 | `mcp.servers[].tools` | []object | 已发现工具：`{name, description}` |
 
 **错误**：`501 tools_not_configured`（服务端未配置 Tools Provider）。
@@ -33,7 +33,7 @@ curl localhost:8080/api/v1/settings/tools
 | `skillsEnabled` | bool | 是 | 是否启用 Skill 工具 |
 | `mcpEnabled` | bool | 是 | 是否启用 MCP |
 | `mcpServers` | []object | 否 | MCP 服务器列表：stdio `{name, command, args?}` 或 http `{name, type:"http", url, headers?, oauth?}` |
-| `mcpServers[].oauth` | object | 否 | 仅 `type:"http"` 支持：`{token_url, client_id, client_secret, scopes?}`（client-credentials；三字段必填，缺任一 400） |
+| `mcpServers[].oauth` | object | 否 | 仅 `type:"http"` 支持：`{token_url, client_id, client_secret, scopes?, authorize_url?, redirect_port?}`——缺省走 client-credentials（前三字段必填，缺任一 400）；带 `authorize_url` 时走授权码流程且 `redirect_port` 必填 |
 
 **响应** `200`：`{}`
 

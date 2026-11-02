@@ -9,6 +9,10 @@
 
 - **复制按钮**：工具调用输出与运行 ID 一键复制（带「已复制」反馈）。
 - **聊天空状态**：中英文文案与「新建运行」直达入口。
+- **运行数据保留**：`agentd prune -older-than 30d` 清理指定时间以前的终态运行（含子运行级联，`-dry-run` 预览）；`PruneRuns` / `CountPrunable` 存储层接口。
+- **MCP OAuth 授权码流程**：HTTP 型 MCP 服务器除 client-credentials 外支持 `authorize_url` + `redirect_port` 授权码流程（本地回调、授权链接打印到 stderr）；令牌经 Settings 持久化，重启免重复授权。
+- **步骤进度**：运行状态气泡显示「步骤 x/y 已完成」进度头；取消对话框与重新运行按钮完成中/英 i18n。
+- **S3 工具**：新增 S3 兼容存储配置、客户端与 `s3` 内置工具（minio-go v7；secret 仅 env 注入永不序列化，MinIO/Ceph path-style 默认开启）。
 
 ### Fixed
 

@@ -15,7 +15,7 @@ Read Skills/MCP tool configuration plus live status per MCP server.
 | `mcp.enabled` | bool | Whether the MCP server starts and exposes `mcp__` tools |
 | `mcp.servers` | []object | Per server: `{name, status, command?, args?, type?, url?, oauth?, tools}` |
 | `mcp.servers[].status` | string | `up` / `down` / `error` |
-| `mcp.servers[].oauth` | object | OAuth echo: `{token_url, client_id, scopes?, has_secret}` — **client_secret is never echoed** (same rule as headers) |
+| `mcp.servers[].oauth` | object | OAuth echo: `{token_url, client_id, scopes?, authorize_url?, redirect_port?, has_secret}` — **client_secret is never echoed** (same rule as headers); `authorize_url` present means authorization-code flow |
 | `mcp.servers[].tools` | []object | Discovered tools: `{name, description}` |
 
 **Errors**: `501 tools_not_configured` (no Tools Provider configured server-side).
@@ -33,7 +33,7 @@ Persist the tool configuration and trigger a hot update (`Manager.Reconcile`): t
 | `skillsEnabled` | bool | yes | Enable the Skill tool |
 | `mcpEnabled` | bool | yes | Enable MCP |
 | `mcpServers` | []object | no | MCP server list: stdio `{name, command, args?}` or http `{name, type:"http", url, headers?, oauth?}` |
-| `mcpServers[].oauth` | object | no | Only for `type:"http"`: `{token_url, client_id, client_secret, scopes?}` (client-credentials; all three required, 400 otherwise) |
+| `mcpServers[].oauth` | object | no | Only for `type:"http"`: `{token_url, client_id, client_secret, scopes?, authorize_url?, redirect_port?}` — client-credentials by default (first three required, 400 otherwise); with `authorize_url` the authorization-code flow applies and `redirect_port` is required |
 
 **Response** `200`: `{}`
 
