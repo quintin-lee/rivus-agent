@@ -57,3 +57,9 @@ OAuth 授权码、步骤可视化 均无条目；prune 路径（`agentd prune`�
 3. 新增 2 个 prune 场景 PASS；`make test-eval` total=42 pass_rate=1。
 4. 全量回归 19 pkgs 0 FAIL；前端 tsc 0 / lint 0 / vitest 全绿。
 5. spec 执行偏差回写。
+
+## 7. 执行偏差
+
+- prune 场景无需 backdate：cutoff = `time.Now().UnixMilli()+5000` 使刚创建的终态 run 天然满足 `updated_at < cutoff`；running run 经 `h.DB` 直插（budget_json 非空）。
+- 断言用 `errors.Is(err, sql.ErrNoRows)`（首稿 `!sql.ErrNoRows == err` 非法语法，RED 时发现）。
+- 2 个场景首跑即绿，无行为修复。
