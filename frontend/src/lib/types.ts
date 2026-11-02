@@ -156,11 +156,41 @@ export interface ToolInfo {
   description: string
 }
 
+export interface MCPOAuthIn {
+  token_url: string
+  client_id: string
+  client_secret?: string
+  scopes?: string[]
+  authorize_url?: string
+  redirect_port?: number
+}
+
+export interface MCPServerIn {
+  name: string
+  command: string
+  args?: string[]
+  type?: 'stdio' | 'http'
+  url?: string
+  oauth?: MCPOAuthIn
+}
+
+export interface MCPOAuthInfo {
+  token_url: string
+  client_id: string
+  scopes?: string[]
+  has_secret?: boolean
+  authorize_url?: string
+  redirect_port?: number
+}
+
 export interface MCPServerInfo {
   name: string
   status: string
   command: string
   args?: string[]
+  type?: 'stdio' | 'http'
+  url?: string
+  oauth?: MCPOAuthInfo
   tools: ToolInfo[]
 }
 
@@ -169,11 +199,6 @@ export interface ToolStatus {
   mcp: { enabled: boolean; servers: MCPServerInfo[] }
 }
 
-export interface MCPServerIn {
-  name: string
-  command: string
-  args?: string[]
-}
 
 export interface ToolConfigIn {
   skillsEnabled: boolean
