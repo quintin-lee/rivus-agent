@@ -73,4 +73,10 @@ if cfg.S3Endpoint != "" {
 
 ## 6. 执行偏差
 
-（执行后回写）
+- 前缀传递：Client 结构内嵌 `WorkspacePrefix`/`KnowledgePrefix`（而非扩展 `SetS3Client` 签名）——最小改动，handler 闭包直接从 `s3Client` 读取前缀。
+- nil-guard 语义：三个 handler 的未初始化路径返回 **Go error**（`fmt.Errorf("s3 client not initialized")`），而非成功输出字符串；`s3_handler_test.go` 断言 `err != nil && strings.Contains(err.Error(), "not initialized")`。
+- `s3_handler_test.go` 不用 `tool.NewRegistry()`（该符号属 tool 包，builtin 包内不可见）：改为从包级 `S3Tools` 切片按名称查找 `def.Handler`。
+- `minio.ObjectInfo` 无 `IsDir` 字段（设计 2.2 提及的目录跳过不适用），`s3_list` 直接输出全部对象。
+- `s3client_test.go` 用真实 `NewClient(cfg)` + 假 endpoint 即覆盖构建/校验/Enabled 逻辑，未引入 `NewClientForTest` 辅助。
+- 接线验证：`App.Start` 阻塞于 `ListenAndServe`，`app_wiring_test.go` 无法独立跑完整 Start——接线正确性以 `go build/vet` + 既有 app 包测试 + 空配置零回归（19 pkgs 全绿）保证。
+

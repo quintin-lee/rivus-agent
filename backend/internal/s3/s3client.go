@@ -1,9 +1,9 @@
 package s3
 
 import (
-	"context"
 	"fmt"
-	"os"
+
+	"rivus-agent-backend/internal/config"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -12,20 +12,30 @@ import (
 // Client S3 客户端封装
 type Client struct {
 	*minio.Client
-	endpoint string
-	region   string
-	Bucket   string
-	useSSL   bool
+	endpoint        string
+	region          string
+	Bucket          string
+	useSSL          bool
+	WorkspacePrefix string
+	KnowledgePrefix string
 }
 
-// NewClient 初始化 S3 客户端
-func NewClient(ctx context.Context) (*Client, error) {
-	endpoint := os.Getenv("AGENT_S3_ENDPOINT")
-	accessKey := os.Getenv("AGENT_S3_ACCESS_KEY_ID")
-	secretKey := os.Getenv("AGENT_S3_SECRET_ACCESS_KEY")
-	useSSL, err := parseBool(os.Getenv("AGENT_S3_USE_SSL"))
-	if err != nil {
-		useSSL = true // 默认使用 SSL
+// Enabled 是否在配置中启用（endpoint 非空即启用）。
+func (c *Client) Enabled() bool {
+	return c != nil && c.endpoint != ""
+}
+
+// NewClient 从 config.Config 构造 S3 客户端。
+// env 已由 config.Load/applyEnv 灌入各字段，此处不再直接读 os.Getenv。
+func NewClient(cfg config.Config) (*Client, error) {
+	endpoint := cfg.S3Endpoint
+	accessKey := cfg.S3AccessKeyID
+	secretKey := cfg.S3SecretAccessKey
+	useSSL := cfg.S3UseSSL
+	region := cfg.S3Region
+	bucket := cfg.S3Bucket
+	if endpoint == "" {
+		return nil, fmt.Errorf("s3 endpoint is empty")
 	}
 
 	// minio-go v7: New 使用 Options{Creds, Secure, Region}；BucketLookup 默认 Auto，
@@ -33,27 +43,19 @@ func NewClient(ctx context.Context) (*Client, error) {
 	c, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: useSSL,
-		Region: os.Getenv("AGENT_S3_REGION"),
+		Region: region,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("minio new client: %w", err)
 	}
 
-	// 确保存储桶存在
-	bucket := os.Getenv("AGENT_S3_BUCKET")
-	// 预留：将在工具中使用
-
-	return &Client{Client: c, endpoint: endpoint, Bucket: bucket, useSSL: useSSL}, nil
-}
-
-// parseBool 解析布尔值（兼容 various string 格式）
-func parseBool(s string) (bool, error) {
-	switch s {
-	case "true", "1", "yes", "y", "on":
-		return true, nil
-	case "false", "0", "no", "n", "off":
-		return false, nil
-	default:
-		return false, fmt.Errorf("invalid bool: %s", s)
-	}
+	return &Client{
+		Client:          c,
+		endpoint:        endpoint,
+		region:          region,
+		Bucket:          bucket,
+		useSSL:          useSSL,
+		WorkspacePrefix: cfg.S3WorkspacePrefix,
+		KnowledgePrefix: cfg.S3KnowledgePrefix,
+	}, nil
 }

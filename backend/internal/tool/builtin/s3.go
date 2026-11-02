@@ -4,9 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"strings"
+	"time"
 
 	"rivus-agent-backend/internal/s3"
 	"rivus-agent-backend/internal/tool"
+
+	"github.com/minio/minio-go/v7"
 )
 
 // S3 配置（由 app 装配）
@@ -46,7 +51,7 @@ var S3Tools = []tool.Definition{
 }
 
 // s3Read 实现 - 读取 S3 对象
-func s3Read(_ context.Context, args json.RawMessage) (string, error) {
+func s3Read(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		Key      string `json:"key"`
 		MaxBytes int    `json:"max_bytes"`
@@ -59,18 +64,37 @@ func s3Read(_ context.Context, args json.RawMessage) (string, error) {
 		return "", fmt.Errorf("s3 client not initialized")
 	}
 
-	// 实际 S3 读取实现：此处返回成功占位
-	// 实际实现应调用: s3Client.Client.GetObject(context.Background(), s3Client.Bucket, in.Key, minio.GetObjectOptions{})
-	out, _ := json.Marshal(map[string]string{
-		"key":    in.Key,
-		"status": "success",
-		"note":   "S3 read implementation pending minio API compatibility",
+	key := s3Client.WorkspacePrefix + in.Key
+	obj, err := s3Client.GetObject(ctx, s3Client.Bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return "", fmt.Errorf("s3 read: %w", err)
+	}
+	defer func() { _ = obj.Close() }()
+
+	cap := in.MaxBytes
+	if cap <= 0 {
+		cap = 32 * 1024
+	}
+	data, err := io.ReadAll(io.LimitReader(obj, int64(cap)+1))
+	if err != nil {
+		return "", fmt.Errorf("s3 read body: %w", err)
+	}
+	truncated := len(data) > cap
+	if truncated {
+		data = data[:cap]
+	}
+	out, _ := json.Marshal(map[string]any{
+		"key":       in.Key,
+		"status":    "success",
+		"size":      len(data),
+		"truncated": truncated,
+		"content":   string(data),
 	})
 	return string(out), nil
 }
 
 // s3Write 实现 - 上传内容到 S3
-func s3Write(_ context.Context, args json.RawMessage) (string, error) {
+func s3Write(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		Key      string `json:"key"`
 		Content  string `json:"content"`
@@ -84,19 +108,21 @@ func s3Write(_ context.Context, args json.RawMessage) (string, error) {
 		return "", fmt.Errorf("s3 client not initialized")
 	}
 
-	// 实际 S3 写入实现：此处返回成功占位
-	// 实际实现应调用: s3Client.Client.PutObject(context.Background(), s3Client.Bucket, in.Key, strings.NewReader(content), int64(len(content)), minio.PutObjectOptions{})
-	out, _ := json.Marshal(map[string]string{
-		"key":       in.Key,
-		"status":    "success",
-		"note":      "S3 write implementation pending minio API compatibility",
-		"truncated": fmt.Sprint(len(in.Content) > in.MaxBytes),
+	key := s3Client.WorkspacePrefix + in.Key
+	_, err := s3Client.PutObject(ctx, s3Client.Bucket, key, strings.NewReader(in.Content), int64(len(in.Content)), minio.PutObjectOptions{})
+	if err != nil {
+		return "", fmt.Errorf("s3 write: %w", err)
+	}
+	out, _ := json.Marshal(map[string]any{
+		"key":           in.Key,
+		"status":        "success",
+		"bytes_written": len(in.Content),
 	})
 	return string(out), nil
 }
 
 // s3List 实现 - 列出存储桶中的对象
-func s3List(_ context.Context, args json.RawMessage) (string, error) {
+func s3List(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		Prefix  string `json:"prefix"`
 		MaxKeys int    `json:"max_keys"`
@@ -109,11 +135,30 @@ func s3List(_ context.Context, args json.RawMessage) (string, error) {
 		return "", fmt.Errorf("s3 client not initialized")
 	}
 
-	// 实际 S3 列举实现：此处返回占位结果
-	// 实际实现应调用: s3Client.Client.ListObjects(context.Background(), s3Client.Bucket, minio.ListObjectOptions{Prefix: in.Prefix, MaxKeys: uint(in.MaxKeys)})
+	limit := in.MaxKeys
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	prefix := s3Client.KnowledgePrefix + in.Prefix
+
+	objects := []map[string]any{}
+	for info := range s3Client.ListObjects(ctx, s3Client.Bucket, minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: true,
+		MaxKeys:   limit,
+	}) {
+		objects = append(objects, map[string]any{
+			"key":           info.Key,
+			"size":          info.Size,
+			"last_modified": info.LastModified.Format(time.RFC3339),
+		})
+	}
 	out, _ := json.Marshal(map[string]any{
-		"objects": []string{},
-		"note":    "S3 list implementation pending minio API compatibility",
+		"objects": objects,
+		"count":   len(objects),
 	})
 	return string(out), nil
 }

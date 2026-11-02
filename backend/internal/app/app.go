@@ -17,6 +17,7 @@ import (
 	"rivus-agent-backend/internal/model"
 	"rivus-agent-backend/internal/observability"
 	"rivus-agent-backend/internal/runtime"
+	"rivus-agent-backend/internal/s3"
 	"rivus-agent-backend/internal/service"
 	"rivus-agent-backend/internal/skill"
 	"rivus-agent-backend/internal/store"
@@ -73,6 +74,21 @@ func (a *App) Start(ctx context.Context) error {
 	registry := tool.NewRegistry()
 	builtin.SetDirs(a.cfg.WorkspaceDir, a.cfg.KnowledgeDir)
 	builtin.SetHTTPAllowlist(a.cfg.HTTPFetchAllowlist)
+	// S3 存储（条件注册）：配置了 AGENT_S3_ENDPOINT 才初始化客户端并注册 s3 工具。
+	if a.cfg.S3Endpoint != "" {
+		c, err := s3.NewClient(a.cfg)
+		if err != nil {
+			a.log.Warn("s3 init failed", "err", err)
+		} else {
+			builtin.SetS3Client(c)
+			for _, d := range builtin.S3Tools {
+				if err := registry.Register(d); err != nil {
+					a.log.Warn("s3 tool registration failed", "tool", d.Name, "err", err)
+				}
+			}
+			a.log.Info("s3 storage enabled", "bucket", c.Bucket)
+		}
+	}
 	if err := builtin.RegisterAll(registry); err != nil {
 		return err
 	}

@@ -10,6 +10,7 @@ A lightweight AI Agent service built on **Go + CloudWeGo Eino ADK**. Single proc
 - **Budget control**: per-Run caps on duration, model calls, tool calls, iterations, and output size
 - **Security governance**: tiered tool permissions (read / write / external side-effect / denied), approval-bound arguments, sensitive-field redaction
 - **MCP integration**: stdio / HTTP servers, hot refresh via `tools/list_changed`, OAuth client-credentials with automatic token fetch and refresh (`client_secret` is never echoed)
+- **S3 object storage**: optional (wired when `AGENT_S3_ENDPOINT` is set), exposing `s3_read` / `s3_write` / `s3_list` builtin tools (minio-go v7, workspace/knowledge prefix isolation)
 - **Run full-text search**: case-insensitive goal and result search backed by a SQLite FTS5 trigram index
 - **SSE event stream**: replay after disconnect, resume via `Last-Event-ID`
 
