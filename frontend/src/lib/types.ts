@@ -32,6 +32,7 @@ export type EventType =
   | 'model.completed'
   | 'model.token'      // coalesced full-so-far streaming text (parent runs)
   | 'budget.consumed'  // cumulative usage at step boundary (backend authoritative)
+  | 'budget.exceeded'
   | 'model.failed'
   | 'tool.requested'
   | 'tool.authorized'

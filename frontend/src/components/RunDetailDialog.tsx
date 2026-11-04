@@ -39,6 +39,34 @@ function relTime(ts: number): string {
   return t('time.dayAgo', { n: Math.floor(h / 24) })
 }
 
+// 时间线 tool.* 行显示工具名（payload.tool，缺省时取 payload.text，与 parseToolCalls 同源）
+function toolNameOf(ev: AgentEvent): string {
+  if (ev.event_type !== 'tool.completed' && ev.event_type !== 'tool.failed') return ''
+  try {
+    const p = JSON.parse(ev.payload_json || '{}')
+    const n = p?.tool ?? p?.text
+    return typeof n === 'string' ? n : ''
+  } catch {
+    return ''
+  }
+}
+
+// 时间线 step.started / step.finished 行显示该步骤描述（取 payload.step_index 与 run.steps 匹配；
+// 匹配不到则省略，不做原始 step_index 回显）
+function stepDescriptionOf(ev: AgentEvent, steps: Step[]): string {
+  if (ev.event_type !== 'step.started' && ev.event_type !== 'step.finished') return ''
+  let idx: unknown
+  try {
+    const p = JSON.parse(ev.payload_json || '{}')
+    idx = p?.step_index
+  } catch {
+    return ''
+  }
+  if (typeof idx !== 'number' || !Number.isFinite(idx)) return ''
+  const found = steps.find((s) => s.step_index === idx)
+  return found?.description ?? ''
+}
+
 function parseToolCalls(events: AgentEvent[]): ToolCallRow[] {
   const rows: ToolCallRow[] = []
   for (const ev of events) {
@@ -75,6 +103,7 @@ export function RunDetailDialog({
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   const load = useCallback(async (id: string) => {
     setLoading(true)
@@ -242,13 +271,30 @@ export function RunDetailDialog({
               ) : (
                 <div className="relative flex flex-col gap-2 pl-4">
                   <span className="absolute left-1.5 top-1 h-[calc(100%-0.5rem)] w-px bg-border" />
-                  {events.slice(-50).map((ev) => (
+                  {(expanded ? events : events.slice(-50)).map((ev) => (
                     <div key={ev.seq} className="relative flex items-center gap-2 text-xs">
                       <span className="absolute -left-4 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border border-border bg-card" />
                       <span className="font-medium">{timelineLabel(ev.event_type)}</span>
+                      {toolNameOf(ev) && (
+                        <code className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                          {toolNameOf(ev)}
+                        </code>
+                      )}
+                      {stepDescriptionOf(ev, steps) && (
+                        <span className="truncate text-muted-foreground">{stepDescriptionOf(ev, steps)}</span>
+                      )}
                       <span className="text-muted-foreground/70">{relTime(ev.created_at)}</span>
                     </div>
                   ))}
+                  {events.length > 50 && (
+                    <button
+                      type="button"
+                      onClick={() => setExpanded((v) => !v)}
+                      className="ml-auto text-xs text-primary hover:underline"
+                    >
+                      {expanded ? t('timeline.collapse') : t('timeline.expandAll', { n: events.length })}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
