@@ -68,6 +68,7 @@ zh: `'status.budgetUsage': '用量 工具 {tool}/模型 {model}'` — unchanged 
   // R32 — status usage variants
   'status.budgetUsageMax': '用量 工具 {tool}/{toolMax} · 模型 {model}/{modelMax} · {seconds}s',
   // R32 — NewRunDialog
+  'newrun.title': '新运行',
   'newrun.description': '为本次会话的下一次运行配置高级选项。',
   'newrun.goal': '目标',
   'newrun.goalPlaceholder': '描述目标…',
