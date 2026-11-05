@@ -20,7 +20,7 @@ R31 后前端扫描发现 10 个缺口，主导问题是 **i18n 不完整**：�
 | 8 | `SystemEventsBubble.tsx`（22,52,60）+ `lib/status.ts:133-198 eventSummary` | `{n} events`/`[masked]`/`hide`/`raw` 硬编码；eventSummary 每个分支返回英文串，与已齐的 `timeline.*` 字典重复 |
 | 9 | `SubagentCard.tsx`（78,83,88,98） | `加载中…`/`重试`/`（无子 run 记录）`硬编码 zh，尽管 `common.loading`/`common.retry` 已存在；状态徽章 raw |
 | 10 | `SessionList.tsx:285` 状态徽章 raw；217-241 悬停按钮 `hidden … group-hover:flex`（键盘不可达、触屏不可见）仅 `title=` 无 `aria-label` |
-| 11 | `session-store.ts`（23-24,46-54） | `createSession`/`loadSessions`/`loadMoreSessions`/`renameSession` 无 try/catch；调用点 fire-and-forget（`App.tsx:11` `void loadSessions()`、`SessionList.tsx:119-128` handleCreate 有 finally 无 catch）→ 失败静默，输入框文字保留无提示 |
+| 11 | `session-store.ts`（23-24,46-54） | `createSession`/`loadSessions`/`loadMoreSessions`/`renameSession` 无 try/catch；调用点 fire-and-forget（`App.tsx:16` `void loadSessions()`、`SessionList.tsx:121-129` handleCreate 有 finally 无 catch）→ 失败静默，输入框文字保留无提示 |
 | 12 | `RunsHistoryDialog.tsx:58-65` | 筛选 chips 仅 All/succeeded/failed/cancelled/timed_out，缺 running/waiting_approval/queued/paused |
 | 13 | `components/Messages/index.ts` | barrel 死代码：grep 零引用，ChatMessageList 直接按文件导入 |
 
@@ -39,8 +39,8 @@ R31 后前端扫描发现 10 个缺口，主导问题是 **i18n 不完整**：�
   - `lib/budget.ts` 的 zh 标签 → `budget.*` key（label/hint 变 key 名），渲染层（NewRunDialog）用 `t()` 取
 - **状态徽章统一**：`SessionList.tsx:285`、`SystemStatusBubble.tsx:40` 套用现成模式（照抄 `RunsHistoryDialog.tsx:187`）：
   `KNOWN_STATUSES.has(s) ? t(\`status.${s}\`) : s`
-- **`SystemStatusBubble:111` 用量行**：新键 `status.budgetLive`（zh `用量 工具 {tool}/模型 {model} · {seconds}s` / en `Usage tool {tool}/model {model} · {seconds}s`），替换硬编码拼串。
-- **`lib/status.ts` eventSummary**：英文 switch 分支全部改为 `t(\`timeline.${e.event_type}\`)` 查表（33 个 `timeline.*` 键 zh/en 已齐，R31 落地，覆盖全部事件类型），payload 细节保留追加：`tool.*` 事件追加工具名、`run.failed` 追加 error_code、`step.*` 无 description 时用 step_index。
+- **`lib/status.ts` eventSummary**：英文 switch 分支全部改为 `t(\`timeline.${e.event_type}\`)` 查表（33 个 `timeline.*` 键 zh/en 已齐，R31 落地，覆盖全部事件类型），payload 细节保留追加：`tool.*` 事件追加工具名、`run.failed` 追加 error_code、`step.*` 无 description 时用 step_index。**注意**：`budget.consumed` 分支（status.ts:155-161）现状已用 `t('status.budgetUsage')` 带 {tool}/{model} 插值——迁移后保留该插值行为，改为查 `timeline.budget.consumed` 时同样追加 `工具 {tool}/模型 {model}` 细节，不得丢失插值。
+- **`SystemStatusBubble:111` 用量行**：硬编码 zh 拼串 → **复用现有键** `status.budgetUsage` 扩展可选 `{seconds}` 参数（zh `用量 工具 {tool}/模型 {model}` → 缺省不带秒；传 seconds 时渲染 `· {seconds}s` 后缀），不新增近重复键 `status.budgetLive`（reviewer 建议，符合「先复用现有键」原则；`status.budgetUsage` 迁移后消费点：SystemStatusBubble + eventSummary budget 分支）。
 - **测试（TDD）**：
   - 新增 parity 测试：遍历 TS 侧已知事件类型数组，断言无 payload 时 `eventSummary(e) === t('timeline.' + type)`，防字典漂移。
   - 现有组件测试补 i18n 断言（如 NewRunDialog 渲染后无硬编码英文文案可寻）。
